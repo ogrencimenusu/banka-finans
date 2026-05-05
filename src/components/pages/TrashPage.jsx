@@ -8,7 +8,8 @@ import {
   where, 
   updateDoc, 
   doc, 
-  deleteDoc 
+  deleteDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { Table, Button, Badge } from 'react-bootstrap';
 import { RotateCcw, Trash2 } from 'lucide-react';
@@ -60,11 +61,35 @@ const TrashPage = () => {
     }
   };
 
+  const handleEmptyTrash = async () => {
+    if (items.length === 0) return;
+    if (window.confirm('Çöp kutusundaki tüm öğeleri kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.')) {
+      try {
+        const batch = writeBatch(db);
+        items.forEach(item => {
+          const ref = doc(db, `users/${user.uid}/${item.collection}`, item.id);
+          batch.delete(ref);
+        });
+        await batch.commit();
+      } catch (error) {
+        console.error("Empty trash error:", error);
+        alert("Tümünü silme işlemi sırasında bir hata oluştu.");
+      }
+    }
+  };
+
   return (
-    <div className="glass-card p-4">
-      <h2 className="mb-4 d-flex align-items-center gap-2">
-        <Trash2 className="text-danger" /> Son Silinenler
-      </h2>
+    <div className="bg-white shadow-lg border rounded-3 p-4">
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2 className="mb-0 d-flex align-items-center gap-2">
+          <Trash2 className="text-danger" /> Son Silinenler
+        </h2>
+        {items.length > 0 && (
+          <Button variant="danger" size="sm" onClick={handleEmptyTrash} className="d-flex align-items-center gap-2">
+            <Trash2 size={16} /> Tümünü Sil
+          </Button>
+        )}
+      </div>
       <Table responsive hover className="notion-table">
         <thead>
           <tr>

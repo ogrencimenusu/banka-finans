@@ -29,9 +29,9 @@ const LoginPage = () => {
           </div>
           <h2 className="mb-2 fw-bold">Banka & Finans</h2>
           <p className="text-muted mb-5">Güvenli portföy ve nakit takibi.</p>
-          <Button 
-            variant="light" 
-            size="lg" 
+          <Button
+            variant="light"
+            size="lg"
             className="w-100 d-flex align-items-center justify-content-center gap-3 shadow-sm border py-3 rounded-pill"
             onClick={handleLogin}
           >

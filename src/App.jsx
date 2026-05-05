@@ -19,10 +19,10 @@ const Dashboard = () => (
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
-  
+
   if (loading) return <div>Yükleniyor...</div>;
   if (!user) return <Navigate to="/login" />;
-  
+
   return children;
 };
 
@@ -32,8 +32,8 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route 
-            path="/*" 
+          <Route
+            path="/*"
             element={
               <ProtectedRoute>
                 <MainLayout>
@@ -46,7 +46,7 @@ function App() {
                   </Routes>
                 </MainLayout>
               </ProtectedRoute>
-            } 
+            }
           />
         </Routes>
       </Router>

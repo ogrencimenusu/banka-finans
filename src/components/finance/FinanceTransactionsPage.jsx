@@ -123,7 +123,7 @@ const FinanceTransactionsPage = () => {
         <PieChart className="text-primary" /> Finans İşlemleri
       </h2>
 
-      <Card className="mb-4 glass-card border-0">
+      <Card className="mb-4 bg-white shadow-lg border rounded-3 border-0">
         <Card.Body>
           <Form onSubmit={handleAddTransaction}>
             <Row className="g-3">
@@ -174,7 +174,7 @@ const FinanceTransactionsPage = () => {
         </Card.Body>
       </Card>
 
-      <Card className="glass-card border-0 overflow-hidden">
+      <Card className="bg-white shadow-lg border rounded-3 border-0 overflow-hidden">
         <div className="p-3 d-flex justify-content-between border-bottom">
           <div className="d-flex gap-3 small fw-medium text-muted">
             <span className="d-flex align-items-center gap-1"><Filter size={14} /> Filtrele</span>

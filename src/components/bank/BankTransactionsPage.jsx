@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -6,12 +6,16 @@ import {
   addDoc, 
   onSnapshot, 
   query, 
-  where, 
   orderBy, 
   doc, 
   setDoc,
   updateDoc,
-  writeBatch
+  deleteDoc,
+  writeBatch,
+  limit,
+  getDocs,
+  where,
+  serverTimestamp
 } from 'firebase/firestore';
 import { Button, Form, Card, Row, Col, Table, Badge, Dropdown, Modal } from 'react-bootstrap';
 import { 
@@ -52,7 +56,15 @@ import {
   EyeOff,
   WrapText,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Clipboard,
+  Copy,
+  Upload,
+  Filter,
+  Tag,
+  RotateCcw,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 
 // Dnd Kit Imports
@@ -63,6 +75,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  DragOverlay
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -94,7 +107,6 @@ const PROPERTIES = [
   { id: 'amount', label: 'Tutar', icon: <Banknote size={14} /> },
   { id: 'receiptUrl', label: 'Dekont', icon: <Link2 size={14} /> },
   { id: 'bankId', label: 'Bankalar', icon: <Landmark size={14} /> },
-  { id: 'amountKK', label: 'Tutar KK', icon: <CreditCard size={14} /> },
 ];
 
 const ICON_LIST = [
@@ -122,6 +134,8 @@ const getPropertyIcon = (id, config) => {
 };
 
 const SortablePropertyItem = ({ prop, isVisible, toggleVisibility, icon }) => {
+  if (!prop) return null;
+
   const {
     attributes,
     listeners,
@@ -158,7 +172,7 @@ const SortablePropertyItem = ({ prop, isVisible, toggleVisibility, icon }) => {
   );
 };
 
-const SortableTransactionRow = ({ t, config, selectedIds, onSelect, renderCell, isWrapped }) => {
+const SortableTransactionRow = ({ t, index, config, selectedIds, onSelect, renderCell, isWrapped, activeDragId }) => {
   const {
     attributes,
     listeners,
@@ -168,24 +182,40 @@ const SortableTransactionRow = ({ t, config, selectedIds, onSelect, renderCell, 
     isDragging
   } = useSortable({ id: t.id });
 
+  const isSelected = selectedIds.includes(t.id);
+  const isMultiDragActive = activeDragId && selectedIds.length > 1 && selectedIds.includes(activeDragId);
+  const isPartOfMultiDrag = isMultiDragActive && isSelected;
+
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: isMultiDragActive ? undefined : CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 1001 : 'auto',
-    opacity: isDragging ? 0.5 : 1,
-    position: 'relative'
+    opacity: isPartOfMultiDrag || isDragging ? 0.3 : 1, // Fade out the original rows if they are part of multi-drag
+    position: 'relative',
+    boxShadow: isDragging && !isMultiDragActive ? '0 5px 15px rgba(0,0,0,0.1)' : 'none'
   };
 
-  const isSelected = selectedIds.includes(t.id);
+  const isRowHighlighted = 
+    (config.rowHighlight === 'odd' && index % 2 !== 0) || 
+    (config.rowHighlight === 'even' && index % 2 === 0);
+
+  const rowClassName = `align-middle group ${isDragging ? 'bg-light' : ''} ${isRowHighlighted ? 'bg-light bg-opacity-50' : ''}`;
 
   return (
-    <tr ref={setNodeRef} style={style} className="align-middle group">
+    <tr ref={setNodeRef} style={style} className={rowClassName}>
       <td className="ps-2">
         <div 
           className={`d-flex align-items-center gap-2 ${isSelected ? 'opacity-100' : 'group-hover-visible'}`} 
           style={{ width: '50px' }}
         >
-          <div {...listeners} {...attributes} className="cursor-grab text-muted opacity-25 hover-opacity-100"><GripVertical size={14} /></div>
+          <div {...listeners} {...attributes} className="cursor-grab text-muted opacity-25 hover-opacity-100 position-relative">
+            <GripVertical size={14} />
+            {isDragging && isMultiDragActive && (
+              <span className="position-absolute badge rounded-pill bg-primary shadow-sm" style={{ fontSize: '0.65rem', top: '-6px', right: '-8px', zIndex: 10 }}>
+                {selectedIds.length}
+              </span>
+            )}
+          </div>
           <Form.Check 
             type="checkbox" 
             className="notion-checkbox custom-checkbox-sm" 
@@ -201,7 +231,164 @@ const SortableTransactionRow = ({ t, config, selectedIds, onSelect, renderCell, 
   );
 };
 
+// Visible date input that allows both manual typing and auto-opens calendar
+const DateCellInput = ({ value, onSave, onCancel }) => {
+  const ref = React.useRef(null);
+  const [draft, setDraft] = React.useState(value || '');
+
+  React.useEffect(() => {
+    if (ref.current) {
+      const timer = setTimeout(() => {
+        try { ref.current.showPicker(); } catch (e) {}
+      }, 10);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  return (
+    <Form.Control
+      ref={ref}
+      type="date"
+      value={draft}
+      className="border-0 bg-transparent p-0 cell-date-input fs-14"
+      style={{ boxShadow: 'none' }}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={() => onSave(draft)}
+      onKeyDown={e => {
+        if (e.key === 'Enter') onSave(draft);
+        if (e.key === 'Escape') onCancel();
+      }}
+    />
+  );
+};
+
+const BulkDateInput = ({ value, onSave, onClear }) => {
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    if (isEditing && ref.current) {
+      const timer = setTimeout(() => {
+        try { ref.current.showPicker(); } catch (e) {}
+      }, 10);
+      return () => clearTimeout(timer);
+    }
+  }, [isEditing]);
+
+  return (
+    <div className="position-relative">
+      <div 
+        className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer transition-all ${value ? 'text-primary' : 'opacity-75'}`}
+        style={{ minWidth: '80px', minHeight: '40px' }}
+        onClick={() => {
+          setDraft(value || '');
+          setIsEditing(true);
+        }}
+      >
+        <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+          <Calendar size={10} /> Tarih
+          {value && (
+            <X 
+              size={10} 
+              className="ms-1 hover-text-danger transition-colors cursor-pointer" 
+              onClick={(e) => {
+                e.stopPropagation();
+                onClear();
+              }}
+            />
+          )}
+        </div>
+        {value && (
+          <div className="d-flex align-items-center gap-1 fw-bold mt-0.5" style={{ fontSize: '12px' }}>
+            {new Date(value).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+          </div>
+        )}
+
+        {isEditing && (
+          <div className="position-absolute top-0 start-0 w-100 h-100 bg-white border shadow-sm rounded-2 px-1 d-flex align-items-center" style={{ zIndex: 100 }}>
+            <Form.Control
+              ref={ref}
+              type="date"
+              value={draft}
+              className="border-0 bg-transparent p-0 text-dark small w-100"
+              style={{ boxShadow: 'none', fontSize: '12px' }}
+              onChange={e => setDraft(e.target.value)}
+              onBlur={() => {
+                if (draft) onSave(draft);
+                setIsEditing(false);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  if (draft) onSave(draft);
+                  setIsEditing(false);
+                }
+                if (e.key === 'Escape') setIsEditing(false);
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+const ImportModal = ({ show, onHide, onImport }) => {
+  const [text, setText] = React.useState('');
+
+  const handleProcess = () => {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`<table>${text}</table>`, 'text/html');
+    const rows = doc.querySelectorAll('tr');
+    
+    const results = Array.from(rows).map(row => {
+      const tds = row.querySelectorAll('td');
+      if (tds.length < 6) return null;
+      
+      const dateStr = tds[0].innerText.trim();
+      const [d, m, y] = dateStr.split('.');
+      const formattedDate = `${y}-${m}-${d}`;
+      
+      const amountStr = tds[1].innerText.trim()
+        .replace('₺', '')
+        .replace(/\./g, ''); // Sadece noktaları kaldır, virgül kalsın
+      
+      const bankName = tds[2].innerText.trim();
+      const typeName = tds[3].innerText.trim();
+      const receiptUrl = tds[4].querySelector('a')?.href || '';
+      const title = tds[5].innerText.trim();
+      
+      return { date: formattedDate, amount: amountStr, bankName, typeName, receiptUrl, title };
+    }).filter(Boolean);
+    
+    onImport(results);
+    setText('');
+    onHide();
+  };
+
+  return (
+    <Modal show={show} onHide={onHide} size="lg" contentClassName="glass-card">
+      <Modal.Header closeButton className="border-0">
+        <Modal.Title className="fw-bold">HTML Import</Modal.Title>
+      </Modal.Header>
+      <Modal.Body className="p-4">
+        <Form.Control 
+          as="textarea" 
+          rows={10} 
+          className="glass-card p-3" 
+          placeholder="Paste <tr>...</tr> rows here..."
+          value={text}
+          onChange={e => setText(e.target.value)}
+        />
+        <Button className="mt-3 w-100 rounded-pill py-2 fw-bold" onClick={handleProcess}>
+          Import Transactions
+        </Button>
+      </Modal.Body>
+    </Modal>
+  );
+};
+
 const SortableTagItem = ({ tag, type, isSelected, onClick, getTagStyle, onUpdate, onDelete }) => {
+
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(tag.name);
   const [editColor, setEditColor] = useState(tag.color || 'Default');
@@ -213,7 +400,7 @@ const SortableTagItem = ({ tag, type, isSelected, onClick, getTagStyle, onUpdate
     transform,
     transition,
     isDragging
-  } = useSortable({ id: tag.name, disabled: isEditing });
+  } = useSortable({ id: tag.id || tag.name, disabled: isEditing });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -225,7 +412,7 @@ const SortableTagItem = ({ tag, type, isSelected, onClick, getTagStyle, onUpdate
   const handleSave = (e) => {
     if (e) e.stopPropagation();
     if (editValue && (editValue !== tag.name || editColor !== (tag.color || 'Default'))) {
-      onUpdate(tag.name, editValue, editColor);
+      onUpdate(tag.id || tag.name, editValue, editColor);
     }
     setIsEditing(false);
   };
@@ -261,7 +448,7 @@ const SortableTagItem = ({ tag, type, isSelected, onClick, getTagStyle, onUpdate
               onClick={e => e.stopPropagation()}
             />
           ) : (
-            <span className="notion-tag m-0" style={getTagStyle(type, tag.name)}>{tag.name}</span>
+            <span className="notion-tag m-0" style={getTagStyle(type, tag.id || tag.name)}>{tag.name}</span>
           )}
         </div>
         <div className="d-flex align-items-center gap-2">
@@ -284,7 +471,7 @@ const SortableTagItem = ({ tag, type, isSelected, onClick, getTagStyle, onUpdate
             <div className="d-flex align-items-center gap-1 opacity-0 group-hover-opacity-100">
               <div 
                 className="edit-trigger" 
-                onClick={(e) => { e.stopPropagation(); if (window.confirm('Bu etiketi silmek istediğinize emin misiniz?')) onDelete(tag.name); }}
+                onClick={(e) => { e.stopPropagation(); if (window.confirm('Bu etiketi silmek istediğinize emin misiniz?')) onDelete(tag.id || tag.name); }}
               >
                 <Trash2 size={12} className="text-danger" />
               </div>
@@ -302,7 +489,7 @@ const SortableTagItem = ({ tag, type, isSelected, onClick, getTagStyle, onUpdate
 
       {isEditing && (
         <div className="mt-2 p-1 pt-2 border-top w-100">
-          <div className="text-muted x-small mb-1 ps-1" style={{ fontSize: '11px' }}>Select Color</div>
+          <div className="text-muted x-small mb-1 ps-1 fs-11">Select Color</div>
           <div className="d-flex flex-wrap gap-2 ps-1" style={{ maxWidth: '240px' }}>
             {COLORS.map((c) => (
               <div 
@@ -370,10 +557,10 @@ const SortableBankItem = ({ bank, balance, viewLayout, handleDeleteBank, onEditC
               </div>
             </div>
             {bank.logo ? <img src={bank.logo} alt="" style={{ width: '20px', height: '20px', objectFit: 'contain' }} /> : <Landmark size={18} className="text-muted" />}
-            <span className="fw-bold" style={{ fontSize: '16px' }}>{bank.name}</span>
+            <span className="fw-bold fs-16">{bank.name}</span>
           </div>
         </td>
-        <td className="fw-medium" style={{ fontSize: '15px' }}>
+        <td className="fw-medium fs-15">
           {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(balance)}
         </td>
         <td></td>
@@ -387,14 +574,14 @@ const SortableBankItem = ({ bank, balance, viewLayout, handleDeleteBank, onEditC
   if (viewLayout === 'gallery_advanced') {
     return (
       <Col ref={setNodeRef} style={style} {...attributes}>
-        <Card className="h-100 glass-card border-0 p-0 shadow-sm group position-relative overflow-hidden" style={{ borderRadius: '12px' }}>
+        <Card className="bg-white border shadow-sm h-100 p-0 group position-relative overflow-hidden" style={{ borderRadius: '12px' }}>
           <div className="d-flex align-items-center justify-content-center bg-white border-bottom overflow-hidden p-0 position-relative" style={{ height: '120px' }}>
             {bank.logo ? (
               <img src={bank.logo} alt="" style={{ width: '100%', height: '100%', minWidth: '100%', objectFit: 'cover' }} />
             ) : (
               <Landmark size={40} className="text-muted opacity-25" />
             )}
-            <div className="position-absolute top-0 end-0 p-1 d-flex gap-1 group-hover-visible" style={{ zIndex: 10, right: '5px', top: '5px' }}>
+            <div className="position-absolute top-0 end-0 p-1 d-flex gap-1 group-hover-visible gallery-actions">
               <div {...listeners} style={{ cursor: 'grab', textShadow: '0 0 4px rgba(0,0,0,0.5)', width: '25px', height: '25px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="text-white bg-dark bg-opacity-25 rounded">
                 <GripVertical size={14} />
               </div>
@@ -415,8 +602,8 @@ const SortableBankItem = ({ bank, balance, viewLayout, handleDeleteBank, onEditC
             </div>
           </div>
           <div className="p-2 text-center">
-            <div className="fw-bold mb-0" style={{ fontSize: '16px' }}>{bank.name}</div>
-            <div className="text-muted" style={{ fontSize: '15px' }}>{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(balance)}</div>
+            <div className="fw-bold mb-0 fs-16">{bank.name}</div>
+            <div className="text-muted fs-15">{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(balance)}</div>
           </div>
         </Card>
       </Col>
@@ -426,15 +613,15 @@ const SortableBankItem = ({ bank, balance, viewLayout, handleDeleteBank, onEditC
   // Default: gallery_basic
   return (
     <Col ref={setNodeRef} style={style} {...attributes}>
-      <Card className="glass-card border-0 p-3 shadow-sm position-relative group" style={{ borderRadius: '12px' }}>
+      <Card className="bg-white border shadow-sm p-3 position-relative group" style={{ borderRadius: '12px' }}>
         <div className="d-flex align-items-center mb-2">
           <div className="d-flex align-items-center gap-2">
             <div className="rounded bg-white shadow-sm overflow-hidden" style={{ width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 !important' }}>
               {bank.logo ? <img src={bank.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Landmark size={14} className="text-muted" />}
             </div>
-            <span className="fw-bold" style={{ fontSize: '16px' }}>{bank.name}</span>
+            <span className="fw-bold fs-16">{bank.name}</span>
           </div>
-          <div className="position-absolute d-flex align-items-center gap-1 group-hover-visible" style={{ right: '5px', top: '5px', paddingRight: '5px' }}>
+          <div className="position-absolute d-flex align-items-center gap-1 group-hover-visible gallery-actions">
             <div {...listeners} style={{ cursor: 'grab' }} className="text-muted p-1">
               <GripVertical size={14} />
             </div>
@@ -454,7 +641,7 @@ const SortableBankItem = ({ bank, balance, viewLayout, handleDeleteBank, onEditC
             </div>
           </div>
         </div>
-        <div className="fw-medium text-muted" style={{ fontSize: '15px' }}>
+        <div className="fw-medium text-muted fs-15">
           {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(balance)}
         </div>
       </Card>
@@ -466,10 +653,18 @@ const BankTransactionsPage = () => {
   const { user } = useAuth();
   const [banks, setBanks] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [activeDragId, setActiveDragId] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [isInfiniteScroll, setIsInfiniteScroll] = useState(false);
+  const [bulkHistory, setBulkHistory] = useState([]);
+  const [stagedChanges, setStagedChanges] = useState({});
+  const [bulkProgress, setBulkProgress] = useState(0);
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const observerRef = useRef();
+  const lastElementRef = useRef();
+  const [quickActionTags, setQuickActionTags] = useState([]);
+  const [typeTags, setTypeTags] = useState([]);
   const [config, setConfig] = useState({ 
-    quickActions: [], 
-    types: [], 
     viewLayout: 'gallery_basic',
     propertyOrder: PROPERTIES.map(p => p.id),
     propertyVisibility: PROPERTIES.reduce((acc, p) => ({ ...acc, [p.id]: true }), {})
@@ -495,15 +690,51 @@ const BankTransactionsPage = () => {
     }
   }, [selectedIds, transactions]);
 
-  // Transaction Form State
-  const [selectedBankId, setSelectedBankId] = useState('all');
+  const [selectedBankId, setSelectedBankId] = useState('all'); // For filtering
+  const [formBankId, setFormBankId] = useState(''); // For the add transaction form
+  // Inline cell editing
+  const [editingCell, setEditingCell] = useState(null); // { transId, propId }
+  const [cellDraft, setCellDraft] = useState(null); // draft value for the active cell
   const [title, setTitle] = useState('');
   const [selectedQuickActions, setSelectedQuickActions] = useState([]);
   const [selectedType, setSelectedType] = useState('');
   const [amount, setAmount] = useState('');
-  const [amountKK, setAmountKK] = useState('');
   const [receiptUrl, setReceiptUrl] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [limitCount, setLimitCount] = useState(50);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [isGlobalSelected, setIsGlobalSelected] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+
+  const getBankInfo = (id) => banks.find(b => b.id === id) || {};
+
+  const displayDateFormatted = (dateString, formatStr) => {
+    if (!dateString) return '';
+    const [year, month, day] = dateString.split('-');
+    switch(formatStr) {
+       case 'DD/MM/YYYY': return `${day}/${month}/${year}`;
+       case 'DD.MM.YYYY': return `${day}.${month}.${year}`;
+       case 'DD MMMM YYYY': {
+         const d = new Date(year, month - 1, day);
+         return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
+       }
+       case 'DD MMM YYYY': {
+         const d = new Date(year, month - 1, day);
+         return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+       }
+       default: return `${day}/${month}/${year}`;
+    }
+  };
+
+  const formatCurrency = (value) => {
+    let num = value;
+    if (typeof num === 'string') {
+      num = parseFloat(num.replace(/\./g, '').replace(',', '.'));
+    }
+    if (isNaN(num)) return '0,00';
+    return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+  };
 
   // Bank Management State
   const [showBankModal, setShowBankModal] = useState(false);
@@ -519,6 +750,7 @@ const BankTransactionsPage = () => {
   // Modal State for Tags
   const [showTagModal, setShowTagModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [activeTagType, setActiveTagType] = useState('');
   const [newTagName, setNewTagName] = useState('');
   const [tagSearch, setTagSearch] = useState('');
@@ -530,122 +762,337 @@ const BankTransactionsPage = () => {
 
     // Banks
     const unsubBanks = onSnapshot(collection(db, `users/${user.uid}/banks`), (snap) => {
-      const bItems = snap.docs.map(doc => ({ id: doc.id, ...doc.data(), source: 'banks' }));
-      setBanks(prev => {
-        const otherSourceBanks = prev.filter(b => b.source !== 'banks');
-        const all = [...otherSourceBanks, ...bItems];
-        // Deduplicate by ID, prioritizing items with names (avoiding empty placeholder docs)
-        const unique = {};
-        all.forEach(b => {
-          if (!unique[b.id] || (b.name && !unique[b.id].name)) {
-            unique[b.id] = b;
-          }
-        });
-        return Object.values(unique)
-          .filter(b => b.deleted !== true)
-          .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
-      });
+      const bItems = snap.docs.map(d => ({ id: d.id, ...d.data(), source: 'banks' }));
+      setBanks(bItems.filter(b => b.deleted !== true).sort((a, b) => (a.order ?? 999) - (b.order ?? 999)));
     });
 
-    const unsubBanka = onSnapshot(collection(db, `users/${user.uid}/banka`), (snap) => {
-      const bItems = snap.docs.map(doc => ({ id: doc.id, ...doc.data(), source: 'banka' }));
-      setBanks(prev => {
-        const otherSourceBanks = prev.filter(b => b.source !== 'banka');
-        const all = [...otherSourceBanks, ...bItems];
-        // Deduplicate by ID, prioritizing items with names
-        const unique = {};
-        all.forEach(b => {
-          if (!unique[b.id] || (b.name && !unique[b.id].name)) {
-            unique[b.id] = b;
-          }
-        });
-        return Object.values(unique)
-          .filter(b => b.deleted !== true)
-          .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
-      });
+    // Transactions (Limited for the list to save quota)
+    const baseColl = collection(db, `users/${user.uid}/bankTransactions`);
+    const transQuery = query(baseColl, where('deleted', '==', false), orderBy('createdAt', 'desc'), limit(limitCount));
+
+    const unsubTrans = onSnapshot(transQuery, (snap) => {
+      const trans = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTransactions(trans);
+      setIsInitialLoading(false);
+      if (snap.docs.length < limitCount) setHasMore(false);
+      else setHasMore(true);
     });
 
-    // Transactions
-    const unsubTrans = onSnapshot(query(collection(db, `users/${user.uid}/bankTransactions`), orderBy('createdAt', 'desc')), (snap) => {
-      setTransactions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(t => t.deleted !== true));
-    });
+    // Separate count/total listener (Optional: for performance we might want to fetch this differently, 
+    // but for now we just get the full count if needed or use a separate summary doc)
+    // To TRULY save reads, we should eventually move balances to the Bank document.
+
+
 
     // Config
     const unsubConfig = onSnapshot(doc(db, `users/${user.uid}/config`, 'bankSettings'), (snap) => {
       if (snap.exists()) setConfig(prev => ({ ...prev, ...snap.data() }));
     });
 
-    return () => { unsubBanks(); unsubBanka(); unsubTrans(); unsubConfig(); };
-  }, [user]);
+    // QuickAction Tags collection
+    const unsubQA = onSnapshot(
+      query(collection(db, `users/${user.uid}/quickActions`), orderBy('order', 'asc')),
+      (snap) => setQuickActionTags(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
 
-  const calculateBalance = (bankId) => {
-    return transactions
-      .filter(t => t.bankId === bankId)
-      .reduce((sum, t) => {
-        let val = t.amount;
-        if (typeof val === 'string') {
-          val = parseFloat(val.replace(/\./g, '').replace(',', '.'));
+    // TransactionType Tags collection
+    const unsubTT = onSnapshot(query(collection(db, `users/${user.uid}/transactionTypes`), orderBy("order", "asc")), (snap) => {
+      setTypeTags(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const unsubHistory = onSnapshot(query(collection(db, `users/${user.uid}/bulkHistory`), orderBy("timestamp", "desc"), limit(10)), (snap) => {
+      setBulkHistory(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => { unsubBanks(); unsubTrans(); unsubConfig(); unsubQA(); unsubTT(); unsubHistory(); };
+  }, [user, limitCount]);
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      const bank = getBankInfo(t.bankId);
+      if (bank.visible === false) return false;
+      if (selectedBankId !== 'all' && t.bankId !== selectedBankId) return false;
+      
+      // Apply filters from config
+      const activeFilters = config.filters || [];
+      for (const f of activeFilters) {
+        const val = t[f.propId];
+        const filterVal = (f.value || '').toLowerCase();
+        const stringVal = (val || '').toString().toLowerCase();
+
+        switch (f.operator) {
+          case 'contains': if (!stringVal.includes(filterVal)) return false; break;
+          case 'does_not_contain': if (stringVal.includes(filterVal)) return false; break;
+          case 'is': if (stringVal !== filterVal) return false; break;
+          case 'is_not': if (stringVal === filterVal) return false; break;
+          case 'starts_with': if (!stringVal.startsWith(filterVal)) return false; break;
+          case 'ends_with': if (!stringVal.endsWith(filterVal)) return false; break;
+          case 'is_empty': 
+            if (Array.isArray(val)) {
+              if (val.length > 0) return false;
+            } else if (val) return false; 
+            break;
+          case 'is_not_empty': 
+            if (Array.isArray(val)) {
+              if (val.length === 0) return false;
+            } else if (!val) return false; 
+            break;
+          case 'between': {
+            if (f.propId === 'date') {
+              const [start, end] = (f.value || '').split(',');
+              if (start && val < start) return false;
+              if (end && val > end) return false;
+            }
+            break;
+          }
+          default: break;
         }
-        return sum + (val || 0);
-      }, 0);
-  };
+      }
 
-  const totalBalance = banks.reduce((sum, bank) => sum + calculateBalance(bank.id), 0);
+      return true;
+    });
+  }, [transactions, banks, selectedBankId, config.filters]);
+
+  const sortedTransactions = useMemo(() => {
+    return [...filteredTransactions].sort((a, b) => {
+      if (!config.sortConfig) {
+        // Default: Newest created first
+        const timeA = a.createdAt?.seconds || 0;
+        const timeB = b.createdAt?.seconds || 0;
+        if (timeB !== timeA) return timeB - timeA;
+        return (a.order || 0) - (b.order || 0);
+      }
+      const { propId, direction } = config.sortConfig;
+      
+      let valA = a[propId];
+      let valB = b[propId];
+
+      if (propId === 'date') {
+        valA = valA || '0000-00-00';
+        valB = valB || '0000-00-00';
+      } else if (propId === 'amount') {
+        const parseAmt = (v) => typeof v === 'string' ? parseFloat(v.replace(/\./g, '').replace(',', '.')) : (v || 0);
+        valA = parseAmt(valA);
+        valB = parseAmt(valB);
+      } else if (propId === 'bankId') {
+        valA = getBankInfo(valA).name || '';
+        valB = getBankInfo(valB).name || '';
+      } else {
+        valA = (valA || '').toString().toLowerCase();
+        valB = (valB || '').toString().toLowerCase();
+      }
+
+      if (valA < valB) return direction === 'asc' ? -1 : 1;
+      if (valA > valB) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredTransactions, config.sortConfig]);
+
+  const visibleTransactions = filteredTransactions; // We already limited in Firestore query
+
+  // Infinite Scroll Observer
+  useEffect(() => {
+    const options = { root: null, rootMargin: '100px', threshold: 0.1 };
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore && !isInitialLoading) {
+        setLimitCount(prev => prev + 50);
+      }
+    }, options);
+
+    if (lastElementRef.current) observer.observe(lastElementRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, isInitialLoading]);
+
+  const bankBalances = useMemo(() => {
+    const balances = {};
+    transactions.forEach(t => {
+      const bId = t.bankId;
+      let amt = t.amount;
+      if (typeof amt === 'string') {
+        amt = parseFloat(amt.replace(/\./g, '').replace(',', '.'));
+      }
+      balances[bId] = (balances[bId] || 0) + (amt || 0);
+    });
+    return balances;
+  }, [transactions]);
+
+  const calculateBalance = (bankId) => bankBalances[bankId] || 0;
+  const totalBalance = useMemo(() => {
+    return banks
+      .filter(bank => bank.visible !== false)
+      .reduce((acc, bank) => acc + (bankBalances[bank.id] || 0), 0);
+  }, [bankBalances, banks]);
 
   const handleUpdateLayout = async (layout) => {
     const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
     await setDoc(configRef, { ...config, viewLayout: layout }, { merge: true });
   };
 
-  const filteredTransactions = transactions.filter(t => {
-    if (selectedBankId === 'all') return true;
-    return t.bankId === selectedBankId;
-  });
 
-  const sortedTransactions = [...filteredTransactions].sort((a, b) => {
-    if (!config.sortConfig) return (b.order || 0) - (a.order || 0);
-    const { propId, direction } = config.sortConfig;
-    
-    let valA = a[propId];
-    let valB = b[propId];
-
-    // Special handling for data types
-    if (propId === 'date') {
-      valA = new Date(valA || '1970-01-01');
-      valB = new Date(valB || '1970-01-01');
-    } else if (propId === 'amount' || propId === 'amountKK') {
-      valA = parseFloat(valA || 0);
-      valB = parseFloat(valB || 0);
-    } else if (propId === 'bankId') {
-      valA = getBankInfo(valA).name || '';
-      valB = getBankInfo(valB).name || '';
-    } else {
-      valA = (valA || '').toString().toLowerCase();
-      valB = (valB || '').toString().toLowerCase();
-    }
-
-    if (valA < valB) return direction === 'asc' ? -1 : 1;
-    if (valA > valB) return direction === 'asc' ? 1 : -1;
-    return 0;
-  });
 
   const handleAddTransaction = async (e) => {
     e.preventDefault();
-    if (!selectedBankId || !title || (!amount && !amountKK)) return;
+    if (!formBankId || !title || !amount) return;
+
+    let finalQuickActions = [...selectedQuickActions]; // array of IDs
+    let finalType = selectedType; // ID
+
+    // If user typed a new quick action in the search box but didn't click +
+    if (tagSearch.trim()) {
+      const newTagName = tagSearch.trim();
+      const existing = quickActionTags.find(t => t.name.toLowerCase() === newTagName.toLowerCase());
+      if (existing) {
+        if (!finalQuickActions.includes(existing.id)) finalQuickActions.push(existing.id);
+      } else {
+        const newDoc = await addDoc(collection(db, `users/${user.uid}/quickActions`), {
+          name: newTagName, color: 'Gray', order: quickActionTags.length, createdAt: new Date()
+        });
+        finalQuickActions.push(newDoc.id);
+      }
+      setTagSearch('');
+    }
+
+    // If user typed a new type in the search box but didn't click +
+    if (typeSearch.trim()) {
+      const newTypeName = typeSearch.trim();
+      const existing = typeTags.find(t => t.name.toLowerCase() === newTypeName.toLowerCase());
+      if (existing) {
+        finalType = existing.id;
+      } else {
+        const newDoc = await addDoc(collection(db, `users/${user.uid}/transactionTypes`), {
+          name: newTypeName, color: 'Gray', order: typeTags.length, createdAt: new Date()
+        });
+        finalType = newDoc.id;
+      }
+      setTypeSearch('');
+    }
+
     await addDoc(collection(db, `users/${user.uid}/bankTransactions`), {
-      bankId: selectedBankId, 
-      title, 
-      quickActions: selectedQuickActions, 
-      type: selectedType, 
-      amount, 
-      amountKK,
-      receiptUrl, 
-      date, 
-      createdAt: new Date(), 
+      bankId: formBankId,
+      title,
+      quickActions: finalQuickActions,
+      type: finalType,
+      amount,
+      receiptUrl,
+      date,
+      createdAt: new Date(),
       deleted: false
     });
-    setTitle(''); setSelectedQuickActions([]); setSelectedType(''); setAmount(''); setAmountKK(''); setReceiptUrl('');
+    setTitle(''); setSelectedQuickActions([]); setSelectedType(''); setAmount(''); setReceiptUrl(''); setFormBankId('');
     setShowTransactionModal(false);
+  };
+
+  const handleAddEmptyTransaction = async () => {
+    if (!user) return;
+    try {
+      await addDoc(collection(db, `users/${user.uid}/bankTransactions`), {
+        bankId: '',
+        title: '',
+        quickActions: [],
+        type: '',
+        amount: '',
+        receiptUrl: '',
+        date: new Date().toISOString().split('T')[0],
+        createdAt: new Date(),
+        deleted: false
+      });
+    } catch (err) {
+      console.error("Error adding empty transaction", err);
+    }
+  };
+
+  const updateConfig = async (newConfig) => {
+    if (!user) return;
+    const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
+    await setDoc(configRef, { ...config, ...newConfig }, { merge: true });
+  };
+
+  const handleUpdateFilter = (propId, operator, value) => {
+    const newFilters = [...(config.filters || [])];
+    const existing = newFilters.findIndex(f => f.propId === propId);
+    if (existing !== -1) {
+      if (value === null) newFilters.splice(existing, 1);
+      else newFilters[existing] = { ...newFilters[existing], operator, value };
+    } else {
+      newFilters.push({ propId, operator, value });
+    }
+    updateConfig({ filters: newFilters });
+  };
+
+  const handleUpdateConfig = async (updates) => {
+    const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
+    await setDoc(configRef, { ...config, ...updates }, { merge: true });
+  };
+
+  const handleBulkImport = async (parsedData) => {
+    const batch = writeBatch(db);
+    
+    const normalize = (s) => (s || '').toLocaleLowerCase('tr-TR').trim()
+      .replace(/i̇/g, 'i')
+      .replace(/ı/g, 'i');
+
+    // Mevcut banka ve etiketlerin kopyalarını alalım (döngü içinde yeni oluşturulanları takip etmek için)
+    let currentBanks = [...banks];
+    let currentTypes = [...typeTags];
+
+    for (const item of parsedData) {
+      // --- Banka Eşleştirme/Oluşturma ---
+      let bankId = '';
+      const normalizedItemBank = normalize(item.bankName);
+      const matchedBank = currentBanks.find(b => {
+        const nb = normalize(b.name);
+        return nb.includes(normalizedItemBank) || normalizedItemBank.includes(nb);
+      });
+
+      if (matchedBank) {
+        bankId = matchedBank.id;
+      } else if (item.bankName) {
+        // Banka bulunamadı, yeni oluştur
+        const newBankRef = await addDoc(collection(db, `users/${user.uid}/banks`), {
+          name: item.bankName, 
+          logo: '', 
+          createdAt: new Date(), 
+          deleted: false, 
+          order: currentBanks.length 
+        });
+        bankId = newBankRef.id;
+        currentBanks.push({ id: bankId, name: item.bankName });
+      } else {
+        bankId = banks[0]?.id || '';
+      }
+
+      // --- İşlem Türü Eşleştirme/Oluşturma ---
+      let typeId = '';
+      const normalizedItemType = normalize(item.typeName);
+      const matchedType = currentTypes.find(t => normalize(t.name) === normalizedItemType);
+      
+      if (matchedType) {
+        typeId = matchedType.id;
+      } else if (item.typeName) {
+        const newDoc = await addDoc(collection(db, `users/${user.uid}/transactionTypes`), {
+          name: item.typeName, color: 'Gray', order: currentTypes.length, createdAt: new Date()
+        });
+        typeId = newDoc.id;
+        currentTypes.push({ id: typeId, name: item.typeName, color: 'Gray' });
+      }
+
+      const amountValue = item.amount; // Virgüllü string formatını koru
+
+      const docRef = doc(collection(db, `users/${user.uid}/bankTransactions`));
+      batch.set(docRef, {
+        bankId,
+        title: item.title,
+        quickActions: [],
+        type: typeId,
+        amount: amountValue,
+        receiptUrl: item.receiptUrl,
+        date: item.date,
+        createdAt: new Date(),
+        deleted: false
+      });
+    }
+    
+    await batch.commit();
   };
 
   const handleAddBank = async (e) => {
@@ -683,6 +1130,12 @@ const BankTransactionsPage = () => {
     }
   };
 
+  const saveCell = async (transId, propId, value) => {
+    await updateDoc(doc(db, `users/${user.uid}/bankTransactions`, transId), { [propId]: value });
+    setEditingCell(null);
+    setCellDraft(null);
+  };
+
   const handleDeleteBank = async (id) => {
     if (window.confirm('Bu bankayı silmek istediğinize emin misiniz?')) {
       const bank = banks.find(b => b.id === id);
@@ -691,47 +1144,230 @@ const BankTransactionsPage = () => {
     }
   };
 
-  const handleBulkDelete = async () => {
-    if (window.confirm(`${selectedIds.length} işlemi silmek istediğinize emin misiniz?`)) {
+  const executeBulkAction = async (actionFn) => {
+    let idsToProcess = selectedIds;
+    if (isGlobalSelected) {
+      let q;
+      const baseColl = collection(db, `users/${user.uid}/bankTransactions`);
+      if (config.sortConfig?.propId) {
+        q = query(baseColl, orderBy(config.sortConfig.propId, config.sortConfig.direction));
+      } else {
+        q = query(baseColl, orderBy('createdAt', 'desc'));
+      }
+      const snap = await getDocs(q);
+      idsToProcess = snap.docs.map(d => d.id);
+    }
+
+    const chunks = [];
+    for (let i = 0; i < idsToProcess.length; i += 500) {
+      chunks.push(idsToProcess.slice(i, i + 500));
+    }
+
+    for (const chunk of chunks) {
       const batch = writeBatch(db);
-      selectedIds.forEach(id => {
-        batch.update(doc(db, `users/${user.uid}/bankTransactions`, id), { deleted: true });
-      });
+      chunk.forEach(id => actionFn(batch, id));
       await batch.commit();
-      setSelectedIds([]);
+    }
+
+    setSelectedIds([]);
+    setIsGlobalSelected(false);
+  };
+
+  const handleBulkSave = async () => {
+    if (Object.keys(stagedChanges).length === 0) return;
+    setIsBulkProcessing(true);
+    setBulkProgress(0);
+
+    const idsToProcess = selectedIds;
+    const total = idsToProcess.length;
+    const batch = writeBatch(db);
+    const affectedData = [];
+    
+    // Process in chunks of 500 for Firestore limits
+    for (let i = 0; i < total; i++) {
+      const id = idsToProcess[i];
+      const t = transactions.find(item => item.id === id);
+      if (t) {
+        const changes = {};
+        const entry = { id, prev: {}, current: {} };
+        
+        Object.keys(stagedChanges).forEach(key => {
+          entry.prev[key] = t[key] || null;
+          entry.current[key] = stagedChanges[key];
+          changes[key] = stagedChanges[key];
+        });
+
+        affectedData.push(entry);
+        batch.update(doc(db, `users/${user.uid}/bankTransactions`, id), changes);
+      }
+      
+      // Update progress visually (simplified)
+      if (i % 10 === 0 || i === total - 1) {
+        setBulkProgress(Math.round(((i + 1) / total) * 100));
+      }
+    }
+
+    try {
+      await batch.commit();
+      
+      // Save to history
+      await addDoc(collection(db, `users/${user.uid}/bulkHistory`), {
+        timestamp: serverTimestamp(),
+        type: 'BULK_UPDATE',
+        count: total,
+        fields: Object.keys(stagedChanges),
+        affectedData
+      });
+
+      setStagedChanges({});
+      // REMOVED: setSelectedIds([]); // Don't clear selection as requested
+      toast.success('Değişiklikler kaydedildi.');
+    } catch (error) {
+      console.error(error);
+      toast.error('Kaydetme hatası.');
+    } finally {
+      setIsBulkProcessing(false);
+      setBulkProgress(0);
     }
   };
 
-  const handleBulkUpdateDate = async (newDate) => {
-    if (!newDate) return;
-    const batch = writeBatch(db);
-    selectedIds.forEach(id => {
-      batch.update(doc(db, `users/${user.uid}/bankTransactions`, id), { date: newDate });
-    });
-    await batch.commit();
+  const handleDeleteBulkHistory = async (id) => {
+    if (!window.confirm('Bu işlem geçmişini silmek istediğinize emin misiniz?')) return;
+    try {
+      await deleteDoc(doc(db, `users/${user.uid}/bulkHistory`, id));
+      toast.success('İşlem geçmişi silindi.');
+    } catch (error) {
+      console.error(error);
+      toast.error('Silme hatası.');
+    }
   };
 
-  const handleBulkUpdateBank = async (bankId) => {
+  const handleClearBulkHistory = async () => {
+    if (bulkHistory.length === 0) return;
+    if (!window.confirm('Tüm toplu işlem geçmişini temizlemek istediğinize emin misiniz?')) return;
+    try {
+      const batch = writeBatch(db);
+      bulkHistory.forEach(item => {
+        batch.delete(doc(db, `users/${user.uid}/bulkHistory`, item.id));
+      });
+      await batch.commit();
+      toast.success('Tüm geçmiş temizlendi.');
+    } catch (error) {
+      console.error(error);
+      toast.error('Temizleme hatası.');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!window.confirm(`${selectedIds.length} işlemi silmek istediğinize emin misiniz?`)) return;
+    setIsBulkProcessing(true);
+    setBulkProgress(0);
+
     const batch = writeBatch(db);
-    selectedIds.forEach(id => {
-      batch.update(doc(db, `users/${user.uid}/bankTransactions`, id), { bankId });
+    const affectedData = [];
+    const total = selectedIds.length;
+
+    selectedIds.forEach((id, i) => {
+      const t = transactions.find(item => item.id === id);
+      if (t) { 
+        affectedData.push({ id, ...t }); 
+        batch.update(doc(db, `users/${user.uid}/bankTransactions`, id), { deleted: true }); 
+      }
+      if (i % 10 === 0) setBulkProgress(Math.round(((i + 1) / total) * 100));
     });
-    await batch.commit();
+
+    try {
+      await batch.commit();
+      await addDoc(collection(db, `users/${user.uid}/bulkHistory`), { timestamp: serverTimestamp(), type: 'DELETE', count: total, affectedData });
+      setSelectedIds([]);
+      toast.success('İşlemler silindi.');
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsBulkProcessing(false);
+      setBulkProgress(0);
+    }
+  };
+
+  const handleUndoBulkAction = async (historyItem) => {
+    if (!window.confirm('Bu toplu işlemi geri almak istediğinize emin misiniz?')) return;
+    setIsBulkProcessing(true);
+    setBulkProgress(0);
+    const batch = writeBatch(db);
+    const total = historyItem.affectedData.length;
+    
+    try {
+      if (historyItem.type === 'DELETE') {
+        historyItem.affectedData.forEach((item, i) => {
+          batch.update(doc(db, `users/${user.uid}/bankTransactions`, item.id), { deleted: false });
+          if (i % 10 === 0) setBulkProgress(Math.round(((i + 1) / total) * 100));
+        });
+      } else {
+        historyItem.affectedData.forEach((item, i) => {
+          // item.prev is an object { date: '...', bankId: '...' }
+          batch.update(doc(db, `users/${user.uid}/bankTransactions`, item.id), item.prev);
+          if (i % 10 === 0) setBulkProgress(Math.round(((i + 1) / total) * 100));
+        });
+      }
+
+      await batch.commit();
+      await deleteDoc(doc(db, `users/${user.uid}/bulkHistory`, historyItem.id));
+      toast.success('İşlem başarıyla geri alındı.');
+    } catch (error) {
+      console.error(error);
+      toast.error('Geri alma işlemi başarısız oldu.');
+    } finally {
+      setIsBulkProcessing(false);
+      setBulkProgress(0);
+    }
   };
 
   const handleTransactionDragEnd = async (event) => {
+    setActiveDragId(null);
     const { active, over } = event;
     if (active && over && active.id !== over.id) {
-      const oldIndex = transactions.findIndex(t => t.id === active.id);
-      const newIndex = transactions.findIndex(t => t.id === over.id);
-      const updatedTransactions = arrayMove(transactions, oldIndex, newIndex);
-      
-      setTransactions(updatedTransactions);
+      const isMultiDrag = selectedIds.length > 1 && selectedIds.includes(active.id);
+      let newVisualOrder;
 
+      if (!isMultiDrag) {
+        const oldIndex = sortedTransactions.findIndex(t => t.id === active.id);
+        const newIndex = sortedTransactions.findIndex(t => t.id === over.id);
+        newVisualOrder = arrayMove(sortedTransactions, oldIndex, newIndex);
+      } else {
+        if (selectedIds.includes(over.id)) return; // Do nothing if dropped within selection
+        
+        const sortedSelectedItems = sortedTransactions.filter(t => selectedIds.includes(t.id));
+        const remainingTransactions = sortedTransactions.filter(t => !selectedIds.includes(t.id));
+        
+        let dropIndex = remainingTransactions.findIndex(t => t.id === over.id);
+        if (dropIndex === -1) return;
+        
+        const activeOriginalIndex = sortedTransactions.findIndex(t => t.id === active.id);
+        const overOriginalIndex = sortedTransactions.findIndex(t => t.id === over.id);
+        
+        if (activeOriginalIndex < overOriginalIndex) {
+          dropIndex += 1;
+        }
+
+        newVisualOrder = [
+          ...remainingTransactions.slice(0, dropIndex),
+          ...sortedSelectedItems,
+          ...remainingTransactions.slice(dropIndex)
+        ];
+      }
+      
+      const newTransactions = [...transactions];
       const batch = writeBatch(db);
-      updatedTransactions.forEach((t, index) => {
+      
+      newVisualOrder.forEach((t, index) => {
+        const tIndex = newTransactions.findIndex(tx => tx.id === t.id);
+        if (tIndex !== -1) {
+          newTransactions[tIndex] = { ...newTransactions[tIndex], order: index };
+        }
         batch.update(doc(db, `users/${user.uid}/bankTransactions`, t.id), { order: index });
       });
+
+      setTransactions(newTransactions);
       await batch.commit();
     }
   };
@@ -779,73 +1415,73 @@ const BankTransactionsPage = () => {
     await batch.commit();
   };
 
-  const normalizeTags = (tags) => {
-    if (!tags) return [];
-    return tags.map(tag => typeof tag === 'string' ? { name: tag, color: 'Gray' } : tag);
+  // ── Tag helpers ────────────────────────────────────────────────────────────
+  // Resolve a stored value (may be an ID or a legacy name string) to a tag object
+  const resolveTag = (tagList, idOrName) => {
+    if (!idOrName) return null;
+    // Try by ID first
+    const byId = tagList.find(t => t.id === idOrName);
+    if (byId) return byId;
+    // Fallback: legacy name-based match
+    return tagList.find(t => t.name?.toLowerCase() === idOrName?.toLowerCase()) || null;
   };
 
-  const updateTag = async (type, name, color, mode = 'add') => {
-    const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
-    let updatedList = normalizeTags(config[type] || []);
-    if (mode === 'add') {
-      const existing = updatedList.find(i => i.name === name);
-      if (existing) existing.color = color; else updatedList.push({ name, color });
-    } else {
-      updatedList = updatedList.filter(item => item.name !== name);
-    }
-    await setDoc(configRef, { ...config, [type]: updatedList }, { merge: true });
+  const getTagStyleById = (tagList, idOrName) => {
+    const tag = resolveTag(tagList, idOrName);
+    const color = COLORS.find(c => c.name === tag?.color) || COLORS[0];
+    return { backgroundColor: color.bg, color: color.text };
   };
 
-  const handleReorderTags = async (type, oldIndex, newIndex) => {
-    const updatedList = arrayMove(normalizeTags(config[type] || []), oldIndex, newIndex);
-    const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
-    await setDoc(configRef, { ...config, [type]: updatedList }, { merge: true });
+  // ── Tag CRUD (collection-based) ────────────────────────────────────────────
+  const handleAddTag = async (collectionName, tagList, name, color = 'Gray') => {
+    const existing = tagList.find(t => t.name.toLowerCase() === name.toLowerCase());
+    if (existing) return existing.id;
+    const newDoc = await addDoc(collection(db, `users/${user.uid}/${collectionName}`), {
+      name, color, order: tagList.length, createdAt: new Date()
+    });
+    return newDoc.id;
   };
 
-  const handleUpdateTag = async (type, oldName, newName, newColor) => {
-    const list = normalizeTags(config[type] || []);
-    const updatedList = list.map(t => t.name === oldName ? { ...t, name: newName, color: newColor } : t);
-    const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
-    await setDoc(configRef, { ...config, [type]: updatedList }, { merge: true });
+  const handleReorderTags = async (collectionName, tagList, oldIndex, newIndex) => {
+    const reordered = arrayMove(tagList, oldIndex, newIndex);
+    const batch = writeBatch(db);
+    reordered.forEach((tag, i) => {
+      batch.update(doc(db, `users/${user.uid}/${collectionName}`, tag.id), { order: i });
+    });
+    await batch.commit();
   };
 
-  const handleDeleteTag = async (type, tagName) => {
-    // 1. Check usages in transactions
+  const handleUpdateTag = async (collectionName, tagId, newName, newColor) => {
+    await updateDoc(doc(db, `users/${user.uid}/${collectionName}`, tagId), { name: newName, color: newColor });
+  };
+
+  const handleDeleteTag = async (collectionName, tagList, tagId) => {
+    // Determine which transaction field to check
+    const field = collectionName === 'quickActions' ? 'quickActions' : 'type';
     const usages = transactions.filter(t => {
-      const targetName = tagName.trim().toLowerCase();
-      if (type === 'quickActions') {
-        return Array.isArray(t.quickActions) && t.quickActions.some(a => a.trim().toLowerCase() === targetName);
-      } else if (type === 'types') {
-        return t.type && t.type.trim().toLowerCase() === targetName;
-      }
-      return false;
+      if (field === 'quickActions') return Array.isArray(t.quickActions) && t.quickActions.includes(tagId);
+      return t.type === tagId;
     });
 
-    const confirmMsg = usages.length > 0 
+    const confirmMsg = usages.length > 0
       ? `Bu etiket ${usages.length} işlemde kullanılıyor. Silerseniz bu işlemlerden de kaldırılacaktır. Devam etmek istiyor musunuz?`
       : 'Bu etiketi silmek istediğinize emin misiniz?';
 
-    if (window.confirm(confirmMsg)) {
-      // 2. Remove tag from config
-      const list = normalizeTags(config[type] || []);
-      const updatedList = list.filter(t => t.name !== tagName);
-      const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
-      await setDoc(configRef, { ...config, [type]: updatedList }, { merge: true });
+    if (!window.confirm(confirmMsg)) return;
 
-      // 3. Clean up transactions if needed
-      if (usages.length > 0) {
-        const batch = writeBatch(db);
-        usages.forEach(t => {
-          const transRef = doc(db, `users/${user.uid}/bankTransactions`, t.id);
-          if (type === 'quickActions') {
-            const newActions = (t.quickActions || []).filter(a => a !== tagName);
-            batch.update(transRef, { quickActions: newActions });
-          } else if (type === 'types') {
-            batch.update(transRef, { type: '' });
-          }
-        });
-        await batch.commit();
-      }
+    await deleteDoc(doc(db, `users/${user.uid}/${collectionName}`, tagId));
+
+    if (usages.length > 0) {
+      const batch = writeBatch(db);
+      usages.forEach(t => {
+        const transRef = doc(db, `users/${user.uid}/bankTransactions`, t.id);
+        if (field === 'quickActions') {
+          batch.update(transRef, { quickActions: (t.quickActions || []).filter(a => a !== tagId) });
+        } else {
+          batch.update(transRef, { type: '' });
+        }
+      });
+      await batch.commit();
     }
   };
 
@@ -853,6 +1489,11 @@ const BankTransactionsPage = () => {
     const updatedVisibility = { ...(config.propertyVisibility || {}), [propId]: isVisible };
     const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
     await setDoc(configRef, { ...config, propertyVisibility: updatedVisibility }, { merge: true });
+  };
+
+  const handleToggleBankVisibility = async (bank, isVisible) => {
+    const collectionName = bank.source || 'banks';
+    await updateDoc(doc(db, `users/${user.uid}/${collectionName}`, bank.id), { visible: isVisible });
   };
 
   const handleUpdatePropertyLabel = async (propId, newLabel) => {
@@ -875,7 +1516,8 @@ const BankTransactionsPage = () => {
 
   const handleSort = async (propId, direction) => {
     const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
-    await setDoc(configRef, { ...config, sortConfig: { propId, direction } }, { merge: true });
+    const sortConfig = propId ? { propId, direction } : null;
+    await setDoc(configRef, { ...config, sortConfig }, { merge: true });
   };
 
   const handleUpdatePropertyOrder = async (oldIndex, newIndex) => {
@@ -891,88 +1533,305 @@ const BankTransactionsPage = () => {
     await setDoc(configRef, { ...config, propertyVisibility: updatedVisibility }, { merge: true });
   };
 
-  const getBankInfo = (id) => banks.find(b => b.id === id) || {};
-  const getTagStyle = (type, name) => {
-    const tags = normalizeTags(config[type] || []);
-    const tag = tags.find(i => i.name === name);
-    const color = COLORS.find(c => c.name === tag?.color) || COLORS[0];
-    return { backgroundColor: color.bg, color: color.text };
+  const handleUpdateDateFormat = async (format) => {
+    const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
+    await setDoc(configRef, { ...config, dateFormat: format }, { merge: true });
   };
+
+
 
   const renderCell = (propId, t) => {
     const bank = getBankInfo(t.bankId);
-    const displayDate = t.date ? t.date.split('-').reverse().join('/') : '';
-    const isWrapped = config.propertyWrap?.[propId] !== false; // Default to true
-    
-    const cellStyle = isWrapped ? {} : { 
-      whiteSpace: 'nowrap', 
-      overflow: 'hidden', 
-      textOverflow: 'ellipsis', 
-      maxWidth: propId === 'title' ? '300px' : '200px' 
+    const displayDate = displayDateFormatted(t.date, config.dateFormat);
+    const isWrapped = config.propertyWrap?.[propId] !== false;
+    const isEditing = editingCell?.transId === t.id && editingCell?.propId === propId;
+
+    const cellStyle = isWrapped ? {} : {
+      whiteSpace: 'nowrap', overflow: isEditing ? 'visible' : 'hidden', textOverflow: 'ellipsis',
+      maxWidth: propId === 'title' ? '300px' : '200px'
     };
 
+    const startEdit = (e) => {
+      e.stopPropagation();
+      setEditingCell({ transId: t.id, propId });
+      setCellDraft(t[propId] ?? '');
+    };
+
+    // key is intentionally NOT in this object — must be passed directly on <td>
+    const tdClass = `cell-editable${isEditing ? ' cell-editing' : ''}`;
+    const tdClick = isEditing ? undefined : startEdit;
+
+    // Helper: wraps display + absolute-overlay input to prevent layout shift
+    const OverlayCell = ({ display, input }) => (
+      <div style={{ position: 'relative', minHeight: '1.2em' }}>
+        <span style={{ visibility: isEditing ? 'hidden' : 'visible' }}>{display}</span>
+        {isEditing && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center' }}>
+            {input}
+          </div>
+        )}
+      </div>
+    );
+
     switch (propId) {
-      case 'date': return <td key={propId} className="text-muted small" style={cellStyle}>{displayDate}</td>;
-      case 'title': return (
-        <td key={propId} className="fw-bold" style={cellStyle}>
-          <div className="d-flex align-items-center gap-2 overflow-hidden">
-            <span className={!isWrapped ? 'text-truncate' : ''}>{t.title}</span>
-          </div>
-        </td>
-      );
-      case 'quickActions': return (
-        <td key={propId} style={cellStyle}>
-          <div className={`d-flex gap-1 ${isWrapped ? 'flex-wrap' : 'overflow-hidden'}`}>
-            {t.quickActions?.map((a, i) => (
-              <span key={i} className="notion-tag m-0 text-nowrap" style={getTagStyle('quickActions', a)}>{a}</span>
-            ))}
-          </div>
-        </td>
-      );
-      case 'type': return <td key={propId} style={cellStyle}><span className="notion-tag m-0" style={getTagStyle('types', t.type)}>{t.type}</span></td>;
-      case 'amount': return (
-        <td key={propId} className="fw-medium" style={cellStyle}>
-          {formatCurrency(t.amount)}
-        </td>
-      );
-      case 'amountKK': return (
-        <td key={propId} className="fw-medium text-muted" style={cellStyle}>
-          {t.amountKK ? formatCurrency(t.amountKK) : '-'}
-        </td>
-      );
-      case 'receiptUrl': return (
-        <td key={propId} style={cellStyle}>
-          {t.receiptUrl && (
-            <a href={t.receiptUrl} target="_blank" rel="noreferrer" className="text-muted text-decoration-none small d-inline-block text-truncate" style={{ maxWidth: '120px' }}>
-              {t.receiptUrl.replace('https://', '').substring(0, 20)}...
-            </a>
-          )}
-        </td>
-      );
-      case 'bankId': return (
-        <td key={propId} style={cellStyle}>
-          <div className="d-flex align-items-center gap-2 small">
-            {bank.logo ? (
-              <img src={bank.logo} alt="" width="18" height="18" className="object-fit-contain rounded-circle" />
+      case 'date':
+        return (
+          <td key={propId} style={{ ...cellStyle, position: 'relative' }} className={tdClass} onClick={tdClick}>
+            {isEditing ? (
+              <DateCellInput 
+                value={t.date} 
+                onSave={(v) => { saveCell(t.id, 'date', v); setEditingCell(null); }} 
+                onCancel={() => setEditingCell(null)} 
+              />
             ) : (
-              <Landmark size={14} className="text-muted" />
+              <span className="text-muted small">{displayDate || <span className="opacity-25">Empty</span>}</span>
             )}
-            <span className={!isWrapped ? 'text-truncate' : ''}>{bank.name}</span>
-          </div>
-        </td>
-      );
+          </td>
+        );
+
+      case 'title':
+        return (
+          <td key={propId} style={cellStyle} className={tdClass} onClick={tdClick}>
+            <OverlayCell
+              display={<span className={`fw-bold${!isWrapped ? ' text-truncate' : ''}`}>{t.title || <span className="opacity-25">Empty</span>}</span>}
+              input={
+                <Form.Control
+                  type="text"
+                  value={cellDraft || ''}
+                  autoFocus
+                  className="border-0 bg-transparent p-0 fw-bold cell-text-input"
+                  onChange={e => setCellDraft(e.target.value)}
+                  onBlur={() => saveCell(t.id, 'title', cellDraft)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveCell(t.id, 'title', cellDraft); if (e.key === 'Escape') setEditingCell(null); }}
+                />
+              }
+            />
+          </td>
+        );
+
+      case 'quickActions': {
+        const currentIds = Array.isArray(t.quickActions) ? t.quickActions : [];
+        const draftIds = isEditing ? (Array.isArray(cellDraft) ? cellDraft : currentIds) : currentIds;
+        return (
+          <td key={propId} style={{ ...cellStyle, position: 'relative', zIndex: isEditing ? 10 : 1 }} className={tdClass} onClick={tdClick}>
+            {isEditing ? (
+              <Dropdown show autoClose="outside"
+                onToggle={(open) => { if (!open) saveCell(t.id, 'quickActions', draftIds); }}
+              >
+                <Dropdown.Toggle as="div" className="p-0 border-0 bg-transparent dropdown-no-caret" style={{ cursor: 'default' }}>
+                  <div className={`d-flex gap-1 ${isWrapped ? 'flex-wrap' : 'overflow-hidden'}`}>
+                    {draftIds.map((idOrName, i) => {
+                      const tag = resolveTag(quickActionTags, idOrName);
+                      return tag ? (
+                        <span key={i} className="notion-tag m-0 text-nowrap d-inline-flex align-items-center gap-1" style={getTagStyleById(quickActionTags, idOrName)}>
+                          {tag.name}
+                          <X size={10} style={{ cursor: 'pointer' }} onClick={e => { e.stopPropagation(); setCellDraft(draftIds.filter(x => x !== idOrName)); }} />
+                        </span>
+                      ) : null;
+                    })}
+                    {draftIds.length === 0 && <span className="text-muted opacity-25 fs-14">Empty</span>}
+                  </div>
+                </Dropdown.Toggle>
+                <Dropdown.Menu show popperConfig={{ strategy: 'fixed' }} className="glass-card border-0 shadow-lg p-2 overflow-auto" style={{ minWidth: '220px', maxHeight: '300px', overflowX: 'hidden' }}>
+                  {quickActionTags.map(tag => (
+                    <div key={tag.id}
+                      className="d-flex align-items-center gap-2 p-1 px-2 rounded-1 cursor-pointer notion-option-item fs-14"
+                      onClick={e => { e.stopPropagation(); setCellDraft(draftIds.includes(tag.id) ? draftIds.filter(x => x !== tag.id) : [tag.id, ...draftIds]); }}
+                    >
+                      <span className="notion-tag m-0" style={getTagStyleById(quickActionTags, tag.id)}>{tag.name}</span>
+                      {draftIds.includes(tag.id) && <Check size={12} className="text-primary ms-auto" />}
+                    </div>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown>
+            ) : (
+              <div className={`d-flex gap-1 ${isWrapped ? 'flex-wrap' : 'overflow-hidden'}`}>
+                {currentIds.map((idOrName, i) => {
+                  const tag = resolveTag(quickActionTags, idOrName);
+                  return tag ? (
+                    <span key={i} className="notion-tag m-0 text-nowrap" style={getTagStyleById(quickActionTags, idOrName)}>{tag.name}</span>
+                  ) : null;
+                })}
+                {currentIds.length === 0 && <span className="text-muted opacity-25 fs-14">Empty</span>}
+              </div>
+            )}
+          </td>
+        );
+      }
+
+      case 'type': {
+        const typeTag = resolveTag(typeTags, t.type);
+        const draftTypeId = isEditing ? cellDraft : t.type;
+        return (
+          <td key={propId} style={{ ...cellStyle, position: 'relative', zIndex: isEditing ? 10 : 1 }} className={tdClass} onClick={tdClick}>
+            {isEditing ? (
+              <Dropdown show
+                onToggle={(open) => { if (!open) saveCell(t.id, 'type', draftTypeId); }}
+              >
+                <Dropdown.Toggle as="div" className="p-0 border-0 bg-transparent dropdown-no-caret" style={{ cursor: 'default' }}>
+                  {draftTypeId ? (() => {
+                    const tag = resolveTag(typeTags, draftTypeId);
+                    return tag ? <span className="notion-tag m-0 d-inline-flex align-items-center gap-1" style={getTagStyleById(typeTags, draftTypeId)}>
+                      {tag.name} <X size={10} style={{ cursor: 'pointer' }} onClick={e => { e.stopPropagation(); setCellDraft(''); }} />
+                    </span> : null;
+                  })() : <span className="text-muted opacity-25 fs-14">Empty</span>}
+                </Dropdown.Toggle>
+                <Dropdown.Menu show popperConfig={{ strategy: 'fixed' }} className="glass-card border-0 shadow-lg p-2 overflow-auto" style={{ minWidth: '200px', maxHeight: '300px', overflowX: 'hidden' }}>
+                  {typeTags.map(tag => (
+                    <div key={tag.id}
+                      className="d-flex align-items-center gap-2 p-1 px-2 rounded-1 cursor-pointer notion-option-item fs-14"
+                      onClick={e => { e.stopPropagation(); setCellDraft(draftTypeId === tag.id ? '' : tag.id); }}
+                    >
+                      <span className="notion-tag m-0" style={getTagStyleById(typeTags, tag.id)}>{tag.name}</span>
+                      {draftTypeId === tag.id && <Check size={12} className="text-primary ms-auto" />}
+                    </div>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown>
+            ) : (
+              typeTag
+                ? <span className="notion-tag m-0" style={getTagStyleById(typeTags, t.type)}>{typeTag.name}</span>
+                : <span className="text-muted opacity-25 fs-14">Empty</span>
+            )}
+          </td>
+        );
+      }
+
+      case 'amount':
+        return (
+          <td key={propId} style={cellStyle} className={tdClass} onClick={tdClick}>
+            <OverlayCell
+              display={<span className="fw-medium">{t.amount ? formatCurrency(t.amount) : <span className="text-muted opacity-25">Empty</span>}</span>}
+              input={
+                <Form.Control
+                  type="text"
+                  value={cellDraft ?? ''}
+                  autoFocus
+                  className="border-0 bg-transparent p-0 fw-medium cell-text-input"
+                  onChange={e => setCellDraft(e.target.value)}
+                  onBlur={() => saveCell(t.id, 'amount', cellDraft)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveCell(t.id, 'amount', cellDraft); if (e.key === 'Escape') setEditingCell(null); }}
+                />
+              }
+            />
+          </td>
+        );
+
+
+      case 'receiptUrl':
+        return (
+          <td key={propId} style={cellStyle} className={tdClass} onClick={tdClick}>
+            <OverlayCell
+              display={
+                <div className="d-flex align-items-center justify-content-between w-100 cell-hover-actions">
+                  {t.receiptUrl ? (
+                    <a href={t.receiptUrl} target="_blank" rel="noreferrer" className="text-muted text-decoration-none small text-truncate d-inline-block flex-grow-1 pe-2" style={{ maxWidth: '100px' }}
+                        onClick={e => e.stopPropagation()}>
+                        {t.receiptUrl.replace(/^https?:\/\//, '').substring(0, 15)}...
+                    </a>
+                  ) : (
+                    <span className="text-muted opacity-25 fs-14 flex-grow-1 pe-2">Empty</span>
+                  )}
+                  <div className="d-flex align-items-center gap-1 group-hover-visible bg-white-fade ps-1">
+                    <div 
+                      className="cursor-pointer text-muted p-1 hover-bg-light rounded d-flex align-items-center" 
+                      title="Panodan Yapıştır" 
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          const text = await navigator.clipboard.readText();
+                          if (text) saveCell(t.id, 'receiptUrl', text);
+                        } catch (err) { console.error('Failed to read clipboard', err); }
+                      }}
+                    >
+                      <Clipboard size={14} />
+                    </div>
+                    {t.receiptUrl && (
+                      <div 
+                        className="cursor-pointer text-muted p-1 hover-bg-light rounded d-flex align-items-center" 
+                        title="Kopyala" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(t.receiptUrl);
+                        }}
+                      >
+                        <Copy size={14} />
+                      </div>
+                    )}
+                    {t.receiptUrl && (
+                      <div 
+                        className="cursor-pointer text-danger p-1 hover-bg-light rounded d-flex align-items-center" 
+                        title="Temizle" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          saveCell(t.id, 'receiptUrl', '');
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              }
+              input={
+                <Form.Control
+                  type="url"
+                  value={cellDraft ?? ''}
+                  autoFocus
+                  placeholder="https://..."
+                  className="border-0 bg-transparent p-0 cell-text-input"
+                  onChange={e => setCellDraft(e.target.value)}
+                  onBlur={() => saveCell(t.id, 'receiptUrl', cellDraft)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveCell(t.id, 'receiptUrl', cellDraft); if (e.key === 'Escape') setEditingCell(null); }}
+                />
+              }
+            />
+          </td>
+        );
+
+      case 'bankId': {
+        const draftBankId = isEditing ? cellDraft : t.bankId;
+        const draftBank = getBankInfo(draftBankId);
+        return (
+          <td key={propId} style={{ ...cellStyle, position: 'relative', zIndex: isEditing ? 10 : 1 }} className={tdClass} onClick={tdClick}>
+            {isEditing ? (
+              <Dropdown show align="end"
+                onToggle={(open) => { if (!open) saveCell(t.id, 'bankId', draftBankId); }}
+              >
+                <Dropdown.Toggle as="div" className="p-0 border-0 bg-transparent dropdown-no-caret" style={{ cursor: 'default' }}>
+                  <div className="d-flex align-items-center gap-2 small">
+                    {draftBank.logo ? <img src={draftBank.logo} alt="" width="16" height="16" className="object-fit-contain" /> : <Landmark size={14} className="text-muted" />}
+                    <span>{draftBank.name || <span className="text-muted opacity-50">Empty</span>}</span>
+                  </div>
+                </Dropdown.Toggle>
+                <Dropdown.Menu show popperConfig={{ strategy: 'fixed' }} className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '200px' }}>
+                  {banks.map(b => (
+                    <div key={b.id}
+                      className="d-flex align-items-center gap-2 p-1 px-2 rounded-1 cursor-pointer notion-option-item fs-14"
+                      onClick={e => { e.stopPropagation(); setCellDraft(b.id); }}
+                    >
+                      {b.logo ? <img src={b.logo} alt="" width="14" height="14" className="object-fit-contain" /> : <Landmark size={12} className="text-muted" />}
+                      <span>{b.name}</span>
+                      {draftBankId === b.id && <Check size={12} className="text-primary ms-auto" />}
+                    </div>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown>
+            ) : (
+              <div className="d-flex align-items-center gap-2 small">
+                {bank.logo ? <img src={bank.logo} alt="" width="18" height="18" className="object-fit-contain rounded-circle" /> : <Landmark size={14} className="text-muted" />}
+                <span className={!isWrapped ? 'text-truncate' : ''}>{bank.name || <span className="text-muted opacity-25">Empty</span>}</span>
+              </div>
+            )}
+          </td>
+        );
+      }
+
       default: return <td key={propId} style={cellStyle}></td>;
     }
   };
 
-  const formatCurrency = (value) => {
-    let num = value;
-    if (typeof num === 'string') {
-      num = parseFloat(num.replace(/\./g, '').replace(',', '.'));
-    }
-    if (isNaN(num)) return '0,00';
-    return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
-  };
+
 
   return (
     <div className="pb-5">
@@ -1015,12 +1874,12 @@ const BankTransactionsPage = () => {
                   <ArrowUpDown size={18} />
                 </Dropdown.Toggle>
                 <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
-                  <div className="px-3 py-1 mb-1 small fw-bold text-muted opacity-50" style={{ fontSize: '10px' }}>SIRALAMA SEÇENEKLERİ</div>
+                  <div className="px-3 py-1 mb-1 small fw-bold text-muted opacity-50 fs-10">SIRALAMA SEÇENEKLERİ</div>
                   <Dropdown.Item onClick={() => handleAutoSort('name')} className="rounded-2 d-flex align-items-center gap-2">
-                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '25px', height: '25px', minWidth: '25px', minHeight: '25px' }}><Type size={15} /></div> İsme Göre (A-Z)
+                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><Type size={15} /></div> İsme Göre (A-Z)
                   </Dropdown.Item>
                   <Dropdown.Item onClick={() => handleAutoSort('date')} className="rounded-2 d-flex align-items-center gap-2">
-                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '25px', height: '25px', minWidth: '25px', minHeight: '25px' }}><Calendar size={15} /></div> Eklenme Tarihi
+                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><Calendar size={15} /></div> Eklenme Tarihi
                   </Dropdown.Item>
                 </Dropdown.Menu>
               </Dropdown>
@@ -1030,15 +1889,67 @@ const BankTransactionsPage = () => {
                   <SlidersHorizontal size={20} />
                 </Dropdown.Toggle>
                 <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
-                  <div className="px-3 py-1 mb-1 small fw-bold text-muted opacity-50" style={{ fontSize: '10px' }}>VIEW OPTIONS</div>
+                  <div className="px-3 py-1 d-flex align-items-center justify-content-between">
+                    <span className="small fw-bold text-muted opacity-50 fs-10">BANKA GÖRÜNÜRLÜĞÜ</span>
+                    <div className="d-flex gap-2">
+                      <span className="x-small text-primary cursor-pointer fw-medium" onClick={async (e) => {
+                        e.stopPropagation();
+                        const batch = writeBatch(db);
+                        banks.forEach(b => {
+                          const collectionName = b.source || 'banks';
+                          batch.update(doc(db, `users/${user.uid}/${collectionName}`, b.id), { visible: true });
+                        });
+                        await batch.commit();
+                      }}>Tümü</span>
+                      <span className="x-small text-primary cursor-pointer fw-medium" onClick={async (e) => {
+                        e.stopPropagation();
+                        const batch = writeBatch(db);
+                        banks.forEach(b => {
+                          const collectionName = b.source || 'banks';
+                          batch.update(doc(db, `users/${user.uid}/${collectionName}`, b.id), { visible: false });
+                        });
+                        await batch.commit();
+                      }}>Gizle</span>
+                    </div>
+                  </div>
+                  <div className="overflow-auto mb-2 custom-scrollbar" style={{ maxHeight: '200px' }}>
+                    {banks.map(bank => (
+                      <div key={bank.id} 
+                        className="d-flex align-items-center justify-content-between px-3 py-1.5 hover-bg-light rounded-2 mx-1 transition-all"
+                        style={{ cursor: 'default' }}
+                      >
+                        <div className="d-flex align-items-center gap-2 overflow-hidden flex-grow-1">
+                          <div className="rounded-circle bg-light d-flex align-items-center justify-content-center p-1" style={{ width: '22px', height: '22px' }}>
+                            {bank.logo ? <img src={bank.logo} alt="" width="14" height="14" className="object-fit-contain" /> : <Landmark size={12} className="text-muted" />}
+                          </div>
+                          <span className="text-truncate" style={{ fontSize: '13px', fontWeight: 500 }}>{bank.name}</span>
+                        </div>
+                        <div 
+                          className="cursor-pointer d-flex align-items-center p-1 hover-bg-secondary rounded transition-colors" 
+                          onClick={(e) => { e.stopPropagation(); handleToggleBankVisibility(bank, !(bank.visible !== false)); }}
+                          title={bank.visible !== false ? 'Gizle' : 'Göster'}
+                        >
+                          {bank.visible !== false ? (
+                            <Eye size={14} className="text-primary" />
+                          ) : (
+                            <EyeOff size={14} className="text-muted opacity-50" />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="dropdown-divider mx-2 opacity-10"></div>
+
+                  <div className="px-3 py-1 mb-1 small fw-bold text-muted opacity-50 fs-10">VIEW OPTIONS</div>
                   <Dropdown.Item onClick={() => handleUpdateLayout('gallery_basic')} className={`rounded-2 d-flex align-items-center gap-2 ${viewLayout === 'gallery_basic' ? 'bg-light' : ''}`}>
-                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '25px', height: '25px', minWidth: '25px', minHeight: '25px' }}><LayoutGrid size={15} /></div> Galeri Basit
+                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><LayoutGrid size={15} /></div> Galeri Basit
                   </Dropdown.Item>
                   <Dropdown.Item onClick={() => handleUpdateLayout('table')} className={`rounded-2 d-flex align-items-center gap-2 ${viewLayout === 'table' ? 'bg-light' : ''}`}>
-                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '25px', height: '25px', minWidth: '25px', minHeight: '25px' }}><ListIcon size={15} /></div> Tablo
+                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><ListIcon size={15} /></div> Tablo
                   </Dropdown.Item>
                   <Dropdown.Item onClick={() => handleUpdateLayout('gallery_advanced')} className={`rounded-2 d-flex align-items-center gap-2 ${viewLayout === 'gallery_advanced' ? 'bg-light' : ''}`}>
-                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '25px', height: '25px', minWidth: '25px', minHeight: '25px' }}><LayoutGrid size={15} /></div> Galeri Gelişmiş
+                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><LayoutGrid size={15} /></div> Galeri Gelişmiş
                   </Dropdown.Item>
                 </Dropdown.Menu>
               </Dropdown>
@@ -1066,7 +1977,7 @@ const BankTransactionsPage = () => {
               strategy={viewLayout === 'table' ? verticalListSortingStrategy : rectSortingStrategy}
             >
               {viewLayout === 'table' ? (
-                <div className="glass-card border-0 overflow-hidden mb-5 shadow-sm">
+                <div className="bg-white border shadow-sm overflow-hidden mb-5" style={{ borderRadius: '12px' }}>
                   <Table responsive hover className="notion-table mb-0 border-top">
                     <thead>
                       <tr className="bg-light bg-opacity-10 text-muted smaller">
@@ -1077,7 +1988,7 @@ const BankTransactionsPage = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {banks.map(bank => (
+                      {banks.filter(bank => bank.visible !== false).map(bank => (
                         <SortableBankItem 
                           key={bank.id} 
                           bank={bank} 
@@ -1088,7 +1999,7 @@ const BankTransactionsPage = () => {
                         />
                       ))}
                       <tr className="align-middle text-muted opacity-50 border-top">
-                         <td className="ps-4 py-3" style={{ fontSize: '15px' }}>
+                         <td className="ps-4 py-3 fs-15">
                             {banks.length} banka
                          </td>
                          <td className="fw-bold" style={{ fontSize: '15px' }}>
@@ -1102,7 +2013,7 @@ const BankTransactionsPage = () => {
                 </div>
               ) : (
                 <Row className="g-3 mb-5 row-cols-lg-6 row-cols-md-3 row-cols-2">
-                  {banks.map(bank => (
+                  {banks.filter(bank => bank.visible !== false).map(bank => (
                     <SortableBankItem 
                       key={bank.id} 
                       bank={bank} 
@@ -1116,14 +2027,14 @@ const BankTransactionsPage = () => {
                   {/* New Bank Placeholder */}
                   <Col>
                     <div 
-                      className="h-100 glass-card border-0 d-flex flex-column justify-content-center p-2 text-muted opacity-50 border-dashed"
+                      className="h-100 bg-white border border-dashed d-flex flex-column justify-content-center p-2 text-muted opacity-50"
                       style={{ border: '1px dashed rgba(0,0,0,0.1)', cursor: 'pointer', minHeight: viewLayout === 'gallery_advanced' ? '180px' : '85px' }}
                       onClick={() => setShowBankModal(true)}
                     >
                       <div className="d-flex align-items-center gap-2 mb-1 justify-content-center">
                         <Plus size={14} /> <span style={{ fontSize: '16px' }}>Yeni Banka ekle</span>
                       </div>
-                      <div className="text-center" style={{ fontSize: '15px' }}>
+                      <div className="text-center fs-15">
                         {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(totalBalance)} TL
                       </div>
                     </div>
@@ -1142,42 +2053,12 @@ const BankTransactionsPage = () => {
         <h1 className="fw-bold m-0">Banka İşlemleri</h1>
         <div className="d-flex align-items-center gap-3">
           <div className="d-flex align-items-center gap-3 text-muted opacity-75">
-            <Dropdown align="end" className="d-inline">
-              <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret" style={{ cursor: 'pointer' }}>
-                <ListFilter size={18} />
-              </Dropdown.Toggle>
-              <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
-                <div className="px-3 py-1 mb-1 small fw-bold text-muted opacity-50" style={{ fontSize: '10px' }}>FİLTRELEME SEÇENEKLERİ</div>
-                <Dropdown.Item className="rounded-2">Banka Filtrele</Dropdown.Item>
-                <Dropdown.Item className="rounded-2">Tarih Filtrele</Dropdown.Item>
-                <Dropdown.Item className="rounded-2">Etiket Filtrele</Dropdown.Item>
-              </Dropdown.Menu>
-            </Dropdown>
-
-            <Dropdown align="end" className="d-inline">
-              <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret" style={{ cursor: 'pointer' }}>
-                <ArrowUpDown size={18} />
-              </Dropdown.Toggle>
-              <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
-                <div className="px-3 py-1 mb-1 small fw-bold text-muted opacity-50" style={{ fontSize: '10px' }}>SIRALAMA SEÇENEKLERİ</div>
-                <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2">
-                  Tarihe Göre (Yeni-Eski)
-                </Dropdown.Item>
-                <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2">
-                  Tarihe Göre (Eski-Yeni)
-                </Dropdown.Item>
-                <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2">
-                  Tutara Göre
-                </Dropdown.Item>
-              </Dropdown.Menu>
-            </Dropdown>
-            
             <Dropdown align="end" className="d-inline" autoClose="outside" onToggle={(isOpen) => !isOpen && setSettingsView('main')}>
               <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret" style={{ cursor: 'pointer' }}>
                 <SlidersHorizontal size={20} />
               </Dropdown.Toggle>
               <Dropdown.Menu className="glass-card border-0 shadow-lg p-0 overflow-hidden" style={{ width: '280px', zIndex: 10001 }}>
-                {settingsView === 'main' ? (
+                {settingsView === 'main' && (
                   <div className="p-2">
                     <Dropdown.Item onClick={() => setSettingsView('visibility')} className="rounded-2 d-flex align-items-center justify-content-between py-2">
                       <div className="d-flex align-items-center gap-2">
@@ -1213,22 +2094,25 @@ const BankTransactionsPage = () => {
                       </div>
                       <ChevronRight size={14} className="text-muted opacity-50" />
                     </Dropdown.Item>
-                    <Dropdown.Item className="rounded-2 d-flex align-items-center justify-content-between py-2">
+                    <Dropdown.Item onClick={() => setSettingsView('conditional_color')} className="rounded-2 d-flex align-items-center justify-content-between py-2">
                       <div className="d-flex align-items-center gap-2">
                         <PaintRoller size={18} className="text-muted" />
                         <span>Conditional color</span>
                       </div>
-                      <ChevronRight size={14} className="text-muted opacity-50" />
+                      <div className="d-flex align-items-center gap-2 text-muted opacity-50">
+                        <span className="text-capitalize">{config.rowHighlight || 'None'}</span>
+                        <ChevronRight size={14} />
+                      </div>
                     </Dropdown.Item>
-                    
                     <div className="dropdown-divider mx-2 opacity-10"></div>
-                    
                     <div className="px-3 py-1 mt-2 mb-1 small fw-bold text-muted opacity-50" style={{ fontSize: '10px' }}>İŞLEM SEÇENEKLERİ</div>
                     <Dropdown.Item onClick={() => setShowTagModal(true)} className="rounded-2 d-flex align-items-center gap-2">
-                      <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '25px', height: '25px', minWidth: '25px', minHeight: '25px' }}><Settings size={15} /></div> Etiketleri Yönet
+                      <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><Settings size={15} /></div> Etiketleri Yönet
                     </Dropdown.Item>
                   </div>
-                ) : (
+                )}
+
+                {settingsView === 'visibility' && (
                   <div className="d-flex flex-column" style={{ maxHeight: '450px' }}>
                     <div className="p-2 d-flex align-items-center gap-2 border-bottom">
                       <div className="cursor-pointer p-1 hover-bg-light rounded" onClick={() => setSettingsView('main')}>
@@ -1262,18 +2146,56 @@ const BankTransactionsPage = () => {
                                 <span className="x-small text-primary cursor-pointer fw-medium" onClick={() => toggleAllProperties(false)}>Hide all</span>
                               </div>
                             </div>
-                            {(config.propertyOrder || PROPERTIES.map(p => p.id)).map(id => (
-                              <SortablePropertyItem 
-                                key={id} 
-                                prop={PROPERTIES.find(p => p.id === id)} 
-                                icon={getPropertyIcon(id, config)}
-                                isVisible={config.propertyVisibility?.[id] !== false}
-                                toggleVisibility={(id) => handleUpdatePropertyVisibility(id, !(config.propertyVisibility?.[id] !== false))}
-                              />
-                            ))}
+                            {(config.propertyOrder || PROPERTIES.map(p => p.id))
+                              .map(id => ({ id, p: PROPERTIES.find(p => p.id === id) }))
+                              .filter(item => item.p)
+                              .map(({ id, p }) => (
+                                <SortablePropertyItem 
+                                  key={id} 
+                                  prop={p} 
+                                  icon={getPropertyIcon(id, config)}
+                                  isVisible={config.propertyVisibility?.[id] !== false}
+                                  toggleVisibility={(id) => handleUpdatePropertyVisibility(id, !(config.propertyVisibility?.[id] !== false))}
+                                />
+                              ))}
                           </SortableContext>
                         </DndContext>
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {settingsView === 'conditional_color' && (
+                  <div className="d-flex flex-column" style={{ maxHeight: '450px' }}>
+                    <div className="p-2 d-flex align-items-center gap-2 border-bottom">
+                      <div className="cursor-pointer p-1 hover-bg-light rounded" onClick={() => setSettingsView('main')}>
+                        <X size={16} />
+                      </div>
+                      <span className="fw-bold flex-grow-1" style={{ fontSize: '14px' }}>Conditional color</span>
+                    </div>
+                    <div className="p-2">
+                      <div className="px-2 py-1 mb-1 x-small fw-bold text-muted opacity-50">ROW HIGHLIGHTING</div>
+                      <Dropdown.Item 
+                        onClick={() => handleUpdateConfig({ rowHighlight: config.rowHighlight === 'odd' ? 'none' : 'odd' })}
+                        className={`rounded-2 d-flex align-items-center justify-content-between py-2 ${config.rowHighlight === 'odd' ? 'bg-light text-primary' : ''}`}
+                      >
+                        <span>Highlight Odd Rows</span>
+                        {config.rowHighlight === 'odd' && <Check size={14} />}
+                      </Dropdown.Item>
+                      <Dropdown.Item 
+                        onClick={() => handleUpdateConfig({ rowHighlight: config.rowHighlight === 'even' ? 'none' : 'even' })}
+                        className={`rounded-2 d-flex align-items-center justify-content-between py-2 ${config.rowHighlight === 'even' ? 'bg-light text-primary' : ''}`}
+                      >
+                        <span>Highlight Even Rows</span>
+                        {config.rowHighlight === 'even' && <Check size={14} />}
+                      </Dropdown.Item>
+                      <div className="dropdown-divider mx-2 opacity-10"></div>
+                      <Dropdown.Item 
+                        onClick={() => handleUpdateConfig({ rowHighlight: 'none' })}
+                        className="rounded-2 py-2 text-danger"
+                      >
+                        Clear highlight
+                      </Dropdown.Item>
                     </div>
                   </div>
                 )}
@@ -1281,46 +2203,94 @@ const BankTransactionsPage = () => {
             </Dropdown>
           </div>
           <Button 
-            variant="primary" 
+            variant="light" 
             size="sm" 
-            onClick={() => setShowTransactionModal(true)}
-            className="d-flex align-items-center gap-1 rounded-pill px-3 shadow-sm"
+            onClick={() => setShowImportModal(true)}
+            className="d-flex align-items-center gap-2 rounded-pill px-3 shadow-sm border glass-card"
           >
-            New <ChevronDown size={14} />
+            <Upload size={14} /> Import
           </Button>
+          <div className="btn-group shadow-sm" role="group">
+            <Button 
+              variant="primary" 
+              size="sm" 
+              onClick={handleAddEmptyTransaction}
+              className="d-flex align-items-center px-3 border-end border-light border-opacity-25"
+              style={{ borderTopLeftRadius: '50rem', borderBottomLeftRadius: '50rem' }}
+            >
+              New
+            </Button>
+            <Button 
+              variant="primary" 
+              size="sm" 
+              onClick={() => setShowTransactionModal(true)}
+              className="d-flex align-items-center px-2"
+              style={{ borderTopRightRadius: '50rem', borderBottomRightRadius: '50rem', marginLeft: '-1px' }}
+            >
+              <ChevronDown size={14} />
+            </Button>
+          </div>
         </div>
       </div>
 
-      {selectedIds.length > 0 && (
+    {selectedIds.length > 0 && (
         <div className="position-sticky top-0 mb-2" style={{ zIndex: 2000 }}>
-          <div className="glass-card border shadow-lg rounded-3 p-1 d-flex align-items-center gap-1 bg-white" style={{ height: '40px', width: 'fit-content' }}>
-            <div className="px-3 border-end text-primary fw-medium small">{selectedIds.length} selected</div>
+          <div className="glass-card p-1 d-flex align-items-center flex-wrap gap-1" style={{ minHeight: '48px', height: 'auto', width: 'fit-content', maxWidth: '100%' }}>
+            <div className="px-3 border-end text-primary fw-medium small d-flex align-items-center gap-2">
+              {selectedIds.length} selected
+              <div 
+                className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all cursor-pointer" 
+                style={{ width: '16px', height: '16px' }}
+                onClick={() => setSelectedIds([])}
+              >
+                <X size={12} />
+              </div>
+            </div>
             <div className="d-flex align-items-center gap-1 px-1">
               {/* Date Update */}
-              <Dropdown autoClose="outside" className="d-inline">
-                <Dropdown.Toggle as="div" className="text-dark text-decoration-none small py-1 px-2 hover-bg-light rounded-2 d-flex align-items-center gap-2 opacity-75 cursor-pointer">
-                  <Calendar size={14} /> Date
-                </Dropdown.Toggle>
-                <Dropdown.Menu className="glass-card border-0 shadow-lg p-2">
-                  <Form.Control 
-                    type="date" 
-                    size="sm" 
-                    onChange={(e) => handleBulkUpdateDate(e.target.value)} 
-                  />
-                </Dropdown.Menu>
-              </Dropdown>
+              <BulkDateInput 
+                value={stagedChanges.date} 
+                onSave={(val) => setStagedChanges(prev => ({ ...prev, date: val }))} 
+                onClear={() => setStagedChanges(prev => {
+                  const newState = { ...prev };
+                  delete newState.date;
+                  return newState;
+                })}
+              />
 
               {/* Bank Update */}
               <Dropdown autoClose="outside" className="d-inline">
-                <Dropdown.Toggle as="div" className="text-dark text-decoration-none small py-1 px-2 hover-bg-light rounded-2 d-flex align-items-center gap-2 opacity-75 cursor-pointer">
-                  <Landmark size={14} /> Bankalar
+                <Dropdown.Toggle as="div" className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedChanges.bankId ? 'text-primary' : 'opacity-75'}`} style={{ minWidth: '80px', minHeight: '40px' }}>
+                  <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                    <Landmark size={10} /> Bankalar
+                    {stagedChanges.bankId && (
+                      <X 
+                        size={10} 
+                        className="ms-1 hover-text-danger transition-colors cursor-pointer" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStagedChanges(prev => {
+                            const newState = { ...prev };
+                            delete newState.bankId;
+                            return newState;
+                          });
+                        }}
+                      />
+                    )}
+                  </div>
+                  {stagedChanges.bankId && (
+                    <div className="d-flex align-items-center gap-1 fw-bold mt-0.5" style={{ fontSize: '12px' }}>
+                      {getBankInfo(stagedChanges.bankId).logo && <img src={getBankInfo(stagedChanges.bankId).logo} alt="" width="12" height="12" className="rounded-circle" />}
+                      {getBankInfo(stagedChanges.bankId).name}
+                    </div>
+                  )}
                 </Dropdown.Toggle>
                 <Dropdown.Menu className="glass-card border-0 shadow-lg p-1" style={{ minWidth: '150px' }}>
                   {banks.map(bank => (
                     <Dropdown.Item 
                       key={bank.id} 
-                      className="rounded-2 py-2 d-flex align-items-center gap-2"
-                      onClick={() => handleBulkUpdateBank(bank.id)}
+                      className={`rounded-2 py-2 d-flex align-items-center gap-2 ${stagedChanges.bankId === bank.id ? 'bg-light text-primary' : ''}`}
+                      onClick={() => setStagedChanges(prev => ({ ...prev, bankId: bank.id }))}
                     >
                       {bank.logo && <img src={bank.logo} alt="" width="16" height="16" className="rounded-circle" />}
                       {bank.name}
@@ -1329,34 +2299,388 @@ const BankTransactionsPage = () => {
                 </Dropdown.Menu>
               </Dropdown>
 
+              {/* Type Update */}
+              <Dropdown autoClose="outside" className="d-inline">
+                <Dropdown.Toggle as="div" className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedChanges.type ? 'text-primary' : 'opacity-75'}`} style={{ minWidth: '90px', minHeight: '40px' }}>
+                  <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                    <Tag size={10} /> İşlem Türü
+                    {stagedChanges.type && (
+                      <X 
+                        size={10} 
+                        className="ms-1 hover-text-danger transition-colors cursor-pointer" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStagedChanges(prev => {
+                            const newState = { ...prev };
+                            delete newState.type;
+                            return newState;
+                          });
+                        }}
+                      />
+                    )}
+                  </div>
+                  {stagedChanges.type && (
+                    <div className="d-flex align-items-center gap-1 fw-bold mt-0.5" style={{ fontSize: '12px' }}>
+                      <span className="px-2 py-0 rounded-1" style={{ backgroundColor: (COLORS.find(c => c.name === typeTags.find(t => t.id === stagedChanges.type)?.color) || COLORS[0]).bg, color: (COLORS.find(c => c.name === typeTags.find(t => t.id === stagedChanges.type)?.color) || COLORS[0]).text, fontSize: '10px' }}>
+                        {typeTags.find(t => t.id === stagedChanges.type)?.name}
+                      </span>
+                    </div>
+                  )}
+                </Dropdown.Toggle>
+                <Dropdown.Menu className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ minWidth: '150px', maxHeight: '300px', overflowX: 'hidden' }}>
+                  {typeTags.map(tag => (
+                    <Dropdown.Item 
+                      key={tag.id} 
+                      className={`rounded-2 py-2 d-flex align-items-center gap-2 ${stagedChanges.type === tag.id ? 'bg-light text-primary' : ''}`}
+                      onClick={() => setStagedChanges(prev => ({ ...prev, type: tag.id }))}
+                    >
+                      <span className="px-2 py-0.5 rounded-1" style={{ backgroundColor: (COLORS.find(c => c.name === tag.color) || COLORS[0]).bg, color: (COLORS.find(c => c.name === tag.color) || COLORS[0]).text, fontSize: '11px' }}>
+                        {tag.name}
+                      </span>
+                    </Dropdown.Item>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown>
+
+              {/* Quick Actions Update */}
+              <Dropdown autoClose="outside" className="d-inline">
+                <Dropdown.Toggle as="div" className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedChanges.quickActions?.length > 0 ? 'text-primary' : 'opacity-75'}`} style={{ minWidth: '100px', minHeight: '40px' }}>
+                  <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                    <Zap size={10} /> Hızlı İşlemler
+                    {stagedChanges.quickActions?.length > 0 && (
+                      <X 
+                        size={10} 
+                        className="ms-1 hover-text-danger transition-colors cursor-pointer" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStagedChanges(prev => {
+                            const newState = { ...prev };
+                            delete newState.quickActions;
+                            return newState;
+                          });
+                        }}
+                      />
+                    )}
+                  </div>
+                  {stagedChanges.quickActions?.length > 0 && (
+                    <div className="d-flex flex-wrap align-items-center justify-content-center gap-1 fw-bold mt-0.5 px-1" style={{ fontSize: '12px' }}>
+                      {stagedChanges.quickActions.map(tagId => {
+                        const tag = quickActionTags.find(t => t.id === tagId);
+                        return tag ? (
+                          <span key={tagId} className="px-1.5 py-0 rounded-1" style={{ backgroundColor: (COLORS.find(c => c.name === tag.color) || COLORS[0]).bg, color: (COLORS.find(c => c.name === tag.color) || COLORS[0]).text, fontSize: '9px' }}>
+                            {tag.name}
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+                </Dropdown.Toggle>
+                <Dropdown.Menu className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ minWidth: '150px', maxHeight: '300px', overflowX: 'hidden' }}>
+                  {quickActionTags.map(tag => {
+                    const isSelected = stagedChanges.quickActions?.includes(tag.id);
+                    return (
+                      <Dropdown.Item 
+                        key={tag.id} 
+                        className={`rounded-2 py-2 d-flex align-items-center justify-content-between gap-3 ${isSelected ? 'bg-light text-primary' : ''}`}
+                        onClick={() => {
+                          setStagedChanges(prev => {
+                            const current = prev.quickActions || [];
+                            const next = current.includes(tag.id) 
+                              ? current.filter(id => id !== tag.id)
+                              : [...current, tag.id];
+                            return { ...prev, quickActions: next };
+                          });
+                        }}
+                      >
+                        <span className="px-2 py-0.5 rounded-1" style={{ backgroundColor: (COLORS.find(c => c.name === tag.color) || COLORS[0]).bg, color: (COLORS.find(c => c.name === tag.color) || COLORS[0]).text, fontSize: '11px' }}>
+                          {tag.name}
+                        </span>
+                        {isSelected && <Form.Check type="checkbox" checked={true} readOnly className="notion-checkbox-sm" />}
+                      </Dropdown.Item>
+                    );
+                  })}
+                </Dropdown.Menu>
+              </Dropdown>
+
               <div className="border-start ms-1 ps-1 d-flex align-items-center gap-1">
-                <Button variant="link" className="text-danger p-2 hover-bg-light rounded-2" onClick={handleBulkDelete}>
+                {Object.keys(stagedChanges).length > 0 && (
+                  <div className="d-flex align-items-center gap-1 me-1">
+                    <Button 
+                      variant="primary" 
+                      size="sm" 
+                      className="position-relative overflow-hidden rounded-pill px-3 fw-bold d-flex align-items-center gap-2 shadow-sm border-0 transition-all"
+                      disabled={isBulkProcessing}
+                      onClick={handleBulkSave}
+                      style={{ 
+                        minWidth: '90px', 
+                        height: '32px',
+                        background: 'linear-gradient(135deg, #006fee 0%, #005bc4 100%)',
+                        fontSize: '13px'
+                      }}
+                    >
+                      <div 
+                        className="position-absolute top-0 start-0 h-100 transition-all duration-300" 
+                        style={{ 
+                          width: `${bulkProgress}%`, 
+                          backgroundColor: 'rgba(255,255,255,0.3)',
+                          zIndex: 0
+                        }} 
+                      />
+                      <span className="position-relative" style={{ zIndex: 1 }}>
+                        {isBulkProcessing ? `%${bulkProgress}` : 'Kaydet'}
+                      </span>
+                    </Button>
+                    <Button 
+                      variant="light" 
+                      size="sm" 
+                      className="rounded-circle d-flex align-items-center justify-content-center p-0 shadow-sm border"
+                      style={{ width: '28px', height: '28px' }}
+                      onClick={() => setStagedChanges({})}
+                      disabled={isBulkProcessing}
+                      title="Temizle"
+                    >
+                      <X size={14} className="text-muted" />
+                    </Button>
+                  </div>
+                )}
+
+                <Button variant="link" className="text-danger p-2 hover-bg-light rounded-2" onClick={handleBulkDelete} disabled={isBulkProcessing}>
                   <Trash2 size={16} />
                 </Button>
+                
+                {/* Bulk History (Undo) */}
+                <Dropdown align="end">
+                  <Dropdown.Toggle as="div" className="text-muted p-2 hover-bg-light rounded-2 cursor-pointer transition-all">
+                    <RotateCcw size={16} />
+                  </Dropdown.Toggle>
+                  <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '350px' }}>
+                    <div className="d-flex align-items-center justify-content-between px-2 border-bottom pb-1 mb-2">
+                      <div className="x-small fw-bold text-muted">TOPLU İŞLEM GEÇMİŞİ</div>
+                      {bulkHistory.length > 0 && (
+                        <div 
+                          className="x-small text-danger fw-bold cursor-pointer hover-opacity-75 transition-all" 
+                          style={{ fontSize: '10px', letterSpacing: '0.02em' }}
+                          onClick={(e) => { e.stopPropagation(); handleClearBulkHistory(); }}
+                        >
+                          TÜMÜNÜ SİL
+                        </div>
+                      )}
+                    </div>
+                    {bulkHistory.length === 0 && <div className="text-center py-3 text-muted small">Geçmiş işlem bulunamadı</div>}
+                    {bulkHistory.map(item => (
+                      <div key={item.id} className="p-2 border-bottom last-border-0 hover-bg-light rounded-2 d-flex align-items-center justify-content-between gap-3 mb-1">
+                        <div className="d-flex flex-column gap-1">
+                          <div className="d-flex align-items-center gap-2">
+                            <span className="badge bg-light text-dark fw-bold" style={{ fontSize: '10px' }}>{item.count} İşlem</span>
+                            <span className="text-muted" style={{ fontSize: '11px' }}>
+                              {item.timestamp?.toDate().toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <div className="small fw-medium text-dark opacity-75">
+                            {item.type === 'DELETE' && '🗑️ Toplu Silme'}
+                            {item.type === 'BULK_UPDATE' && (
+                              <div className="d-flex flex-column">
+                                <span className="fw-bold text-dark">✏️ Toplu Güncelleme</span>
+                                <div className="x-small text-muted mt-1 ps-1" style={{ fontSize: '11px', borderLeft: '2px solid #eee' }}>
+                                  {item.fields.map(field => {
+                                    const val = item.affectedData?.[0]?.current?.[field];
+                                    const label = PROPERTIES.find(p => p.id === field)?.label || field;
+                                    let displayVal = val;
+                                    if (field === 'bankId') displayVal = getBankInfo(val)?.name || val;
+                                    if (field === 'type') displayVal = resolveTag(typeTags, val)?.name || val;
+                                    if (field === 'quickActions') {
+                                      const ids = Array.isArray(val) ? val : [];
+                                      displayVal = ids.map(id => resolveTag(quickActionTags, id)?.name || id).join(', ');
+                                    }
+                                    if (field === 'date' && val) displayVal = displayDateFormatted(val, config.dateFormat);
+                                    
+                                    return <div key={field} className="text-truncate" style={{ maxWidth: '200px' }}>
+                                      <span className="opacity-75">{label}:</span> <span className="text-dark fw-bold">{displayVal || 'Boş'}</span>
+                                    </div>;
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                            {item.type === 'UPDATE_BANK' && '🏦 Banka Değişikliği'}
+                            {item.type === 'UPDATE_DATE' && '📅 Tarih Değişikliği'}
+                            {item.type === 'UPDATE_TYPE' && '🏷️ Tür Değişikliği'}
+                            {item.type === 'UPDATE_QUICK_ACTIONS' && '⚡ Hızlı İşlem Değişikliği'}
+                          </div>
+                        </div>
+                        <div className="d-flex align-items-center gap-2">
+                          <Button 
+                            variant="primary" 
+                            size="sm" 
+                            className="px-2 py-0.5 rounded-pill transition-all shadow-sm border-0"
+                            style={{ fontSize: '11px', fontWeight: 600, height: '24px' }}
+                            disabled={isBulkProcessing}
+                            onClick={() => handleUndoBulkAction(item)}
+                          >
+                            Geri Al
+                          </Button>
+                          <Button 
+                            variant="outline-danger" 
+                            size="sm" 
+                            className="px-2 py-1 x-small fw-bold rounded-pill transition-all d-flex align-items-center justify-content-center"
+                            onClick={() => handleDeleteBulkHistory(item.id)}
+                            style={{ width: '28px', height: '28px' }}
+                          >
+                            <Trash2 size={12} />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </Dropdown.Menu>
+                </Dropdown>
               </div>
             </div>
           </div>
         </div>
       )}
-
+      
       <DndContext 
         sensors={sensors} 
         collisionDetection={closestCenter} 
+        onDragStart={(e) => setActiveDragId(e.active.id)}
         onDragEnd={handleTransactionDragEnd}
       >
-        <Card className="glass-card border-0 shadow-sm" style={{ overflow: 'visible' }}>
-          <Table hover className="notion-table mb-0 border-top-0" style={{ overflow: 'visible' }}>
-            <thead style={{ position: 'relative', zIndex: 10 }}>
-              <tr>
-              <th style={{ width: '1px', whiteSpace: 'nowrap' }} className="ps-2">
+        <Card className="bg-white border shadow-sm" style={{ overflow: 'visible', borderRadius: '12px' }}>
+          {config.filters?.length > 0 && (
+            <div className="sticky-top bg-white border-bottom py-2 px-3 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 101, top: '0', borderTopLeftRadius: '12px', borderTopRightRadius: '12px' }}>
+              <div className="text-muted x-small fw-bold d-flex align-items-center gap-1 opacity-50 pe-2 border-end">
+                <Filter size={12} /> FILTERS
+              </div>
+              {config.filters.map(f => {
+                const p = PROPERTIES.find(item => item.id === f.propId);
+                const label = config.propertyLabels?.[f.propId] || p?.label;
+                return (
+                  <div key={f.propId} className="glass-card border rounded-pill px-2 py-1 d-flex align-items-center gap-2 shadow-sm" style={{ fontSize: '12px' }}>
+                    <span className="text-muted">{label}</span>
+                    <Dropdown>
+                      <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary">
+                        {f.operator.replace(/_/g, ' ')}
+                      </Dropdown.Toggle>
+                      <Dropdown.Menu className="glass-card border-0 shadow-lg p-1">
+                        {(() => {
+                          if (['type', 'quickActions', 'bankId'].includes(f.propId)) return ['contains', 'does_not_contain', 'is_empty', 'is_not_empty'];
+                          if (f.propId === 'date') return ['is', 'between', 'is_empty', 'is_not_empty'];
+                          return ['is', 'is_not', 'contains', 'does_not_contain', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];
+                        })().map(op => (
+                          <Dropdown.Item key={op} className="small rounded-2" onClick={() => handleUpdateFilter(f.propId, op, f.value)}>
+                            {op.replace(/_/g, ' ')}
+                          </Dropdown.Item>
+                        ))}
+                      </Dropdown.Menu>
+                    </Dropdown>
+                    {!['is_empty', 'is_not_empty'].includes(f.operator) && (
+                      ['type', 'quickActions', 'bankId'].includes(f.propId) ? (
+                        <Dropdown>
+                          <Dropdown.Toggle as="span" className="fw-medium cursor-pointer hover-text-primary text-truncate d-inline-flex align-items-center" style={{ maxWidth: '120px' }}>
+                            {(() => {
+                              if (!f.value) return 'Seçiniz...';
+                              if (f.propId === 'bankId') return getBankInfo(f.value).name || 'Bilinmiyor';
+                              if (f.propId === 'type') return typeTags.find(t => t.id === f.value)?.name || 'Bilinmiyor';
+                              if (f.propId === 'quickActions') return quickActionTags.find(t => t.id === f.value)?.name || 'Bilinmiyor';
+                              return f.value;
+                            })()}
+                          </Dropdown.Toggle>
+                          <Dropdown.Menu className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ maxHeight: '300px', minWidth: '150px' }}>
+                            {(f.propId === 'bankId' 
+                              ? [...banks].sort((a, b) => (a.order || 0) - (b.order || 0))
+                              : f.propId === 'type' 
+                                ? [...typeTags].sort((a, b) => (a.order || 0) - (b.order || 0))
+                                : [...quickActionTags].sort((a, b) => (a.order || 0) - (b.order || 0))
+                            ).map(item => {
+                              const colorObj = COLORS.find(c => c.name === item.color) || COLORS[0];
+                              return (
+                                <Dropdown.Item 
+                                  key={item.id} 
+                                  className="small rounded-2 py-2 mb-1" 
+                                  onClick={() => handleUpdateFilter(f.propId, f.operator, item.id)}
+                                >
+                                  <div className="d-flex align-items-center">
+                                    {f.propId === 'bankId' && item.logo && (
+                                      <img src={item.logo} alt="" width="14" height="14" className="me-2 rounded-circle" style={{ objectFit: 'contain' }} />
+                                    )}
+                                    <span className="px-2 py-0.5 rounded-1" style={f.propId !== 'bankId' ? { backgroundColor: colorObj.bg, color: colorObj.text, fontSize: '11px' } : {}}>
+                                      {item.name}
+                                    </span>
+                                  </div>
+                                </Dropdown.Item>
+                              );
+                            })}
+                          </Dropdown.Menu>
+                        </Dropdown>
+                      ) : f.propId === 'date' ? (
+                        f.operator === 'between' ? (
+                          <div className="d-flex align-items-center gap-1">
+                            <Form.Control 
+                              type="date"
+                              size="sm"
+                              className="border-0 bg-transparent p-0 fw-medium"
+                              style={{ width: '90px', fontSize: '11px' }}
+                              value={(f.value || '').split(',')[0] || ''}
+                              onChange={e => {
+                                const parts = (f.value || '').split(',');
+                                handleUpdateFilter(f.propId, f.operator, `${e.target.value},${parts[1] || ''}`);
+                              }}
+                            />
+                            <span className="text-muted opacity-50" style={{ fontSize: '10px' }}>-</span>
+                            <Form.Control 
+                              type="date"
+                              size="sm"
+                              className="border-0 bg-transparent p-0 fw-medium"
+                              style={{ width: '90px', fontSize: '11px' }}
+                              value={(f.value || '').split(',')[1] || ''}
+                              onChange={e => {
+                                const parts = (f.value || '').split(',');
+                                handleUpdateFilter(f.propId, f.operator, `${parts[0] || ''},${e.target.value}`);
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <Form.Control 
+                            type="date"
+                            size="sm"
+                            className="border-0 bg-transparent p-0 fw-medium"
+                            style={{ width: '100px', fontSize: '12px' }}
+                            value={f.value || ''}
+                            onChange={e => handleUpdateFilter(f.propId, f.operator, e.target.value)}
+                          />
+                        )
+                      ) : (
+                        <Form.Control 
+                          size="sm" 
+                          className="border-0 bg-transparent p-0 fw-medium" 
+                          style={{ width: '100px', fontSize: '12px' }}
+                          value={f.value}
+                          onChange={e => handleUpdateFilter(f.propId, f.operator, e.target.value)}
+                          placeholder="Değer girin..."
+                        />
+                      )
+                    )}
+                    <X size={14} className="text-muted cursor-pointer hover-text-danger" onClick={() => handleUpdateFilter(f.propId, null, null)} />
+                  </div>
+                );
+              })}
+              <Button variant="link" size="sm" className="text-muted p-0 x-small" onClick={() => updateConfig({ filters: [] })}>Clear all</Button>
+            </div>
+          )}
+          <Table hover className="notion-table mb-0 border-top-0" style={{ overflow: 'visible', borderCollapse: 'separate', borderSpacing: 0 }}>
+            <thead className="sticky-top bg-white" style={{ zIndex: 100, top: config.filters?.length > 0 ? '45px' : '0' }}>
+              <tr className="bg-white">
+              <th style={{ width: '1px', whiteSpace: 'nowrap', backgroundColor: 'inherit' }} className="ps-2">
                 <Form.Check 
                   ref={selectAllRef}
                   type="checkbox" 
                   className="notion-checkbox custom-checkbox-sm" 
-                  checked={selectedIds.length === transactions.length && transactions.length > 0}
+                  checked={selectedIds.length === filteredTransactions.length && filteredTransactions.length > 0}
                   onChange={(e) => {
-                    if (e.target.checked) setSelectedIds(transactions.map(t => t.id));
-                    else setSelectedIds([]);
+                    if (e.target.checked) {
+                      setSelectedIds(filteredTransactions.map(t => t.id));
+                    } else {
+                      setSelectedIds([]);
+                    }
                   }}
                 />
               </th>
@@ -1369,12 +2693,40 @@ const BankTransactionsPage = () => {
                   return (
                     <th key={id} style={id === 'title' ? { width: '25%' } : {}}>
                       <Dropdown autoClose="outside">
-                        <Dropdown.Toggle as="div" className="d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded px-2 py-1" style={{ marginLeft: '-8px' }}>
+                        <Dropdown.Toggle as="div" className="d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded px-2 py-1 flex-grow-1" style={{ marginLeft: '-8px' }}>
                           <span className="text-muted d-flex align-items-center">{currentIcon}</span>
                           <span className="text-nowrap">{label}</span>
+                          {config.sortConfig?.propId === id && (
+                            <div className="ms-auto d-flex align-items-center gap-1">
+                              <span 
+                                className="text-primary opacity-75 d-flex align-items-center cursor-pointer hover-bg-secondary rounded p-0 justify-content-center"
+                                style={{ width: '16px', height: '16px' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSort(id, config.sortConfig.direction === 'asc' ? 'desc' : 'asc');
+                                }}
+                              >
+                                {config.sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+                              </span>
+                              <div 
+                                className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all" 
+                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSort(null, null);
+                                }}
+                              >
+                                <X size={10} />
+                              </div>
+                            </div>
+                          )}
                         </Dropdown.Toggle>
                         <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '240px' }}>
-                          <div className="px-1 py-1 mb-2 d-flex flex-column gap-2">
+                          <div className="px-1 py-1 mb-2 d-flex flex-column gap-1">
+                            <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2 small" onClick={() => handleUpdateFilter(id, 'contains', '')}>
+                              <Filter size={14} className="text-muted" /> Filter
+                            </Dropdown.Item>
+                            <div className="dropdown-divider opacity-10"></div>
                             <div className="d-flex align-items-center gap-2">
                               <Dropdown autoClose="outside" className="d-inline">
                                 <Dropdown.Toggle as="div" className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 cursor-pointer hover-bg-secondary hover-text-white transition-all" style={{ width: '28px', height: '28px' }}>
@@ -1443,6 +2795,34 @@ const BankTransactionsPage = () => {
                           >
                             <Eye size={14} className="text-muted" /> Hide in view
                           </Dropdown.Item>
+                          {id === 'date' && (
+                            <>
+                              <div className="dropdown-divider opacity-10"></div>
+                              <Dropdown autoClose="outside" className="w-100">
+                                <Dropdown.Toggle as="div" className="rounded-2 d-flex align-items-center justify-content-between py-2 small px-3 w-100 cursor-pointer hover-bg-light dropdown-no-caret text-start">
+                                  <div className="d-flex align-items-center gap-2">
+                                    <Calendar size={14} className="text-muted" /> Date format
+                                  </div>
+                                  <ChevronDown size={14} className="text-muted opacity-50" />
+                                </Dropdown.Toggle>
+                                <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '180px' }}>
+                                  {['DD/MM/YYYY', 'DD.MM.YYYY', 'DD MMMM YYYY', 'DD MMM YYYY'].map(fmt => (
+                                    <Dropdown.Item 
+                                      key={fmt}
+                                      className={`rounded-2 d-flex align-items-center justify-content-between py-2 small ${config.dateFormat === fmt || (!config.dateFormat && fmt === 'DD/MM/YYYY') ? 'bg-light text-primary fw-medium' : ''}`}
+                                      onClick={() => handleUpdateDateFormat(fmt)}
+                                    >
+                                      {fmt === 'DD/MM/YYYY' && '01/12/2026'}
+                                      {fmt === 'DD.MM.YYYY' && '01.12.2026'}
+                                      {fmt === 'DD MMMM YYYY' && '01 Ocak 2026'}
+                                      {fmt === 'DD MMM YYYY' && '01 Oca 2026'}
+                                      {(config.dateFormat === fmt || (!config.dateFormat && fmt === 'DD/MM/YYYY')) && <Check size={14} className="text-primary" />}
+                                    </Dropdown.Item>
+                                  ))}
+                                </Dropdown.Menu>
+                              </Dropdown>
+                            </>
+                          )}
                         </Dropdown.Menu>
                       </Dropdown>
                     </th>
@@ -1451,12 +2831,13 @@ const BankTransactionsPage = () => {
               }
             </tr>
           </thead>
-            <SortableContext items={sortedTransactions.map(t => t.id)} strategy={verticalListSortingStrategy}>
-              <tbody>
-                {sortedTransactions.map(t => (
+          <SortableContext items={visibleTransactions.map(t => t.id)} strategy={verticalListSortingStrategy}>
+            <tbody>
+                {visibleTransactions.map((t, index) => (
                   <SortableTransactionRow 
                     key={t.id} 
                     t={t} 
+                    index={index}
                     config={config} 
                     selectedIds={selectedIds}
                     renderCell={renderCell}
@@ -1466,14 +2847,112 @@ const BankTransactionsPage = () => {
                     }}
                   />
                 ))}
+                {/* Sentinel for Infinite Scroll */}
+                <tr ref={lastElementRef} style={{ height: '10px' }}>
+                  <td colSpan="100%" className="border-0"></td>
+                </tr>
               </tbody>
             </SortableContext>
+            
+            {selectedIds.length === transactions.length && transactions.length > 0 && !isGlobalSelected && totalCount > transactions.length && (
+              <div className="bg-light-primary text-center py-2 small border-bottom border-top">
+                Sayfadaki {transactions.length} işlemin tümü seçildi. <span className="text-primary fw-bold cursor-pointer" onClick={() => setIsGlobalSelected(true)}>Tüm {totalCount} işlemi seç</span>
+              </div>
+            )}
+            
+            {isGlobalSelected && (
+              <div className="bg-light-primary text-center py-2 small border-bottom border-top">
+                Tüm {totalCount} işlem seçildi. <span className="text-primary fw-bold cursor-pointer" onClick={() => { setIsGlobalSelected(false); setSelectedIds([]); }}>Seçimi temizle</span>
+              </div>
+            )}
           </Table>
         </Card>
+        
+            {limitCount < sortedTransactions.length && (
+          <div className="d-flex align-items-center gap-4 mt-2">
+            <div className="d-flex align-items-center gap-2 py-2 px-3 hover-bg-light cursor-pointer text-muted small rounded-2" 
+              style={{ width: 'fit-content' }}
+              onClick={() => setLimitCount(prev => prev + 100)}>
+              <Plus size={14} className="opacity-50" /> 
+              <span>Daha fazla göster</span>
+            </div>
+            
+            <div className="d-flex align-items-center gap-2 text-muted x-small border-start ps-4">
+              <span className="opacity-50 fw-bold">GÖRÜNÜM LİMİTİ:</span>
+              {[20, 50, 100, 500].map(v => (
+                <span 
+                  key={v} 
+                  className={`cursor-pointer hover-text-primary px-2 py-1 rounded ${limitCount === v && !isInfiniteScroll ? 'bg-light-primary text-primary fw-bold' : ''}`} 
+                  onClick={() => {
+                    setIsInfiniteScroll(false);
+                    setLimitCount(v);
+                  }}
+                >
+                  {v}
+                </span>
+              ))}
+              <span 
+                className={`cursor-pointer hover-text-primary px-2 py-1 rounded ${isInfiniteScroll ? 'bg-light-primary text-primary fw-bold' : ''}`} 
+                onClick={() => {
+                  setIsInfiniteScroll(true);
+                  setLimitCount(100); // Start with 100 when view all is clicked
+                }}
+              >
+                Hepsini Gör
+              </span>
+            </div>
+          </div>
+        )}
+
+        <DragOverlay>
+          {activeDragId && selectedIds.length > 1 && selectedIds.includes(activeDragId) ? (
+            <div className="position-relative" style={{ width: '800px', cursor: 'grabbing' }}>
+              {transactions
+                .filter(t => selectedIds.includes(t.id))
+                .slice(0, 3) // Show max 3 visually
+                .map((t, idx) => (
+                  <Table 
+                    key={t.id} 
+                    className="notion-table mb-0 glass-card overflow-hidden" 
+                    style={{ 
+                      opacity: 1 - (idx * 0.1),
+                      transform: `scale(${1 - (idx * 0.02)})`,
+                      zIndex: 1000 - idx,
+                      position: idx > 0 ? 'absolute' : 'relative',
+                      top: idx > 0 ? `${idx * 10}px` : '0',
+                      left: idx > 0 ? `${idx * 10}px` : '0',
+                      pointerEvents: 'none'
+                    }}
+                  >
+                    <tbody>
+                      <tr className="align-middle group bg-white">
+                        <td className="ps-2" style={{ width: '60px' }}>
+                          <div className="d-flex align-items-center gap-2 opacity-100" style={{ width: '50px' }}>
+                            <div className="text-muted opacity-50 position-relative">
+                              <GripVertical size={14} />
+                            </div>
+                            <Form.Check type="checkbox" className="notion-checkbox custom-checkbox-sm" checked={true} readOnly />
+                          </div>
+                        </td>
+                        {(config.propertyOrder || PROPERTIES.map(p => p.id))
+                          .filter(id => config.propertyVisibility?.[id] !== false)
+                          .map(id => renderCell(id, t))}
+                      </tr>
+                    </tbody>
+                  </Table>
+                ))}
+              {selectedIds.length > 3 && (
+                <div className="text-center text-primary bg-light rounded py-1 px-3 small fw-bold shadow" style={{ position: 'absolute', bottom: '-20px', left: '20px', zIndex: 1001 }}>
+                  + {selectedIds.length - 3} işlem daha
+                </div>
+              )}
+            </div>
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       {/* Transaction Modal */}
-      <Modal show={showTransactionModal} onHide={() => setShowTransactionModal(false)} size="lg" className="glass-card-modal notion-modal">
+      <Modal show={showTransactionModal} onHide={() => setShowTransactionModal(false)} size="lg" className="shadow-lg notion-modal">
         <Modal.Body className="p-5">
           <Form onSubmit={handleAddTransaction}>
             <Form.Control 
@@ -1498,7 +2977,7 @@ const BankTransactionsPage = () => {
                     value={date} 
                     onChange={e => setDate(e.target.value)} 
                     className="border-0 bg-transparent p-0"
-                    style={{ fontSize: '14px' }}
+                    style={{ fontSize: '14px', width: 'fit-content' }}
                   />
                 </div>
               </div>
@@ -1513,41 +2992,33 @@ const BankTransactionsPage = () => {
                   <Dropdown className="d-block w-100" autoClose="outside">
                     <Dropdown.Toggle as="div" className="p-0 border-0 bg-transparent w-100 text-start dropdown-no-caret" style={{ cursor: 'text' }}>
                       <div className="d-flex flex-wrap align-items-center gap-1">
-                        {selectedQuickActions.map((a, i) => (
-                          <span 
-                            key={i} 
-                            className="notion-tag m-0 gap-2 d-inline-flex align-items-center" 
-                            style={getTagStyle('quickActions', a)}
-                          >
-                            {a}
-                            <X 
-                              size={12} 
-                              className="text-muted opacity-50" 
-                              style={{ cursor: 'pointer' }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedQuickActions(prev => prev.filter(x => x !== a));
-                              }}
-                            />
-                          </span>
-                        ))}
+                        {selectedQuickActions.map((tagId, i) => {
+                          const tag = resolveTag(quickActionTags, tagId);
+                          return tag ? (
+                            <span key={i} className="notion-tag m-0 gap-2 d-inline-flex align-items-center" style={getTagStyleById(quickActionTags, tagId)}>
+                              {tag.name}
+                              <X size={12} className="text-muted opacity-50" style={{ cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); setSelectedQuickActions(prev => prev.filter(x => x !== tagId)); }}
+                              />
+                            </span>
+                          ) : null;
+                        })}
                         <div className="d-flex align-items-center flex-grow-1 position-relative">
-                          <Form.Control 
+                          <Form.Control
                             size="sm"
                             placeholder={selectedQuickActions.length === 0 ? "Empty" : ""}
-                            className="border-0 bg-transparent p-0 flex-grow-1"
-                            style={{ fontSize: '14px', minWidth: '60px', boxShadow: 'none' }}
+                            className="border-0 bg-transparent p-0 flex-grow-1 fs-14"
+                            style={{ minWidth: '60px', boxShadow: 'none' }}
                             value={tagSearch}
                             onChange={e => setTagSearch(e.target.value)}
                             autoComplete="off"
                           />
-                          {tagSearch && !normalizeTags(config.quickActions).some(t => t.name.toLowerCase() === tagSearch.toLowerCase()) && (
-                            <div 
-                              className="p-1 hover-bg-light rounded cursor-pointer ms-1"
-                              onClick={(e) => {
+                          {tagSearch && !quickActionTags.some(t => t.name.toLowerCase() === tagSearch.toLowerCase()) && (
+                            <div className="p-1 hover-bg-light rounded cursor-pointer ms-1"
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                updateTag('quickActions', tagSearch, 'Gray');
-                                setSelectedQuickActions(prev => [...prev, tagSearch]);
+                                const newId = await handleAddTag('quickActions', quickActionTags, tagSearch, 'Gray');
+                                setSelectedQuickActions(prev => [...prev, newId]);
                                 setTagSearch('');
                               }}
                             >
@@ -1557,37 +3028,35 @@ const BankTransactionsPage = () => {
                         </div>
                       </div>
                     </Dropdown.Toggle>
-                    <Dropdown.Menu className="glass-card border-0 shadow-lg p-2 notion-dropdown-menu" style={{ width: '280px' }}>
+                    <Dropdown.Menu className="glass-card border-0 shadow-lg p-2 notion-dropdown-menu overflow-auto" style={{ width: '280px', maxHeight: '300px', overflowX: 'hidden' }}>
                       <div className="p-2 pt-0">
-
-                        <div className="text-muted x-small mb-2 ps-1" style={{ fontSize: '12px' }}>Select an option or create one</div>
+                        <div className="text-muted x-small mb-2 ps-1 fs-12">Select an option or create one</div>
                         <div className="notion-options-list">
-                          <DndContext 
+                          <DndContext
                             sensors={sensors}
                             collisionDetection={closestCenter}
                             onDragEnd={(e) => {
                               const { active, over } = e;
                               if (active.id !== over.id) {
-                                const list = normalizeTags(config.quickActions);
-                                const oldIdx = list.findIndex(t => t.name === active.id);
-                                const newIdx = list.findIndex(t => t.name === over.id);
-                                handleReorderTags('quickActions', oldIdx, newIdx);
+                                const oldIdx = quickActionTags.findIndex(t => t.id === active.id);
+                                const newIdx = quickActionTags.findIndex(t => t.id === over.id);
+                                handleReorderTags('quickActions', quickActionTags, oldIdx, newIdx);
                               }
                             }}
                           >
-                            <SortableContext items={normalizeTags(config.quickActions).map(t => t.name)} strategy={verticalListSortingStrategy}>
-                              {normalizeTags(config.quickActions)
+                            <SortableContext items={quickActionTags.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                              {quickActionTags
                                 .filter(t => t.name.toLowerCase().includes(tagSearch.toLowerCase()))
-                                .map((tag, i) => (
-                                  <SortableTagItem 
-                                    key={tag.name} 
-                                    tag={tag} 
+                                .map((tag) => (
+                                  <SortableTagItem
+                                    key={tag.id}
+                                    tag={tag}
                                     type="quickActions"
-                                    isSelected={selectedQuickActions.includes(tag.name)}
-                                    onClick={() => setSelectedQuickActions(prev => prev.includes(tag.name) ? prev.filter(a => a !== tag.name) : [...prev, tag.name])}
-                                    getTagStyle={getTagStyle}
-                                    onUpdate={(oldName, newName, newColor) => handleUpdateTag('quickActions', oldName, newName, newColor)}
-                                    onDelete={(tagName) => handleDeleteTag('quickActions', tagName)}
+                                    isSelected={selectedQuickActions.includes(tag.id)}
+                                    onClick={() => setSelectedQuickActions(prev => prev.includes(tag.id) ? prev.filter(a => a !== tag.id) : [...prev, tag.id])}
+                                    getTagStyle={(_, idOrName) => getTagStyleById(quickActionTags, idOrName)}
+                                    onUpdate={(oldName, newName, newColor) => handleUpdateTag('quickActions', tag.id, newName, newColor)}
+                                    onDelete={() => handleDeleteTag('quickActions', quickActionTags, tag.id)}
                                   />
                                 ))}
                             </SortableContext>
@@ -1609,40 +3078,33 @@ const BankTransactionsPage = () => {
                   <Dropdown className="d-block w-100">
                     <Dropdown.Toggle as="div" className="p-0 border-0 bg-transparent w-100 text-start dropdown-no-caret" style={{ cursor: 'text' }}>
                       <div className="d-flex align-items-center gap-1 w-100">
-                        {selectedType && (
-                          <span 
-                            className="notion-tag m-0 gap-2 d-inline-flex align-items-center" 
-                            style={getTagStyle('types', selectedType)}
-                          >
-                            {selectedType}
-                            <X 
-                              size={12} 
-                              className="text-muted opacity-50" 
-                              style={{ cursor: 'pointer' }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedType('');
-                              }}
-                            />
-                          </span>
-                        )}
+                        {selectedType && (() => {
+                          const tag = resolveTag(typeTags, selectedType);
+                          return tag ? (
+                            <span className="notion-tag m-0 gap-2 d-inline-flex align-items-center" style={getTagStyleById(typeTags, selectedType)}>
+                              {tag.name}
+                              <X size={12} className="text-muted opacity-50" style={{ cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); setSelectedType(''); }}
+                              />
+                            </span>
+                          ) : null;
+                        })()}
                         <div className="d-flex align-items-center flex-grow-1 position-relative">
-                          <Form.Control 
+                          <Form.Control
                             size="sm"
                             placeholder={!selectedType ? "Empty" : ""}
-                            className="border-0 bg-transparent p-0 flex-grow-1"
-                            style={{ fontSize: '14px', minWidth: '60px', boxShadow: 'none' }}
+                            className="border-0 bg-transparent p-0 flex-grow-1 fs-14"
+                            style={{ minWidth: '60px', boxShadow: 'none' }}
                             value={typeSearch}
                             onChange={e => setTypeSearch(e.target.value)}
                             autoComplete="off"
                           />
-                          {typeSearch && !normalizeTags(config.types).some(t => t.name.toLowerCase() === typeSearch.toLowerCase()) && (
-                            <div 
-                              className="p-1 hover-bg-light rounded cursor-pointer ms-1"
-                              onClick={(e) => {
+                          {typeSearch && !typeTags.some(t => t.name.toLowerCase() === typeSearch.toLowerCase()) && (
+                            <div className="p-1 hover-bg-light rounded cursor-pointer ms-1"
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                updateTag('types', typeSearch, 'Gray');
-                                setSelectedType(typeSearch);
+                                const newId = await handleAddTag('transactionTypes', typeTags, typeSearch, 'Gray');
+                                setSelectedType(newId);
                                 setTypeSearch('');
                               }}
                             >
@@ -1652,37 +3114,35 @@ const BankTransactionsPage = () => {
                         </div>
                       </div>
                     </Dropdown.Toggle>
-                    <Dropdown.Menu className="glass-card border-0 shadow-lg p-2 notion-dropdown-menu" style={{ width: '280px' }}>
+                    <Dropdown.Menu className="glass-card border-0 shadow-lg p-2 notion-dropdown-menu overflow-auto" style={{ width: '280px', maxHeight: '300px', overflowX: 'hidden' }}>
                       <div className="p-2 pt-0">
-
-                        <div className="text-muted x-small mb-2 ps-1" style={{ fontSize: '12px' }}>Select an option or create one</div>
+                        <div className="text-muted x-small mb-2 ps-1 fs-12">Select an option or create one</div>
                         <div className="notion-options-list">
-                          <DndContext 
+                          <DndContext
                             sensors={sensors}
                             collisionDetection={closestCenter}
                             onDragEnd={(e) => {
                               const { active, over } = e;
                               if (active.id !== over.id) {
-                                const list = normalizeTags(config.types);
-                                const oldIdx = list.findIndex(t => t.name === active.id);
-                                const newIdx = list.findIndex(t => t.name === over.id);
-                                handleReorderTags('types', oldIdx, newIdx);
+                                const oldIdx = typeTags.findIndex(t => t.id === active.id);
+                                const newIdx = typeTags.findIndex(t => t.id === over.id);
+                                handleReorderTags('transactionTypes', typeTags, oldIdx, newIdx);
                               }
                             }}
                           >
-                            <SortableContext items={normalizeTags(config.types).map(t => t.name)} strategy={verticalListSortingStrategy}>
-                              {normalizeTags(config.types)
+                            <SortableContext items={typeTags.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                              {typeTags
                                 .filter(t => t.name.toLowerCase().includes(typeSearch.toLowerCase()))
-                                .map((tag, i) => (
-                                  <SortableTagItem 
-                                    key={tag.name} 
-                                    tag={tag} 
+                                .map((tag) => (
+                                  <SortableTagItem
+                                    key={tag.id}
+                                    tag={tag}
                                     type="types"
-                                    isSelected={selectedType === tag.name}
-                                    onClick={() => setSelectedType(prev => prev === tag.name ? '' : tag.name)}
-                                    getTagStyle={getTagStyle}
-                                    onUpdate={(oldName, newName, newColor) => handleUpdateTag('types', oldName, newName, newColor)}
-                                    onDelete={(tagName) => handleDeleteTag('types', tagName)}
+                                    isSelected={selectedType === tag.id}
+                                    onClick={() => setSelectedType(prev => prev === tag.id ? '' : tag.id)}
+                                    getTagStyle={(_, idOrName) => getTagStyleById(typeTags, idOrName)}
+                                    onUpdate={(oldName, newName, newColor) => handleUpdateTag('transactionTypes', tag.id, newName, newColor)}
+                                    onDelete={() => handleDeleteTag('transactionTypes', typeTags, tag.id)}
                                   />
                                 ))}
                             </SortableContext>
@@ -1712,23 +3172,6 @@ const BankTransactionsPage = () => {
                 </div>
               </div>
 
-              {/* Tutar KK */}
-              <div className="py-1 d-flex align-items-center mb-2 notion-property-row">
-                <div className="d-flex align-items-center gap-2 notion-label-col">
-                  <CreditCard size={14} className="text-muted" />
-                  <span className="text-muted">Tutar KK</span>
-                </div>
-                <div className="flex-grow-1 notion-value-col">
-                  <Form.Control 
-                    type="text" 
-                    value={amountKK} 
-                    onChange={e => setAmountKK(e.target.value.replace(/[^0-9,]/g, ''))} 
-                    placeholder="Empty" 
-                    className="border-0 bg-transparent p-0"
-                    style={{ fontSize: '14px' }}
-                  />
-                </div>
-              </div>
 
               {/* Dekont */}
               <div className="py-1 d-flex align-items-center mb-2 notion-property-row">
@@ -1757,10 +3200,10 @@ const BankTransactionsPage = () => {
                 <div className="flex-grow-1 notion-value-col">
                   <Dropdown className="d-block w-100">
                     <Dropdown.Toggle as="div" className="p-0 border-0 bg-transparent w-100 text-start dropdown-no-caret" style={{ cursor: 'pointer' }}>
-                      {selectedBankId ? (
+                      {formBankId ? (
                         <div className="d-flex align-items-center gap-2">
-                          {getBankInfo(selectedBankId).logo && <img src={getBankInfo(selectedBankId).logo} alt="" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />}
-                          <span>{getBankInfo(selectedBankId).name}</span>
+                          {getBankInfo(formBankId).logo && <img src={getBankInfo(formBankId).logo} alt="" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />}
+                          <span>{getBankInfo(formBankId).name}</span>
                         </div>
                       ) : (
                         <span className="text-muted opacity-50">Empty</span>
@@ -1771,26 +3214,24 @@ const BankTransactionsPage = () => {
                         <Form.Control 
                           size="sm" 
                           placeholder="Search for a bank..." 
-                          className="border-0 bg-light mb-2" 
-                          style={{ fontSize: '14px' }} 
+                          className="border-0 bg-light mb-2 fs-14" 
                           value={bankSearch}
                           onChange={e => setBankSearch(e.target.value)}
                         />
                         <div className="notion-options-list">
                           {banks
-                            .filter(b => b.name.toLowerCase().includes(bankSearch.toLowerCase()))
+                            .filter(b => b?.name?.toLowerCase().includes(bankSearch.toLowerCase()))
                             .map((bank, i) => (
                               <div 
                                 key={i} 
-                                className="d-flex align-items-center justify-content-between p-1 px-2 rounded-1 notion-option-item" 
-                                style={{ cursor: 'pointer', fontSize: '14px' }}
-                                onClick={() => setSelectedBankId(bank.id)}
+                                className="d-flex align-items-center justify-content-between p-1 px-2 rounded-1 notion-option-item cursor-pointer fs-14" 
+                                onClick={() => setFormBankId(bank.id)}
                               >
                                 <div className="d-flex align-items-center gap-2">
                                   {bank.logo ? <img src={bank.logo} alt="" style={{ width: '16px', height: '16px', objectFit: 'contain' }} /> : <Landmark size={14} className="text-muted opacity-25" />}
                                   <span>{bank.name}</span>
                                 </div>
-                                {selectedBankId === bank.id && <Check size={14} className="text-primary" />}
+                                {formBankId === bank.id && <Check size={14} className="text-primary" />}
                               </div>
                             ))}
                         </div>
@@ -1811,7 +3252,7 @@ const BankTransactionsPage = () => {
       </Modal>
 
       {/* New Bank Modal */}
-      <Modal show={showBankModal} onHide={() => setShowBankModal(false)} className="glass-card-modal">
+      <Modal show={showBankModal} onHide={() => setShowBankModal(false)} className="shadow-lg">
         <Modal.Header closeButton className="border-0">
           <Modal.Title className="fw-bold">Banka Ekle</Modal.Title>
         </Modal.Header>
@@ -1838,7 +3279,7 @@ const BankTransactionsPage = () => {
       </Modal>
 
       {/* Edit Bank Modal */}
-      <Modal show={showEditModal} onHide={() => setShowEditModal(false)} className="glass-card-modal">
+      <Modal show={showEditModal} onHide={() => setShowEditModal(false)} className="shadow-lg">
         <Modal.Header closeButton className="border-0">
           <Modal.Title className="fw-bold">Bankayı Düzenle</Modal.Title>
         </Modal.Header>
@@ -1870,56 +3311,68 @@ const BankTransactionsPage = () => {
       </Modal>
 
       {/* Tag Management Modal */}
-      <Modal show={showTagModal} onHide={() => setShowTagModal(false)} className="glass-card-modal">
+      <Modal show={showTagModal} onHide={() => setShowTagModal(false)} className="shadow-lg">
         <Modal.Header closeButton className="border-0">
           <Modal.Title className="fw-bold">Etiketleri Yönet</Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-4">
           <div className="mb-4">
             <h6 className="fw-bold mb-3">Hızlı İşlemler</h6>
-            <div className="d-flex flex-wrap gap-2 mb-2">
-              {normalizeTags(config.quickActions).map((tag, i) => (
-                <Dropdown key={i}>
-                  <Dropdown.Toggle as="div" className="notion-tag" style={getTagStyle('quickActions', tag.name)}>{tag.name}</Dropdown.Toggle>
+            <div className="d-flex flex-wrap gap-2 mb-3">
+              {quickActionTags.map((tag) => (
+                <Dropdown key={tag.id}>
+                  <Dropdown.Toggle as="div" className="notion-tag cursor-pointer" style={getTagStyleById(quickActionTags, tag.id)}>{tag.name}</Dropdown.Toggle>
                   <Dropdown.Menu className="glass-card border-0 shadow">
                     <div className="p-2 d-flex flex-wrap gap-1" style={{ width: '120px' }}>
-                      {COLORS.map(c => <div key={c.name} onClick={() => updateTag('quickActions', tag.name, c.name)} style={{ width: '20px', height: '20px', backgroundColor: c.bg, borderRadius: '4px', cursor: 'pointer', border: '1px solid #ddd' }} title={c.name} />)}
+                      {COLORS.map(c => (
+                        <div key={c.name} onClick={() => handleUpdateTag('quickActions', tag.id, tag.name, c.name)}
+                          style={{ width: '20px', height: '20px', backgroundColor: c.bg, borderRadius: '4px', cursor: 'pointer', border: '1px solid #ddd' }} title={c.name} />
+                      ))}
                     </div>
                     <Dropdown.Divider />
-                    <Dropdown.Item className="text-danger small" onClick={() => updateTag('quickActions', tag.name, null, 'remove')}>Sil</Dropdown.Item>
+                    <Dropdown.Item className="text-danger small" onClick={() => handleDeleteTag('quickActions', quickActionTags, tag.id)}>Sil</Dropdown.Item>
                   </Dropdown.Menu>
                 </Dropdown>
               ))}
             </div>
             <div className="d-flex gap-2">
               <Form.Control size="sm" placeholder="Yeni ekle..." value={activeTagType === 'quickActions' ? newTagName : ''} onChange={e => setNewTagName(e.target.value)} onFocus={() => setActiveTagType('quickActions')} />
-              <Button size="sm" onClick={() => { updateTag('quickActions', newTagName, 'Gray'); setNewTagName(''); }}><Plus size={14} /></Button>
+              <Button size="sm" onClick={async () => { if (newTagName.trim()) { await handleAddTag('quickActions', quickActionTags, newTagName.trim(), 'Gray'); setNewTagName(''); } }}><Plus size={14} /></Button>
             </div>
           </div>
           <hr className="my-4 opacity-5" />
           <div>
             <h6 className="fw-bold mb-3">İşlem Türleri</h6>
-            <div className="d-flex flex-wrap gap-2 mb-2">
-              {normalizeTags(config.types).map((tag, i) => (
-                <Dropdown key={i}>
-                  <Dropdown.Toggle as="div" className="notion-tag" style={getTagStyle('types', tag.name)}>{tag.name}</Dropdown.Toggle>
+            <div className="d-flex flex-wrap gap-2 mb-3">
+              {typeTags.map((tag) => (
+                <Dropdown key={tag.id}>
+                  <Dropdown.Toggle as="div" className="notion-tag cursor-pointer" style={getTagStyleById(typeTags, tag.id)}>{tag.name}</Dropdown.Toggle>
                   <Dropdown.Menu className="glass-card border-0 shadow">
                     <div className="p-2 d-flex flex-wrap gap-1" style={{ width: '120px' }}>
-                      {COLORS.map(c => <div key={c.name} onClick={() => updateTag('types', tag.name, c.name)} style={{ width: '20px', height: '20px', backgroundColor: c.bg, borderRadius: '4px', cursor: 'pointer', border: '1px solid #ddd' }} title={c.name} />)}
+                      {COLORS.map(c => (
+                        <div key={c.name} onClick={() => handleUpdateTag('transactionTypes', tag.id, tag.name, c.name)}
+                          style={{ width: '20px', height: '20px', backgroundColor: c.bg, borderRadius: '4px', cursor: 'pointer', border: '1px solid #ddd' }} title={c.name} />
+                      ))}
                     </div>
                     <Dropdown.Divider />
-                    <Dropdown.Item className="text-danger small" onClick={() => updateTag('types', tag.name, null, 'remove')}>Sil</Dropdown.Item>
+                    <Dropdown.Item className="text-danger small" onClick={() => handleDeleteTag('transactionTypes', typeTags, tag.id)}>Sil</Dropdown.Item>
                   </Dropdown.Menu>
                 </Dropdown>
               ))}
             </div>
             <div className="d-flex gap-2">
               <Form.Control size="sm" placeholder="Yeni ekle..." value={activeTagType === 'types' ? newTagName : ''} onChange={e => setNewTagName(e.target.value)} onFocus={() => setActiveTagType('types')} />
-              <Button size="sm" onClick={() => { updateTag('types', newTagName, 'Gray'); setNewTagName(''); }}><Plus size={14} /></Button>
+              <Button size="sm" onClick={async () => { if (newTagName.trim()) { await handleAddTag('transactionTypes', typeTags, newTagName.trim(), 'Gray'); setNewTagName(''); } }}><Plus size={14} /></Button>
             </div>
           </div>
         </Modal.Body>
       </Modal>
+
+      <ImportModal 
+        show={showImportModal} 
+        onHide={() => setShowImportModal(false)} 
+        onImport={handleBulkImport} 
+      />
     </div>
   );
 };

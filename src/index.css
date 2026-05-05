@@ -127,13 +127,16 @@ body {
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.1);
   border-radius: 10px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.2);
 }
@@ -143,21 +146,24 @@ body {
   width: 100%;
   border-collapse: collapse;
 }
+
 .notion-table th {
   text-align: left;
   padding: 10px;
   color: #666;
   font-size: 13px;
   font-weight: 500;
-  border-bottom: 1px solid rgba(0,0,0,0.05);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
+
 .notion-table td {
   padding: 12px 10px;
-  border-bottom: 1px solid rgba(0,0,0,0.05);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   font-size: 14px;
 }
+
 .notion-table tr:hover {
-  background: rgba(0,0,0,0.02);
+  background: rgba(0, 0, 0, 0.02);
 }
 
 /* Gallery Cards */
@@ -165,6 +171,7 @@ body {
   transition: transform 0.2s;
   cursor: pointer;
 }
+
 .bank-gallery-card:hover {
   transform: translateY(-5px);
 }
@@ -175,13 +182,188 @@ body {
   transition: opacity 0.2s ease-in-out;
   pointer-events: none;
 }
+
 .group:hover .group-hover-visible {
   opacity: 1 !important;
   pointer-events: auto !important;
 }
 
 /* Remove Blue Focus Ring */
-*:focus, *:focus-visible {
+*:focus,
+*:focus-visible {
   outline: none !important;
   box-shadow: none !important;
+}
+
+/* Custom Utility Classes for BankTransactionsPage */
+.fs-10 {
+  font-size: 10px !important;
+}
+
+.fs-11 {
+  font-size: 11px !important;
+}
+
+.fs-12 {
+  font-size: 12px !important;
+}
+
+.fs-14 {
+  font-size: 14px !important;
+}
+
+.fs-15 {
+  font-size: 15px !important;
+}
+
+.fs-16 {
+  font-size: 16px !important;
+}
+
+.icon-box-xs {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-box-sm {
+  width: 25px;
+  height: 25px;
+  min-width: 25px;
+  min-height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-box-md {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-box-lg {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.z-1000 {
+  z-index: 1000;
+}
+
+.z-10 {
+  z-index: 10;
+}
+
+.gallery-actions {
+  z-index: 10;
+  right: 5px;
+  top: 5px;
+}
+
+/* Inline Cell Editing */
+.cell-editable {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.cell-editable:hover {
+  background: rgba(55, 53, 47, 0.04) !important;
+}
+
+.cell-editing {
+  background: rgba(55, 53, 47, 0.06) !important;
+  position: relative;
+}
+
+.cell-editing .dropdown-menu {
+  position: absolute !important;
+  top: 100% !important;
+  left: 0 !important;
+  z-index: 9999 !important;
+}
+
+/* Inputs inside editable cells — zero padding to prevent row height change */
+.cell-text-input.form-control {
+  display: inline-block;
+  width: 100%;
+  padding: 0 !important;
+  height: auto !important;
+  min-height: unset !important;
+  line-height: inherit !important;
+  font-size: 14px !important;
+  box-shadow: none !important;
+}
+
+/* Date input — hide native chrome/safari icon to prevent width expansion */
+.cell-date-input.form-control {
+  padding: 0 !important;
+  height: auto !important;
+  min-height: unset !important;
+  line-height: inherit !important;
+  font-size: 14px !important;
+  box-shadow: none !important;
+  width: 130px;
+  color-scheme: light;
+}
+
+/* --- Mobile / Tablet Responsiveness --- */
+@media (max-width: 991px) {
+  .glass-sidebar {
+    width: 260px !important;
+    transform: translateX(0);
+  }
+  
+  .glass-sidebar.collapsed {
+    transform: translateX(-100%);
+  }
+
+  /* Make toggle button stick out and look like a FAB on mobile when sidebar is collapsed */
+  .glass-sidebar.collapsed .sidebar-toggle-btn {
+    right: -55px !important;
+    top: 20px !important;
+    width: 45px;
+    height: 45px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15) !important;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+    padding: 20px 15px !important;
+  }
+
+  .mobile-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.4);
+    z-index: 999;
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+}
+
+@media (min-width: 992px) {
+  .mobile-backdrop {
+    display: none !important;
+  }
 }

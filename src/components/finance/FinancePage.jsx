@@ -56,7 +56,7 @@ const FinancePage = () => {
 
       <Row>
         <Col lg={6} className="mb-4">
-          <Card className="glass-card border-0 h-100 overflow-hidden">
+          <Card className="bg-white shadow-lg border rounded-3 border-0 h-100 overflow-hidden">
             <Card.Header className="bg-transparent border-bottom p-3 d-flex align-items-center gap-2">
               <Landmark size={20} className="text-primary" /> <strong className="small text-uppercase">Aracı Kurumlar</strong>
             </Card.Header>
@@ -102,7 +102,7 @@ const FinancePage = () => {
         </Col>
 
         <Col lg={6} className="mb-4">
-          <Card className="glass-card border-0 h-100 overflow-hidden">
+          <Card className="bg-white shadow-lg border rounded-3 border-0 h-100 overflow-hidden">
             <Card.Header className="bg-transparent border-bottom p-3 d-flex align-items-center gap-2">
               <TrendingUp size={20} className="text-success" /> <strong className="small text-uppercase">Hisseler</strong>
             </Card.Header>
