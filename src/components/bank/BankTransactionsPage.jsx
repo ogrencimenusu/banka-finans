@@ -27,6 +27,7 @@ import {
   ChevronDown,
   ChevronRight,
   LayoutGrid,
+  Check,
   List as ListIcon,
   MoreHorizontal,
   Landmark,
@@ -47,7 +48,6 @@ import {
   CircleDollarSign,
   Link2,
   ChevronsUpDown,
-  Check,
   X,
   Table as TableIcon,
   List,
@@ -135,7 +135,6 @@ const getPropertyIcon = (id, config) => {
 
 const SortablePropertyItem = ({ prop, isVisible, toggleVisibility, icon }) => {
   if (!prop) return null;
-
   const {
     attributes,
     listeners,
@@ -172,7 +171,7 @@ const SortablePropertyItem = ({ prop, isVisible, toggleVisibility, icon }) => {
   );
 };
 
-const SortableTransactionRow = ({ t, index, config, selectedIds, onSelect, renderCell, isWrapped, activeDragId }) => {
+const SortableTransactionRow = ({ t, config, selectedIds, onSelect, renderCell, isWrapped, activeDragId }) => {
   const {
     attributes,
     listeners,
@@ -195,14 +194,8 @@ const SortableTransactionRow = ({ t, index, config, selectedIds, onSelect, rende
     boxShadow: isDragging && !isMultiDragActive ? '0 5px 15px rgba(0,0,0,0.1)' : 'none'
   };
 
-  const isRowHighlighted = 
-    (config.rowHighlight === 'odd' && index % 2 !== 0) || 
-    (config.rowHighlight === 'even' && index % 2 === 0);
-
-  const rowClassName = `align-middle group ${isDragging ? 'bg-light' : ''} ${isRowHighlighted ? 'bg-light bg-opacity-50' : ''}`;
-
   return (
-    <tr ref={setNodeRef} style={style} className={rowClassName}>
+    <tr ref={setNodeRef} style={style} className={`align-middle group ${isDragging ? 'bg-light' : ''}`}>
       <td className="ps-2">
         <div 
           className={`d-flex align-items-center gap-2 ${isSelected ? 'opacity-100' : 'group-hover-visible'}`} 
@@ -224,7 +217,8 @@ const SortableTransactionRow = ({ t, index, config, selectedIds, onSelect, rende
           />
         </div>
       </td>
-      {(config.propertyOrder || PROPERTIES.map(p => p.id))
+      {(Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id))
+        .filter(id => PROPERTIES.some(p => p.id === id))
         .filter(id => config.propertyVisibility?.[id] !== false)
         .map(id => renderCell(id, t))}
     </tr>
@@ -366,7 +360,7 @@ const ImportModal = ({ show, onHide, onImport }) => {
   };
 
   return (
-    <Modal show={show} onHide={onHide} size="lg" contentClassName="glass-card">
+    <Modal show={show} onHide={onHide} size="lg" className="glass-card">
       <Modal.Header closeButton className="border-0">
         <Modal.Title className="fw-bold">HTML Import</Modal.Title>
       </Modal.Header>
@@ -701,11 +695,10 @@ const BankTransactionsPage = () => {
   const [amount, setAmount] = useState('');
   const [receiptUrl, setReceiptUrl] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [limitCount, setLimitCount] = useState(50);
+  const [limitCount, setLimitCount] = useState(10);
   const [hasMore, setHasMore] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [isGlobalSelected, setIsGlobalSelected] = useState(false);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const getBankInfo = (id) => banks.find(b => b.id === id) || {};
 
@@ -766,27 +759,32 @@ const BankTransactionsPage = () => {
       setBanks(bItems.filter(b => b.deleted !== true).sort((a, b) => (a.order ?? 999) - (b.order ?? 999)));
     });
 
-    // Transactions (Limited for the list to save quota)
+    // All Transactions (for accurate balances, sorting and filtering)
     const baseColl = collection(db, `users/${user.uid}/bankTransactions`);
-    const transQuery = query(baseColl, where('deleted', '==', false), orderBy('createdAt', 'desc'), limit(limitCount));
+    const transQuery = query(baseColl, orderBy('createdAt', 'desc'));
 
     const unsubTrans = onSnapshot(transQuery, (snap) => {
       const trans = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setTransactions(trans);
-      setIsInitialLoading(false);
-      if (snap.docs.length < limitCount) setHasMore(false);
-      else setHasMore(true);
+      const activeTrans = trans.filter(t => t.deleted !== true);
+      setTransactions(activeTrans);
+      setTotalCount(activeTrans.length);
+      setHasMore(false); // We have everything
     });
-
-    // Separate count/total listener (Optional: for performance we might want to fetch this differently, 
-    // but for now we just get the full count if needed or use a separate summary doc)
-    // To TRULY save reads, we should eventually move balances to the Bank document.
 
 
 
     // Config
     const unsubConfig = onSnapshot(doc(db, `users/${user.uid}/config`, 'bankSettings'), (snap) => {
-      if (snap.exists()) setConfig(prev => ({ ...prev, ...snap.data() }));
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.filters && !Array.isArray(data.filters)) data.filters = [];
+        if (data.propertyOrder && !Array.isArray(data.propertyOrder)) {
+          delete data.propertyOrder;
+        } else if (Array.isArray(data.propertyOrder)) {
+          data.propertyOrder = data.propertyOrder.filter(id => PROPERTIES.some(p => p.id === id));
+        }
+        setConfig(prev => ({ ...prev, ...data }));
+      }
     });
 
     // QuickAction Tags collection
@@ -805,53 +803,63 @@ const BankTransactionsPage = () => {
     });
 
     return () => { unsubBanks(); unsubTrans(); unsubConfig(); unsubQA(); unsubTT(); unsubHistory(); };
-  }, [user, limitCount]);
+  }, [user]);
 
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter(t => {
-      const bank = getBankInfo(t.bankId);
-      if (bank.visible === false) return false;
-      if (selectedBankId !== 'all' && t.bankId !== selectedBankId) return false;
-      
-      // Apply filters from config
-      const activeFilters = config.filters || [];
-      for (const f of activeFilters) {
-        const val = t[f.propId];
-        const filterVal = (f.value || '').toLowerCase();
-        const stringVal = (val || '').toString().toLowerCase();
+  const filteredTransactions = transactions.filter(t => {
+    const bank = getBankInfo(t.bankId);
+    if (bank.visible === false) return false;
+    if (selectedBankId !== 'all' && t.bankId !== selectedBankId) return false;
+    
+    // Apply filters from config
+    const activeFilters = Array.isArray(config.filters) ? config.filters : [];
+    for (const f of activeFilters) {
+      const val = t[f.propId];
+      const filterValueRaw = (f.value || '');
+      const filterValLower = filterValueRaw.toLowerCase();
+      const stringVal = (val || '').toString().toLowerCase();
 
-        switch (f.operator) {
-          case 'contains': if (!stringVal.includes(filterVal)) return false; break;
-          case 'does_not_contain': if (stringVal.includes(filterVal)) return false; break;
-          case 'is': if (stringVal !== filterVal) return false; break;
-          case 'is_not': if (stringVal === filterVal) return false; break;
-          case 'starts_with': if (!stringVal.startsWith(filterVal)) return false; break;
-          case 'ends_with': if (!stringVal.endsWith(filterVal)) return false; break;
-          case 'is_empty': 
-            if (Array.isArray(val)) {
-              if (val.length > 0) return false;
-            } else if (val) return false; 
-            break;
-          case 'is_not_empty': 
-            if (Array.isArray(val)) {
-              if (val.length === 0) return false;
-            } else if (!val) return false; 
-            break;
-          case 'between': {
-            if (f.propId === 'date') {
-              const [start, end] = (f.value || '').split(',');
-              if (start && val < start) return false;
-              if (end && val > end) return false;
-            }
-            break;
-          }
-          default: break;
-        }
+      // Multi-select handling for category fields
+      if (['bankId', 'type', 'quickActions'].includes(f.propId) && !['is_empty', 'is_not_empty'].includes(f.operator)) {
+        const selectedIds = filterValueRaw.split(',').filter(v => v);
+        const transactionValues = Array.isArray(val) ? val : [val];
+        const hasOverlap = transactionValues.some(v => selectedIds.includes(v));
+
+        if (f.operator === 'contains' && !hasOverlap) return false;
+        if (f.operator === 'does_not_contain' && hasOverlap) return false;
+        continue;
       }
 
-      return true;
-    });
-  }, [transactions, banks, selectedBankId, config.filters]);
+      switch (f.operator) {
+        case 'contains': if (!stringVal.includes(filterValLower)) return false; break;
+        case 'does_not_contain': if (stringVal.includes(filterValLower)) return false; break;
+        case 'is': if (stringVal !== filterValLower) return false; break;
+        case 'is_not': if (stringVal === filterValLower) return false; break;
+        case 'starts_with': if (!stringVal.startsWith(filterValLower)) return false; break;
+        case 'ends_with': if (!stringVal.endsWith(filterValLower)) return false; break;
+        case 'is_empty': 
+          if (Array.isArray(val)) {
+            if (val.length > 0) return false;
+          } else if (val) return false; 
+          break;
+        case 'is_not_empty': 
+          if (Array.isArray(val)) {
+            if (val.length === 0) return false;
+          } else if (!val) return false; 
+          break;
+        case 'between': {
+          if (f.propId === 'date') {
+            const [start, end] = filterValueRaw.split(',');
+            if (start && val < start) return false;
+            if (end && val > end) return false;
+          }
+          break;
+        }
+        default: break;
+      }
+    }
+
+    return true;
+  });
 
   const sortedTransactions = useMemo(() => {
     return [...filteredTransactions].sort((a, b) => {
@@ -888,20 +896,22 @@ const BankTransactionsPage = () => {
     });
   }, [filteredTransactions, config.sortConfig]);
 
-  const visibleTransactions = filteredTransactions; // We already limited in Firestore query
+  const visibleTransactions = useMemo(() => sortedTransactions.slice(0, limitCount), [sortedTransactions, limitCount]);
 
   // Infinite Scroll Observer
   useEffect(() => {
-    const options = { root: null, rootMargin: '100px', threshold: 0.1 };
+    if (!isInfiniteScroll) return; // Only if enabled
+
+    const options = { root: null, rootMargin: '20px', threshold: 0.1 };
     const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && hasMore && !isInitialLoading) {
-        setLimitCount(prev => prev + 50);
+      if (entries[0].isIntersecting && limitCount < sortedTransactions.length) {
+        setLimitCount(prev => Math.min(prev + 100, sortedTransactions.length));
       }
     }, options);
 
     if (lastElementRef.current) observer.observe(lastElementRef.current);
     return () => observer.disconnect();
-  }, [hasMore, isInitialLoading]);
+  }, [sortedTransactions.length, limitCount]);
 
   const bankBalances = useMemo(() => {
     const balances = {};
@@ -982,23 +992,20 @@ const BankTransactionsPage = () => {
     setShowTransactionModal(false);
   };
 
-  const handleAddEmptyTransaction = async () => {
+  const handleQuickNewTransaction = async () => {
     if (!user) return;
-    try {
-      await addDoc(collection(db, `users/${user.uid}/bankTransactions`), {
-        bankId: '',
-        title: '',
-        quickActions: [],
-        type: '',
-        amount: '',
-        receiptUrl: '',
-        date: new Date().toISOString().split('T')[0],
-        createdAt: new Date(),
-        deleted: false
-      });
-    } catch (err) {
-      console.error("Error adding empty transaction", err);
-    }
+    const today = new Date().toISOString().split('T')[0];
+    await addDoc(collection(db, `users/${user.uid}/bankTransactions`), {
+      bankId: '',
+      title: '',
+      quickActions: [],
+      type: '',
+      amount: '',
+      receiptUrl: '',
+      date: today,
+      createdAt: new Date(),
+      deleted: false
+    });
   };
 
   const updateConfig = async (newConfig) => {
@@ -1008,20 +1015,34 @@ const BankTransactionsPage = () => {
   };
 
   const handleUpdateFilter = (propId, operator, value) => {
-    const newFilters = [...(config.filters || [])];
+    const currentFilters = Array.isArray(config.filters) ? config.filters : [];
+    const newFilters = [...currentFilters];
     const existing = newFilters.findIndex(f => f.propId === propId);
+
     if (existing !== -1) {
-      if (value === null) newFilters.splice(existing, 1);
-      else newFilters[existing] = { ...newFilters[existing], operator, value };
+      if (value === null) {
+        newFilters.splice(existing, 1);
+      } else {
+        let newValue = value;
+        if (['bankId', 'type', 'quickActions'].includes(propId)) {
+          const currentValues = (newFilters[existing].value || '').split(',').filter(v => v);
+          if (currentValues.includes(value)) {
+            newValue = currentValues.filter(v => v !== value).join(',');
+          } else {
+            newValue = [...currentValues, value].join(',');
+          }
+        }
+        
+        if (!newValue && ['bankId', 'type', 'quickActions'].includes(propId)) {
+          newFilters.splice(existing, 1);
+        } else {
+          newFilters[existing] = { ...newFilters[existing], operator, value: newValue };
+        }
+      }
     } else {
       newFilters.push({ propId, operator, value });
     }
     updateConfig({ filters: newFilters });
-  };
-
-  const handleUpdateConfig = async (updates) => {
-    const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
-    await setDoc(configRef, { ...config, ...updates }, { merge: true });
   };
 
   const handleBulkImport = async (parsedData) => {
@@ -1521,7 +1542,7 @@ const BankTransactionsPage = () => {
   };
 
   const handleUpdatePropertyOrder = async (oldIndex, newIndex) => {
-    const order = config.propertyOrder || PROPERTIES.map(p => p.id);
+    const order = Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id);
     const updatedOrder = arrayMove(order, oldIndex, newIndex);
     const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
     await setDoc(configRef, { ...config, propertyOrder: updatedOrder }, { merge: true });
@@ -1889,51 +1910,16 @@ const BankTransactionsPage = () => {
                   <SlidersHorizontal size={20} />
                 </Dropdown.Toggle>
                 <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
-                  <div className="px-3 py-1 d-flex align-items-center justify-content-between">
-                    <span className="small fw-bold text-muted opacity-50 fs-10">BANKA GÖRÜNÜRLÜĞÜ</span>
-                    <div className="d-flex gap-2">
-                      <span className="x-small text-primary cursor-pointer fw-medium" onClick={async (e) => {
-                        e.stopPropagation();
-                        const batch = writeBatch(db);
-                        banks.forEach(b => {
-                          const collectionName = b.source || 'banks';
-                          batch.update(doc(db, `users/${user.uid}/${collectionName}`, b.id), { visible: true });
-                        });
-                        await batch.commit();
-                      }}>Tümü</span>
-                      <span className="x-small text-primary cursor-pointer fw-medium" onClick={async (e) => {
-                        e.stopPropagation();
-                        const batch = writeBatch(db);
-                        banks.forEach(b => {
-                          const collectionName = b.source || 'banks';
-                          batch.update(doc(db, `users/${user.uid}/${collectionName}`, b.id), { visible: false });
-                        });
-                        await batch.commit();
-                      }}>Gizle</span>
-                    </div>
-                  </div>
-                  <div className="overflow-auto mb-2 custom-scrollbar" style={{ maxHeight: '200px' }}>
+                  <div className="px-3 py-1 mb-1 small fw-bold text-muted opacity-50 fs-10">BANKA VISIBILITY</div>
+                  <div className="overflow-auto mb-2" style={{ maxHeight: '200px' }}>
                     {banks.map(bank => (
-                      <div key={bank.id} 
-                        className="d-flex align-items-center justify-content-between px-3 py-1.5 hover-bg-light rounded-2 mx-1 transition-all"
-                        style={{ cursor: 'default' }}
-                      >
-                        <div className="d-flex align-items-center gap-2 overflow-hidden flex-grow-1">
-                          <div className="rounded-circle bg-light d-flex align-items-center justify-content-center p-1" style={{ width: '22px', height: '22px' }}>
-                            {bank.logo ? <img src={bank.logo} alt="" width="14" height="14" className="object-fit-contain" /> : <Landmark size={12} className="text-muted" />}
-                          </div>
-                          <span className="text-truncate" style={{ fontSize: '13px', fontWeight: 500 }}>{bank.name}</span>
+                      <div key={bank.id} className="d-flex align-items-center justify-content-between px-3 py-1 hover-bg-light rounded-2">
+                        <div className="d-flex align-items-center gap-2 overflow-hidden">
+                          {bank.logo ? <img src={bank.logo} alt="" width="14" height="14" className="object-fit-contain" /> : <Landmark size={12} className="text-muted" />}
+                          <span className="text-truncate" style={{ fontSize: '13px' }}>{bank.name}</span>
                         </div>
-                        <div 
-                          className="cursor-pointer d-flex align-items-center p-1 hover-bg-secondary rounded transition-colors" 
-                          onClick={(e) => { e.stopPropagation(); handleToggleBankVisibility(bank, !(bank.visible !== false)); }}
-                          title={bank.visible !== false ? 'Gizle' : 'Göster'}
-                        >
-                          {bank.visible !== false ? (
-                            <Eye size={14} className="text-primary" />
-                          ) : (
-                            <EyeOff size={14} className="text-muted opacity-50" />
-                          )}
+                        <div className="cursor-pointer d-flex align-items-center ps-2" onClick={(e) => { e.stopPropagation(); handleToggleBankVisibility(bank, !(bank.visible !== false)); }}>
+                          {bank.visible !== false ? <Eye size={14} className="text-dark" /> : <EyeOff size={14} className="text-muted opacity-25" />}
                         </div>
                       </div>
                     ))}
@@ -2053,12 +2039,13 @@ const BankTransactionsPage = () => {
         <h1 className="fw-bold m-0">Banka İşlemleri</h1>
         <div className="d-flex align-items-center gap-3">
           <div className="d-flex align-items-center gap-3 text-muted opacity-75">
+
             <Dropdown align="end" className="d-inline" autoClose="outside" onToggle={(isOpen) => !isOpen && setSettingsView('main')}>
               <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret" style={{ cursor: 'pointer' }}>
                 <SlidersHorizontal size={20} />
               </Dropdown.Toggle>
               <Dropdown.Menu className="glass-card border-0 shadow-lg p-0 overflow-hidden" style={{ width: '280px', zIndex: 10001 }}>
-                {settingsView === 'main' && (
+                {settingsView === 'main' ? (
                   <div className="p-2">
                     <Dropdown.Item onClick={() => setSettingsView('visibility')} className="rounded-2 d-flex align-items-center justify-content-between py-2">
                       <div className="d-flex align-items-center gap-2">
@@ -2094,25 +2081,22 @@ const BankTransactionsPage = () => {
                       </div>
                       <ChevronRight size={14} className="text-muted opacity-50" />
                     </Dropdown.Item>
-                    <Dropdown.Item onClick={() => setSettingsView('conditional_color')} className="rounded-2 d-flex align-items-center justify-content-between py-2">
+                    <Dropdown.Item className="rounded-2 d-flex align-items-center justify-content-between py-2">
                       <div className="d-flex align-items-center gap-2">
                         <PaintRoller size={18} className="text-muted" />
                         <span>Conditional color</span>
                       </div>
-                      <div className="d-flex align-items-center gap-2 text-muted opacity-50">
-                        <span className="text-capitalize">{config.rowHighlight || 'None'}</span>
-                        <ChevronRight size={14} />
-                      </div>
+                      <ChevronRight size={14} className="text-muted opacity-50" />
                     </Dropdown.Item>
+                    
                     <div className="dropdown-divider mx-2 opacity-10"></div>
+                    
                     <div className="px-3 py-1 mt-2 mb-1 small fw-bold text-muted opacity-50" style={{ fontSize: '10px' }}>İŞLEM SEÇENEKLERİ</div>
                     <Dropdown.Item onClick={() => setShowTagModal(true)} className="rounded-2 d-flex align-items-center gap-2">
                       <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><Settings size={15} /></div> Etiketleri Yönet
                     </Dropdown.Item>
                   </div>
-                )}
-
-                {settingsView === 'visibility' && (
+                ) : (
                   <div className="d-flex flex-column" style={{ maxHeight: '450px' }}>
                     <div className="p-2 d-flex align-items-center gap-2 border-bottom">
                       <div className="cursor-pointer p-1 hover-bg-light rounded" onClick={() => setSettingsView('main')}>
@@ -2128,7 +2112,7 @@ const BankTransactionsPage = () => {
                           onDragEnd={(e) => {
                             const { active, over } = e;
                             if (active && over && active.id !== over.id) {
-                              const order = config.propertyOrder || PROPERTIES.map(p => p.id);
+                              const order = Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id);
                               const oldIdx = order.indexOf(active.id);
                               const newIdx = order.indexOf(over.id);
                               handleUpdatePropertyOrder(oldIdx, newIdx);
@@ -2136,7 +2120,7 @@ const BankTransactionsPage = () => {
                           }}
                         >
                           <SortableContext 
-                            items={config.propertyOrder || PROPERTIES.map(p => p.id)} 
+                            items={Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id)} 
                             strategy={verticalListSortingStrategy}
                           >
                             <div className="d-flex align-items-center justify-content-between px-2 py-1 mb-1">
@@ -2146,56 +2130,23 @@ const BankTransactionsPage = () => {
                                 <span className="x-small text-primary cursor-pointer fw-medium" onClick={() => toggleAllProperties(false)}>Hide all</span>
                               </div>
                             </div>
-                            {(config.propertyOrder || PROPERTIES.map(p => p.id))
-                              .map(id => ({ id, p: PROPERTIES.find(p => p.id === id) }))
-                              .filter(item => item.p)
-                              .map(({ id, p }) => (
-                                <SortablePropertyItem 
-                                  key={id} 
-                                  prop={p} 
-                                  icon={getPropertyIcon(id, config)}
-                                  isVisible={config.propertyVisibility?.[id] !== false}
-                                  toggleVisibility={(id) => handleUpdatePropertyVisibility(id, !(config.propertyVisibility?.[id] !== false))}
-                                />
-                              ))}
+                            {(Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id))
+                              .map(id => {
+                                const prop = PROPERTIES.find(p => p.id === id);
+                                if (!prop) return null;
+                                return (
+                                  <SortablePropertyItem 
+                                    key={id} 
+                                    prop={prop} 
+                                    icon={getPropertyIcon(id, config)}
+                                    isVisible={config.propertyVisibility?.[id] !== false}
+                                    toggleVisibility={(id) => handleUpdatePropertyVisibility(id, !(config.propertyVisibility?.[id] !== false))}
+                                  />
+                                );
+                              })}
                           </SortableContext>
                         </DndContext>
                       </div>
-                    </div>
-                  </div>
-                )}
-
-                {settingsView === 'conditional_color' && (
-                  <div className="d-flex flex-column" style={{ maxHeight: '450px' }}>
-                    <div className="p-2 d-flex align-items-center gap-2 border-bottom">
-                      <div className="cursor-pointer p-1 hover-bg-light rounded" onClick={() => setSettingsView('main')}>
-                        <X size={16} />
-                      </div>
-                      <span className="fw-bold flex-grow-1" style={{ fontSize: '14px' }}>Conditional color</span>
-                    </div>
-                    <div className="p-2">
-                      <div className="px-2 py-1 mb-1 x-small fw-bold text-muted opacity-50">ROW HIGHLIGHTING</div>
-                      <Dropdown.Item 
-                        onClick={() => handleUpdateConfig({ rowHighlight: config.rowHighlight === 'odd' ? 'none' : 'odd' })}
-                        className={`rounded-2 d-flex align-items-center justify-content-between py-2 ${config.rowHighlight === 'odd' ? 'bg-light text-primary' : ''}`}
-                      >
-                        <span>Highlight Odd Rows</span>
-                        {config.rowHighlight === 'odd' && <Check size={14} />}
-                      </Dropdown.Item>
-                      <Dropdown.Item 
-                        onClick={() => handleUpdateConfig({ rowHighlight: config.rowHighlight === 'even' ? 'none' : 'even' })}
-                        className={`rounded-2 d-flex align-items-center justify-content-between py-2 ${config.rowHighlight === 'even' ? 'bg-light text-primary' : ''}`}
-                      >
-                        <span>Highlight Even Rows</span>
-                        {config.rowHighlight === 'even' && <Check size={14} />}
-                      </Dropdown.Item>
-                      <div className="dropdown-divider mx-2 opacity-10"></div>
-                      <Dropdown.Item 
-                        onClick={() => handleUpdateConfig({ rowHighlight: 'none' })}
-                        className="rounded-2 py-2 text-danger"
-                      >
-                        Clear highlight
-                      </Dropdown.Item>
                     </div>
                   </div>
                 )}
@@ -2210,13 +2161,13 @@ const BankTransactionsPage = () => {
           >
             <Upload size={14} /> Import
           </Button>
-          <div className="btn-group shadow-sm" role="group">
+          <div className="d-flex align-items-center shadow-sm rounded-pill overflow-hidden" style={{ background: '#0d6efd' }}>
             <Button 
               variant="primary" 
               size="sm" 
-              onClick={handleAddEmptyTransaction}
-              className="d-flex align-items-center px-3 border-end border-light border-opacity-25"
-              style={{ borderTopLeftRadius: '50rem', borderBottomLeftRadius: '50rem' }}
+              onClick={handleQuickNewTransaction}
+              className="border-0 px-3 h-100 rounded-0 border-end"
+              style={{ borderColor: 'rgba(255,255,255,0.2) !important' }}
             >
               New
             </Button>
@@ -2224,8 +2175,7 @@ const BankTransactionsPage = () => {
               variant="primary" 
               size="sm" 
               onClick={() => setShowTransactionModal(true)}
-              className="d-flex align-items-center px-2"
-              style={{ borderTopRightRadius: '50rem', borderBottomRightRadius: '50rem', marginLeft: '-1px' }}
+              className="border-0 px-2 h-100 rounded-0 d-flex align-items-center"
             >
               <ChevronDown size={14} />
             </Button>
@@ -2578,9 +2528,11 @@ const BankTransactionsPage = () => {
                           <Dropdown.Toggle as="span" className="fw-medium cursor-pointer hover-text-primary text-truncate d-inline-flex align-items-center" style={{ maxWidth: '120px' }}>
                             {(() => {
                               if (!f.value) return 'Seçiniz...';
-                              if (f.propId === 'bankId') return getBankInfo(f.value).name || 'Bilinmiyor';
-                              if (f.propId === 'type') return typeTags.find(t => t.id === f.value)?.name || 'Bilinmiyor';
-                              if (f.propId === 'quickActions') return quickActionTags.find(t => t.id === f.value)?.name || 'Bilinmiyor';
+                              const ids = f.value.split(',').filter(v => v);
+                              if (ids.length > 1) return `${ids.length} Seçili`;
+                              if (f.propId === 'bankId') return getBankInfo(ids[0]).name || 'Bilinmiyor';
+                              if (f.propId === 'type') return typeTags.find(t => t.id === ids[0])?.name || 'Bilinmiyor';
+                              if (f.propId === 'quickActions') return quickActionTags.find(t => t.id === ids[0])?.name || 'Bilinmiyor';
                               return f.value;
                             })()}
                           </Dropdown.Toggle>
@@ -2592,19 +2544,23 @@ const BankTransactionsPage = () => {
                                 : [...quickActionTags].sort((a, b) => (a.order || 0) - (b.order || 0))
                             ).map(item => {
                               const colorObj = COLORS.find(c => c.name === item.color) || COLORS[0];
+                              const isSelected = (f.value || '').split(',').includes(item.id);
                               return (
                                 <Dropdown.Item 
                                   key={item.id} 
                                   className="small rounded-2 py-2 mb-1" 
-                                  onClick={() => handleUpdateFilter(f.propId, f.operator, item.id)}
+                                  onClick={(e) => { e.stopPropagation(); handleUpdateFilter(f.propId, f.operator, item.id); }}
                                 >
-                                  <div className="d-flex align-items-center">
-                                    {f.propId === 'bankId' && item.logo && (
-                                      <img src={item.logo} alt="" width="14" height="14" className="me-2 rounded-circle" style={{ objectFit: 'contain' }} />
-                                    )}
-                                    <span className="px-2 py-0.5 rounded-1" style={f.propId !== 'bankId' ? { backgroundColor: colorObj.bg, color: colorObj.text, fontSize: '11px' } : {}}>
-                                      {item.name}
-                                    </span>
+                                  <div className="d-flex align-items-center justify-content-between">
+                                    <div className="d-flex align-items-center">
+                                      {f.propId === 'bankId' && item.logo && (
+                                        <img src={item.logo} alt="" width="14" height="14" className="me-2 rounded-circle" style={{ objectFit: 'contain' }} />
+                                      )}
+                                      <span className="px-2 py-0.5 rounded-1" style={f.propId !== 'bankId' ? { backgroundColor: colorObj.bg, color: colorObj.text, fontSize: '11px' } : {}}>
+                                        {item.name}
+                                      </span>
+                                    </div>
+                                    {isSelected && <Check size={14} className="text-primary" />}
                                   </div>
                                 </Dropdown.Item>
                               );
@@ -2837,7 +2793,6 @@ const BankTransactionsPage = () => {
                   <SortableTransactionRow 
                     key={t.id} 
                     t={t} 
-                    index={index}
                     config={config} 
                     selectedIds={selectedIds}
                     renderCell={renderCell}
