@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
-import { 
-  collection, 
-  addDoc, 
-  onSnapshot, 
-  query, 
-  orderBy, 
-  doc, 
+import {
+  collection,
+  addDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  doc,
   setDoc,
   updateDoc,
   deleteDoc,
@@ -17,11 +17,11 @@ import {
   where,
   serverTimestamp
 } from 'firebase/firestore';
-import { Button, Form, Card, Row, Col, Table, Badge, Dropdown, Modal } from 'react-bootstrap';
-import { 
-  Trash2, 
-  Plus, 
-  Settings, 
+import { Button, Form, Card, Row, Col, Table, Badge, Dropdown, Modal, Overlay } from 'react-bootstrap';
+import {
+  Trash2,
+  Plus,
+  Settings,
   ArrowUpDown,
   Wallet,
   ChevronDown,
@@ -64,12 +64,14 @@ import {
   Tag,
   RotateCcw,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Layers,
+  Sigma
 } from 'lucide-react';
 
 // Dnd Kit Imports
 import {
-  DndContext, 
+  DndContext,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
@@ -133,6 +135,25 @@ const getPropertyIcon = (id, config) => {
   return PROPERTIES.find(p => p.id === id)?.icon;
 };
 
+const SortableGroupItem = ({ id, label, icon, visible, onToggle }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 10 : 1, opacity: isDragging ? 0.5 : 1 };
+
+  return (
+    <div ref={setNodeRef} style={style} className="d-flex align-items-center gap-2 py-2 px-1 hover-bg-light rounded group border-0 bg-transparent">
+      <div {...attributes} {...listeners} className="cursor-grab text-muted opacity-25 group-hover-opacity-100 transition-all">
+        <GripVertical size={14} />
+      </div>
+      <div className="d-flex align-items-center gap-2 flex-grow-1 min-w-0" onClick={onToggle} style={{ cursor: 'pointer' }}>
+         <span className={`small text-truncate ${!visible ? 'opacity-50 text-decoration-line-through' : ''}`}>{label}</span>
+      </div>
+      <div className="ms-auto" onClick={onToggle} style={{ cursor: 'pointer' }}>
+        {visible ? <Eye size={14} className="text-primary" /> : <EyeOff size={14} className="text-muted opacity-50" />}
+      </div>
+    </div>
+  );
+};
+
 const SortablePropertyItem = ({ prop, isVisible, toggleVisibility, icon }) => {
   if (!prop) return null;
   const {
@@ -152,9 +173,9 @@ const SortablePropertyItem = ({ prop, isVisible, toggleVisibility, icon }) => {
   };
 
   return (
-    <div 
-      ref={setNodeRef} 
-      style={style} 
+    <div
+      ref={setNodeRef}
+      style={style}
       className="d-flex align-items-center justify-content-between py-1 px-2 hover-bg-light rounded-2 group"
     >
       <div className="d-flex align-items-center gap-2">
@@ -171,47 +192,26 @@ const SortablePropertyItem = ({ prop, isVisible, toggleVisibility, icon }) => {
   );
 };
 
-const SortableTransactionRow = ({ t, config, selectedIds, onSelect, renderCell, isWrapped, activeDragId }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ id: t.id });
-
+const TransactionRow = React.memo(({ t, config, selectedIds, onSelect, renderCell, isWrapped, isEditing, tableId = 'LIST_MAIN' }) => {
   const isSelected = selectedIds.includes(t.id);
-  const isMultiDragActive = activeDragId && selectedIds.length > 1 && selectedIds.includes(activeDragId);
-  const isPartOfMultiDrag = isMultiDragActive && isSelected;
 
   const style = {
-    transform: isMultiDragActive ? undefined : CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 1001 : 'auto',
-    opacity: isPartOfMultiDrag || isDragging ? 0.3 : 1, // Fade out the original rows if they are part of multi-drag
+    zIndex: isEditing ? 1000 : 'auto',
     position: 'relative',
-    boxShadow: isDragging && !isMultiDragActive ? '0 5px 15px rgba(0,0,0,0.1)' : 'none'
   };
 
   return (
-    <tr ref={setNodeRef} style={style} className={`align-middle group ${isDragging ? 'bg-light' : ''}`}>
+    <tr style={style} className={`align-middle group`}>
       <td className="ps-2">
-        <div 
-          className={`d-flex align-items-center gap-2 ${isSelected ? 'opacity-100' : 'group-hover-visible'}`} 
+        <div
+          className={`d-flex align-items-center gap-2 ${isSelected ? 'opacity-100' : 'group-hover-visible'}`}
           style={{ width: '50px' }}
         >
-          <div {...listeners} {...attributes} className="cursor-grab text-muted opacity-25 hover-opacity-100 position-relative">
-            <GripVertical size={14} />
-            {isDragging && isMultiDragActive && (
-              <span className="position-absolute badge rounded-pill bg-primary shadow-sm" style={{ fontSize: '0.65rem', top: '-6px', right: '-8px', zIndex: 10 }}>
-                {selectedIds.length}
-              </span>
-            )}
+          <div className="text-muted opacity-25" style={{ width: '14px' }}>
           </div>
-          <Form.Check 
-            type="checkbox" 
-            className="notion-checkbox custom-checkbox-sm" 
+          <Form.Check
+            type="checkbox"
+            className="notion-checkbox custom-checkbox-sm"
             checked={isSelected}
             onChange={(e) => onSelect(t.id, e.target.checked)}
           />
@@ -220,10 +220,10 @@ const SortableTransactionRow = ({ t, config, selectedIds, onSelect, renderCell, 
       {(Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id))
         .filter(id => PROPERTIES.some(p => p.id === id))
         .filter(id => config.propertyVisibility?.[id] !== false)
-        .map(id => renderCell(id, t))}
+        .map(id => renderCell(id, t, tableId))}
     </tr>
   );
-};
+});
 
 // Visible date input that allows both manual typing and auto-opens calendar
 const DateCellInput = ({ value, onSave, onCancel }) => {
@@ -233,7 +233,7 @@ const DateCellInput = ({ value, onSave, onCancel }) => {
   React.useEffect(() => {
     if (ref.current) {
       const timer = setTimeout(() => {
-        try { ref.current.showPicker(); } catch (e) {}
+        try { ref.current.showPicker(); } catch (e) { }
       }, 10);
       return () => clearTimeout(timer);
     }
@@ -246,7 +246,13 @@ const DateCellInput = ({ value, onSave, onCancel }) => {
       value={draft}
       className="border-0 bg-transparent p-0 cell-date-input fs-14"
       style={{ boxShadow: 'none' }}
-      onChange={e => setDraft(e.target.value)}
+      onChange={e => {
+        const val = e.target.value;
+        setDraft(val);
+        if (val) {
+          onSave(val);
+        }
+      }}
       onBlur={() => onSave(draft)}
       onKeyDown={e => {
         if (e.key === 'Enter') onSave(draft);
@@ -264,7 +270,7 @@ const BulkDateInput = ({ value, onSave, onClear }) => {
   React.useEffect(() => {
     if (isEditing && ref.current) {
       const timer = setTimeout(() => {
-        try { ref.current.showPicker(); } catch (e) {}
+        try { ref.current.showPicker(); } catch (e) { }
       }, 10);
       return () => clearTimeout(timer);
     }
@@ -272,8 +278,8 @@ const BulkDateInput = ({ value, onSave, onClear }) => {
 
   return (
     <div className="position-relative">
-      <div 
-        className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer transition-all ${value ? 'text-primary' : 'opacity-75'}`}
+      <div
+        className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer transition-all ${value ? 'text-primary' : ' '}`}
         style={{ minWidth: '80px', minHeight: '40px' }}
         onClick={() => {
           setDraft(value || '');
@@ -283,9 +289,9 @@ const BulkDateInput = ({ value, onSave, onClear }) => {
         <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
           <Calendar size={10} /> Tarih
           {value && (
-            <X 
-              size={10} 
-              className="ms-1 hover-text-danger transition-colors cursor-pointer" 
+            <X
+              size={10}
+              className="ms-1 hover-text-danger transition-colors cursor-pointer"
               onClick={(e) => {
                 e.stopPropagation();
                 onClear();
@@ -307,7 +313,14 @@ const BulkDateInput = ({ value, onSave, onClear }) => {
               value={draft}
               className="border-0 bg-transparent p-0 text-dark small w-100"
               style={{ boxShadow: 'none', fontSize: '12px' }}
-              onChange={e => setDraft(e.target.value)}
+              onChange={e => {
+                const val = e.target.value;
+                setDraft(val);
+                if (val) {
+                  onSave(val);
+                  setIsEditing(false);
+                }
+              }}
               onBlur={() => {
                 if (draft) onSave(draft);
                 setIsEditing(false);
@@ -326,6 +339,132 @@ const BulkDateInput = ({ value, onSave, onClear }) => {
     </div>
   );
 };
+const OverlayCell = ({ isEditing, display, input }) => (
+  <div style={{ position: 'relative', minHeight: '1.2em' }}>
+    <span style={{ visibility: isEditing ? 'hidden' : 'visible' }}>{display}</span>
+    {isEditing && (
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center' }}>
+        {input}
+      </div>
+    )}
+  </div>
+);
+
+const LocalTextInput = ({ value, onSave, onCancel, suggestions = [], ...props }) => {
+  const [draft, setDraft] = React.useState(value || '');
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const [selectedIndex, setSelectedIndex] = React.useState(-1);
+  const inputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    setDraft(value || '');
+  }, [value]);
+
+  const filteredSuggestions = React.useMemo(() => {
+    if (!draft || !showSuggestions || !suggestions.length) return [];
+    return suggestions
+      .filter(s => s.toLowerCase().includes(draft.toLowerCase()) && s !== draft)
+      .slice(0, 10);
+  }, [draft, suggestions, showSuggestions]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      if (filteredSuggestions.length > 0) {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev < filteredSuggestions.length - 1 ? prev + 1 : prev));
+      }
+    } else if (e.key === 'ArrowUp') {
+      if (filteredSuggestions.length > 0) {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev > 0 ? prev - 1 : -1));
+      }
+    } else if (e.key === 'Enter') {
+      if (selectedIndex >= 0 && filteredSuggestions[selectedIndex]) {
+        e.preventDefault();
+        const selected = filteredSuggestions[selectedIndex];
+        setDraft(selected);
+        setShowSuggestions(false);
+        onSave(selected);
+      } else {
+        onSave(draft);
+      }
+    } else if (e.key === 'Escape') {
+      if (showSuggestions && filteredSuggestions.length > 0) {
+        setShowSuggestions(false);
+      } else {
+        onCancel && onCancel();
+      }
+    }
+  };
+
+  return (
+    <div className="w-100">
+      <Form.Control
+        ref={inputRef}
+        {...props}
+        value={draft}
+        onChange={e => {
+          setDraft(e.target.value);
+          setShowSuggestions(true);
+          setSelectedIndex(-1);
+        }}
+        onBlur={() => {
+          setTimeout(() => {
+            setShowSuggestions(false);
+            onSave(draft);
+          }, 200);
+        }}
+        onKeyDown={handleKeyDown}
+      />
+      <Overlay
+        target={inputRef.current}
+        show={showSuggestions && filteredSuggestions.length > 0}
+        placement="bottom-start"
+        rootClose
+        onHide={() => setShowSuggestions(false)}
+        popperConfig={{ strategy: 'fixed',
+          modifiers: [
+            { name: 'offset', options: { offset: [0, 4] } },
+            { name: 'preventOverflow', options: { boundary: 'viewport' } },
+            { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }
+          ]
+        }}
+      >
+        {({ placement, arrowProps, show: _show, popper, hasDoneInitialMeasure, ...props }) => (
+          <div
+            {...props}
+            className="glass-card border-0 shadow-lg p-1 overflow-auto"
+            style={{
+              ...props.style,
+              zIndex: 20000,
+              maxHeight: '200px',
+              minWidth: inputRef.current?.offsetWidth || '100%',
+              overflowX: 'hidden',
+              backgroundColor: 'white'
+            }}
+          >
+            {filteredSuggestions.map((s, i) => (
+              <div
+                key={s}
+                className={`p-1 px-2 rounded-1 cursor-pointer notion-option-item fs-13 ${i === selectedIndex ? 'bg-light text-dark' : ''}`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setDraft(s);
+                  setShowSuggestions(false);
+                  onSave(s);
+                }}
+                onMouseEnter={() => setSelectedIndex(i)}
+              >
+                {s}
+              </div>
+            ))}
+          </div>
+        )}
+      </Overlay>
+    </div>
+  );
+};
+
 const ImportModal = ({ show, onHide, onImport }) => {
   const [text, setText] = React.useState('');
 
@@ -333,27 +472,27 @@ const ImportModal = ({ show, onHide, onImport }) => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(`<table>${text}</table>`, 'text/html');
     const rows = doc.querySelectorAll('tr');
-    
+
     const results = Array.from(rows).map(row => {
       const tds = row.querySelectorAll('td');
       if (tds.length < 6) return null;
-      
+
       const dateStr = tds[0].innerText.trim();
       const [d, m, y] = dateStr.split('.');
       const formattedDate = `${y}-${m}-${d}`;
-      
+
       const amountStr = tds[1].innerText.trim()
         .replace('₺', '')
         .replace(/\./g, ''); // Sadece noktaları kaldır, virgül kalsın
-      
+
       const bankName = tds[2].innerText.trim();
       const typeName = tds[3].innerText.trim();
       const receiptUrl = tds[4].querySelector('a')?.href || '';
       const title = tds[5].innerText.trim();
-      
+
       return { date: formattedDate, amount: amountStr, bankName, typeName, receiptUrl, title };
     }).filter(Boolean);
-    
+
     onImport(results);
     setText('');
     onHide();
@@ -365,10 +504,10 @@ const ImportModal = ({ show, onHide, onImport }) => {
         <Modal.Title className="fw-bold">HTML Import</Modal.Title>
       </Modal.Header>
       <Modal.Body className="p-4">
-        <Form.Control 
-          as="textarea" 
-          rows={10} 
-          className="glass-card p-3" 
+        <Form.Control
+          as="textarea"
+          rows={10}
+          className="glass-card p-3"
           placeholder="Paste <tr>...</tr> rows here..."
           value={text}
           onChange={e => setText(e.target.value)}
@@ -414,7 +553,7 @@ const SortableTagItem = ({ tag, type, isSelected, onClick, getTagStyle, onUpdate
   const selectedColorObj = COLORS.find(c => c.name === editColor) || COLORS[0];
 
   return (
-    <div 
+    <div
       ref={setNodeRef}
       style={{
         ...style,
@@ -431,9 +570,9 @@ const SortableTagItem = ({ tag, type, isSelected, onClick, getTagStyle, onUpdate
             <GripVertical size={12} className="text-muted opacity-25" />
           </div>
           {isEditing ? (
-            <Form.Control 
-              size="sm" 
-              value={editValue} 
+            <Form.Control
+              size="sm"
+              value={editValue}
               onChange={e => setEditValue(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSave(e)}
               autoFocus
@@ -448,14 +587,14 @@ const SortableTagItem = ({ tag, type, isSelected, onClick, getTagStyle, onUpdate
         <div className="d-flex align-items-center gap-2">
           {isEditing ? (
             <div className="d-flex align-items-center gap-1">
-              <div 
-                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setIsEditing(false); setEditValue(tag.name); setEditColor(tag.color || 'Default'); }} 
+              <div
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setIsEditing(false); setEditValue(tag.name); setEditColor(tag.color || 'Default'); }}
                 className="p-1 hover-bg-light rounded cursor-pointer"
               >
                 <X size={14} className="text-danger" />
               </div>
-              <div 
-                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleSave(e); }} 
+              <div
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleSave(e); }}
                 className="p-1 hover-bg-light rounded cursor-pointer"
               >
                 <Check size={14} className="text-success" />
@@ -463,14 +602,14 @@ const SortableTagItem = ({ tag, type, isSelected, onClick, getTagStyle, onUpdate
             </div>
           ) : (
             <div className="d-flex align-items-center gap-1 opacity-0 group-hover-opacity-100">
-              <div 
-                className="edit-trigger" 
+              <div
+                className="edit-trigger"
                 onClick={(e) => { e.stopPropagation(); if (window.confirm('Bu etiketi silmek istediğinize emin misiniz?')) onDelete(tag.id || tag.name); }}
               >
                 <Trash2 size={12} className="text-danger" />
               </div>
-              <div 
-                className="edit-trigger" 
+              <div
+                className="edit-trigger"
                 onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
               >
                 <Edit2 size={12} className="text-muted" />
@@ -486,12 +625,12 @@ const SortableTagItem = ({ tag, type, isSelected, onClick, getTagStyle, onUpdate
           <div className="text-muted x-small mb-1 ps-1 fs-11">Select Color</div>
           <div className="d-flex flex-wrap gap-2 ps-1" style={{ maxWidth: '240px' }}>
             {COLORS.map((c) => (
-              <div 
+              <div
                 key={c.name}
                 className={`rounded border cursor-pointer ${editColor === c.name ? 'border-primary' : 'border-light'}`}
-                style={{ 
-                  width: '20px', 
-                  height: '20px', 
+                style={{
+                  width: '20px',
+                  height: '20px',
                   backgroundColor: c.bg,
                   position: 'relative'
                 }}
@@ -535,16 +674,16 @@ const SortableBankItem = ({ bank, balance, viewLayout, handleDeleteBank, onEditC
               <div {...listeners} style={{ cursor: 'grab' }} className="text-muted opacity-25 group-hover-opacity-100">
                 <GripVertical size={14} />
               </div>
-              <div 
+              <div
                 onClick={() => onEditClick(bank)}
-                className="text-muted opacity-25 group-hover-opacity-100 p-1" 
+                className="text-muted opacity-25 group-hover-opacity-100 p-1"
                 style={{ cursor: 'pointer' }}
               >
                 <Edit2 size={14} />
               </div>
-              <div 
+              <div
                 onClick={() => handleDeleteBank(bank.id)}
-                className="text-danger opacity-25 group-hover-opacity-100 p-1" 
+                className="text-danger opacity-25 group-hover-opacity-100 p-1"
                 style={{ cursor: 'pointer' }}
               >
                 <Trash2 size={14} />
@@ -579,16 +718,16 @@ const SortableBankItem = ({ bank, balance, viewLayout, handleDeleteBank, onEditC
               <div {...listeners} style={{ cursor: 'grab', textShadow: '0 0 4px rgba(0,0,0,0.5)', width: '25px', height: '25px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} className="text-white bg-dark bg-opacity-25 rounded">
                 <GripVertical size={14} />
               </div>
-              <div 
+              <div
                 onClick={() => onEditClick(bank)}
-                style={{ cursor: 'pointer', textShadow: '0 0 4px rgba(0,0,0,0.5)', width: '25px', height: '25px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                style={{ cursor: 'pointer', textShadow: '0 0 4px rgba(0,0,0,0.5)', width: '25px', height: '25px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 className="text-white bg-dark bg-opacity-25 rounded"
               >
                 <Edit2 size={14} />
               </div>
-              <div 
+              <div
                 onClick={() => handleDeleteBank(bank.id)}
-                style={{ cursor: 'pointer', textShadow: '0 0 4px rgba(0,0,0,0.5)', width: '25px', height: '25px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                style={{ cursor: 'pointer', textShadow: '0 0 4px rgba(0,0,0,0.5)', width: '25px', height: '25px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 className="text-white bg-danger bg-opacity-50 rounded"
               >
                 <Trash2 size={14} />
@@ -606,7 +745,7 @@ const SortableBankItem = ({ bank, balance, viewLayout, handleDeleteBank, onEditC
 
   // Default: gallery_basic
   return (
-    <Col ref={setNodeRef} style={style} {...attributes}>
+    <Col ref={setNodeRef} style={style} {...attributes} className={viewLayout === 'gallery_basic' ? 'bank-card-col-simple' : ''}>
       <Card className="bg-white border shadow-sm p-3 position-relative group" style={{ borderRadius: '12px' }}>
         <div className="d-flex align-items-center mb-2">
           <div className="d-flex align-items-center gap-2">
@@ -619,16 +758,16 @@ const SortableBankItem = ({ bank, balance, viewLayout, handleDeleteBank, onEditC
             <div {...listeners} style={{ cursor: 'grab' }} className="text-muted p-1">
               <GripVertical size={14} />
             </div>
-            <div 
+            <div
               onClick={() => onEditClick(bank)}
-              style={{ cursor: 'pointer' }} 
+              style={{ cursor: 'pointer' }}
               className="text-muted p-1"
             >
               <Edit2 size={14} />
             </div>
-            <div 
+            <div
               onClick={() => handleDeleteBank(bank.id)}
-              style={{ cursor: 'pointer' }} 
+              style={{ cursor: 'pointer' }}
               className="text-danger p-1"
             >
               <Trash2 size={14} />
@@ -647,6 +786,123 @@ const BankTransactionsPage = () => {
   const { user } = useAuth();
   const [banks, setBanks] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [groupLimits, setGroupLimits] = useState({});
+  const [groupConfigs, setGroupConfigs] = useState({});
+  const [groupSettings, setGroupSettings] = useState({});
+  const [editTarget, setEditTarget] = useState(null);
+
+  const toggleGroupVisibility = async (groupId) => {
+    const currentGroupBy = config.groupBy;
+    if (!currentGroupBy) return;
+    const settings = groupSettings[currentGroupBy] || {};
+    const visibility = { ...(settings.visibility || {}), [groupId]: settings.visibility?.[groupId] === false };
+    const newSettings = { ...groupSettings, [currentGroupBy]: { ...settings, visibility } };
+    setGroupSettings(newSettings);
+    await setDoc(doc(db, `users/${user.uid}/groupSettings`, 'bankGroups'), newSettings);
+  };
+
+  const handleGroupOrderDragEnd = async (event) => {
+    const { active, over } = event;
+    if (active && over && active.id !== over.id) {
+      const currentGroupBy = config.groupBy;
+      if (!currentGroupBy) return;
+      const settings = groupSettings[currentGroupBy] || {};
+      
+      // We need the full list of groups to establish the base order
+      const allGroupsMap = {};
+      transactions.filter(t => !t.deleted).forEach(t => {
+        let key = 'Empty';
+        if (currentGroupBy === 'bankId') key = t.bankId || 'Empty';
+        else if (currentGroupBy === 'type') key = t.type || 'Empty';
+        else if (currentGroupBy === 'quickActions') key = (Array.isArray(t.quickActions) && t.quickActions.length > 0) ? t.quickActions[0] : 'Empty';
+        if (!allGroupsMap[key]) allGroupsMap[key] = key;
+      });
+      const allGroupIds = Object.keys(allGroupsMap);
+      const currentOrder = settings.order || allGroupIds;
+      
+      const oldIndex = currentOrder.indexOf(active.id);
+      const newIndex = currentOrder.indexOf(over.id);
+      
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newOrder = arrayMove(currentOrder, oldIndex, newIndex);
+        const newSettings = { ...groupSettings, [currentGroupBy]: { ...settings, order: newOrder } };
+        setGroupSettings(newSettings);
+        await setDoc(doc(db, `users/${user.uid}/groupSettings`, 'bankGroups'), newSettings);
+      }
+    }
+  };
+
+  const handleUpdateGroupFilter = async (groupId, propId, operator, value) => {
+    let newConfigs = { ...groupConfigs };
+    const current = newConfigs[groupId] || {};
+    let filters = [...(current.filters || [])];
+    const idx = filters.findIndex(f => f.propId === propId);
+
+    if (idx !== -1) {
+      if (operator === null) {
+        filters.splice(idx, 1);
+      } else {
+        let newValue = value;
+        if (['bankId', 'type', 'quickActions'].includes(propId) && !['is_empty', 'is_not_empty'].includes(operator)) {
+          const currentValues = (filters[idx].value || '').split(',').filter(v => v);
+          if (currentValues.includes(value)) {
+            newValue = currentValues.filter(v => v !== value).join(',');
+          } else {
+            newValue = [...currentValues, value].join(',');
+          }
+        }
+        
+        if (!newValue && ['bankId', 'type', 'quickActions'].includes(propId) && !['is_empty', 'is_not_empty'].includes(operator)) {
+           filters.splice(idx, 1);
+        } else {
+           filters[idx] = { propId, operator, value: newValue };
+        }
+      }
+    } else {
+      if (operator !== null) filters.push({ propId, operator, value });
+    }
+    
+    newConfigs[groupId] = { ...current, filters };
+    setGroupConfigs(newConfigs);
+    
+    if (user) {
+      await setDoc(doc(db, `users/${user.uid}/config`, 'bankGroupConfigs'), newConfigs, { merge: true });
+    }
+  };
+
+  const handleGroupSort = async (groupId, propId, direction) => {
+    const newConfigs = {
+      ...groupConfigs,
+      [groupId]: {
+        ...(groupConfigs[groupId] || {}),
+        sortConfig: propId ? { propId, direction } : null
+      }
+    };
+    setGroupConfigs(newConfigs);
+    if (user) {
+      await setDoc(doc(db, `users/${user.uid}/config`, 'bankGroupConfigs'), newConfigs, { merge: true });
+    }
+  };
+
+  const handleClearGroupFilters = async (groupId) => {
+    const newConfigs = {
+      ...groupConfigs,
+      [groupId]: {
+        ...(groupConfigs[groupId] || {}),
+        filters: []
+      }
+    };
+    setGroupConfigs(newConfigs);
+    if (user) {
+      await setDoc(doc(db, `users/${user.uid}/config`, 'bankGroupConfigs'), newConfigs, { merge: true });
+    }
+  };
+
+  const getTagStyleByColor = (colorName) => {
+    const colorObj = COLORS.find(c => c.name === colorName) || COLORS[0];
+    return { backgroundColor: colorObj.bg, color: colorObj.text };
+  };
   const [activeDragId, setActiveDragId] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [isInfiniteScroll, setIsInfiniteScroll] = useState(false);
@@ -658,14 +914,14 @@ const BankTransactionsPage = () => {
   const lastElementRef = useRef();
   const [quickActionTags, setQuickActionTags] = useState([]);
   const [typeTags, setTypeTags] = useState([]);
-  const [config, setConfig] = useState({ 
+  const [config, setConfig] = useState({
     viewLayout: 'gallery_basic',
     propertyOrder: PROPERTIES.map(p => p.id),
     propertyVisibility: PROPERTIES.reduce((acc, p) => ({ ...acc, [p.id]: true }), {})
   });
   const [settingsView, setSettingsView] = useState('main');
   const [propSearch, setPropSearch] = useState('');
-  
+
   // Layout state
   const viewLayout = config.viewLayout || 'gallery_basic';
 
@@ -689,6 +945,7 @@ const BankTransactionsPage = () => {
   // Inline cell editing
   const [editingCell, setEditingCell] = useState(null); // { transId, propId }
   const [cellDraft, setCellDraft] = useState(null); // draft value for the active cell
+  const [searchTerm, setSearchTerm] = useState('');
   const [title, setTitle] = useState('');
   const [selectedQuickActions, setSelectedQuickActions] = useState([]);
   const [selectedType, setSelectedType] = useState('');
@@ -700,23 +957,28 @@ const BankTransactionsPage = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [isGlobalSelected, setIsGlobalSelected] = useState(false);
 
+  const uniqueTitles = useMemo(() => {
+    const titles = transactions.map(t => t.title).filter(Boolean);
+    return [...new Set(titles)].sort((a, b) => a.localeCompare(b, 'tr'));
+  }, [transactions]);
+
   const getBankInfo = (id) => banks.find(b => b.id === id) || {};
 
   const displayDateFormatted = (dateString, formatStr) => {
     if (!dateString) return '';
     const [year, month, day] = dateString.split('-');
-    switch(formatStr) {
-       case 'DD/MM/YYYY': return `${day}/${month}/${year}`;
-       case 'DD.MM.YYYY': return `${day}.${month}.${year}`;
-       case 'DD MMMM YYYY': {
-         const d = new Date(year, month - 1, day);
-         return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
-       }
-       case 'DD MMM YYYY': {
-         const d = new Date(year, month - 1, day);
-         return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
-       }
-       default: return `${day}/${month}/${year}`;
+    switch (formatStr) {
+      case 'DD/MM/YYYY': return `${day}/${month}/${year}`;
+      case 'DD.MM.YYYY': return `${day}.${month}.${year}`;
+      case 'DD MMMM YYYY': {
+        const d = new Date(year, month - 1, day);
+        return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
+      }
+      case 'DD MMM YYYY': {
+        const d = new Date(year, month - 1, day);
+        return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+      default: return `${day}/${month}/${year}`;
     }
   };
 
@@ -802,76 +1064,78 @@ const BankTransactionsPage = () => {
       setBulkHistory(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    return () => { unsubBanks(); unsubTrans(); unsubConfig(); unsubQA(); unsubTT(); unsubHistory(); };
+    const unsubGroupSettings = onSnapshot(doc(db, `users/${user.uid}/groupSettings`, 'bankGroups'), (snap) => {
+      if (snap.exists()) setGroupSettings(snap.data());
+    });
+
+    const unsubGroupConfigs = onSnapshot(doc(db, `users/${user.uid}/config`, 'bankGroupConfigs'), (snap) => {
+      if (snap.exists()) setGroupConfigs(snap.data());
+    });
+
+    return () => { unsubBanks(); unsubTrans(); unsubConfig(); unsubQA(); unsubTT(); unsubHistory(); unsubGroupSettings(); unsubGroupConfigs(); };
   }, [user]);
 
-  const filteredTransactions = transactions.filter(t => {
-    const bank = getBankInfo(t.bankId);
-    if (bank.visible === false) return false;
-    if (selectedBankId !== 'all' && t.bankId !== selectedBankId) return false;
-    
-    // Apply filters from config
-    const activeFilters = Array.isArray(config.filters) ? config.filters : [];
-    for (const f of activeFilters) {
-      const val = t[f.propId];
-      const filterValueRaw = (f.value || '');
-      const filterValLower = filterValueRaw.toLowerCase();
-      const stringVal = (val || '').toString().toLowerCase();
+  const applyFilters = (data, filters) => {
+    return data.filter(t => {
+      const bank = getBankInfo(t.bankId);
+      if (bank.visible === false) return false;
+      if (selectedBankId !== 'all' && t.bankId !== selectedBankId) return false;
 
-      // Multi-select handling for category fields
-      if (['bankId', 'type', 'quickActions'].includes(f.propId) && !['is_empty', 'is_not_empty'].includes(f.operator)) {
-        const selectedIds = filterValueRaw.split(',').filter(v => v);
-        const transactionValues = Array.isArray(val) ? val : [val];
-        const hasOverlap = transactionValues.some(v => selectedIds.includes(v));
+      const activeFilters = Array.isArray(filters) ? filters : [];
+      for (const f of activeFilters) {
+        const val = t[f.propId];
+        const filterValueRaw = (f.value || '');
+        const filterValLower = filterValueRaw.toLowerCase();
+        const stringVal = (val || '').toString().toLowerCase();
 
-        if (f.operator === 'contains' && !hasOverlap) return false;
-        if (f.operator === 'does_not_contain' && hasOverlap) return false;
-        continue;
-      }
-
-      switch (f.operator) {
-        case 'contains': if (!stringVal.includes(filterValLower)) return false; break;
-        case 'does_not_contain': if (stringVal.includes(filterValLower)) return false; break;
-        case 'is': if (stringVal !== filterValLower) return false; break;
-        case 'is_not': if (stringVal === filterValLower) return false; break;
-        case 'starts_with': if (!stringVal.startsWith(filterValLower)) return false; break;
-        case 'ends_with': if (!stringVal.endsWith(filterValLower)) return false; break;
-        case 'is_empty': 
-          if (Array.isArray(val)) {
-            if (val.length > 0) return false;
-          } else if (val) return false; 
-          break;
-        case 'is_not_empty': 
-          if (Array.isArray(val)) {
-            if (val.length === 0) return false;
-          } else if (!val) return false; 
-          break;
-        case 'between': {
-          if (f.propId === 'date') {
-            const [start, end] = filterValueRaw.split(',');
-            if (start && val < start) return false;
-            if (end && val > end) return false;
-          }
-          break;
+        if (['bankId', 'type', 'quickActions'].includes(f.propId) && !['is_empty', 'is_not_empty'].includes(f.operator)) {
+          const selectedIds = filterValueRaw.split(',').filter(v => v);
+          const transactionValues = Array.isArray(val) ? val : [val];
+          const hasOverlap = transactionValues.some(v => selectedIds.includes(v));
+          if (f.operator === 'contains' && !hasOverlap) return false;
+          if (f.operator === 'does_not_contain' && hasOverlap) return false;
+          continue;
         }
-        default: break;
+
+        switch (f.operator) {
+          case 'contains': if (!stringVal.includes(filterValLower)) return false; break;
+          case 'does_not_contain': if (stringVal.includes(filterValLower)) return false; break;
+          case 'is': if (stringVal !== filterValLower) return false; break;
+          case 'is_not': if (stringVal === filterValLower) return false; break;
+          case 'starts_with': if (!stringVal.startsWith(filterValLower)) return false; break;
+          case 'ends_with': if (!stringVal.endsWith(filterValLower)) return false; break;
+          case 'is_empty':
+            if (Array.isArray(val)) { if (val.length > 0) return false; }
+            else if (val) return false;
+            break;
+          case 'is_not_empty':
+            if (Array.isArray(val)) { if (val.length === 0) return false; }
+            else if (!val) return false;
+            break;
+          case 'between': {
+            if (f.propId === 'date') {
+              const [start, end] = filterValueRaw.split(',');
+              if (start && val < start) return false;
+              if (end && val > end) return false;
+            }
+            break;
+          }
+          default: break;
+        }
       }
-    }
+      return true;
+    });
+  };
 
-    return true;
-  });
-
-  const sortedTransactions = useMemo(() => {
-    return [...filteredTransactions].sort((a, b) => {
-      if (!config.sortConfig) {
-        // Default: Newest created first
+  const applySort = (data, sortConfig) => {
+    return [...data].sort((a, b) => {
+      if (!sortConfig) {
         const timeA = a.createdAt?.seconds || 0;
         const timeB = b.createdAt?.seconds || 0;
         if (timeB !== timeA) return timeB - timeA;
         return (a.order || 0) - (b.order || 0);
       }
-      const { propId, direction } = config.sortConfig;
-      
+      const { propId, direction } = sortConfig;
       let valA = a[propId];
       let valB = b[propId];
 
@@ -894,7 +1158,57 @@ const BankTransactionsPage = () => {
       if (valA > valB) return direction === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [filteredTransactions, config.sortConfig]);
+  };
+
+  const getCalculatedValue = (propId, data) => {
+    const calcType = config.columnCalculations?.[propId];
+    if (!calcType || calcType === 'none') return null;
+
+    const parseAmt = (v) => {
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string') {
+        const parsed = parseFloat(v.replace(/\./g, '').replace(',', '.'));
+        return isNaN(parsed) ? 0 : parsed;
+      }
+      return 0;
+    };
+
+    const values = data.map(t => {
+      if (propId === 'amount') return parseAmt(t[propId]);
+      return t[propId];
+    }).filter(v => v !== undefined && v !== null && v !== '');
+
+    const numValues = values.filter(v => typeof v === 'number');
+
+    switch (calcType) {
+      case 'sum': return numValues.reduce((a, b) => a + b, 0);
+      case 'avg': return numValues.length ? numValues.reduce((a, b) => a + b, 0) / numValues.length : 0;
+      case 'min': return numValues.length ? Math.min(...numValues) : 0;
+      case 'max': return numValues.length ? Math.max(...numValues) : 0;
+      case 'count_all': return data.length;
+      case 'count_values': return values.length;
+      case 'count_unique': return new Set(values).size;
+      case 'count_empty': return data.length - values.length;
+      case 'count_not_empty': return values.length;
+      default: return null;
+    }
+  };
+
+  const renderCalculatedValue = (propId, value) => {
+    if (value === null) return null;
+    const calcType = config.columnCalculations?.[propId];
+    const prefix = calcType.toUpperCase().replace(/_/g, ' ');
+
+    if (propId === 'amount') {
+      const formatted = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+      return <div className="text-end x-small text-muted fw-bold text-nowrap"><span className="opacity-50">{prefix}</span> {formatted} TL</div>;
+    }
+
+    return <div className="text-end x-small text-muted fw-bold text-nowrap"><span className="opacity-50">{prefix}</span> {value}</div>;
+  };
+
+  const filteredTransactions = useMemo(() => applyFilters(transactions, config.filters), [transactions, config.filters, selectedBankId, banks]);
+  const sortedTransactions = useMemo(() => applySort(filteredTransactions, config.sortConfig), [filteredTransactions, config.sortConfig]);
 
   const visibleTransactions = useMemo(() => sortedTransactions.slice(0, limitCount), [sortedTransactions, limitCount]);
 
@@ -916,6 +1230,9 @@ const BankTransactionsPage = () => {
   const bankBalances = useMemo(() => {
     const balances = {};
     transactions.forEach(t => {
+      // Don't include credit card transactions (ID: Eyv0oZlOuCPWJbmRkv0h) in bank totals
+      if (t.type === 'Eyv0oZlOuCPWJbmRkv0h') return;
+
       const bId = t.bankId;
       let amt = t.amount;
       if (typeof amt === 'string') {
@@ -1008,6 +1325,33 @@ const BankTransactionsPage = () => {
     });
   };
 
+  const handleQuickNewInGroup = async (group) => {
+    if (!user) return;
+    const today = new Date().toISOString().split('T')[0];
+
+    const newDoc = {
+      bankId: '',
+      title: '',
+      quickActions: [],
+      type: '',
+      amount: '',
+      receiptUrl: '',
+      date: today,
+      createdAt: new Date(),
+      deleted: false
+    };
+
+    if (config.groupBy === 'bankId') {
+      newDoc.bankId = group.id !== 'Empty' ? group.id : '';
+    } else if (config.groupBy === 'type') {
+      newDoc.type = group.id !== 'Empty' ? group.id : '';
+    } else if (config.groupBy === 'quickActions') {
+      newDoc.quickActions = group.id !== 'Empty' ? [group.id] : [];
+    }
+
+    await addDoc(collection(db, `users/${user.uid}/bankTransactions`), newDoc);
+  };
+
   const updateConfig = async (newConfig) => {
     if (!user) return;
     const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
@@ -1032,7 +1376,7 @@ const BankTransactionsPage = () => {
             newValue = [...currentValues, value].join(',');
           }
         }
-        
+
         if (!newValue && ['bankId', 'type', 'quickActions'].includes(propId)) {
           newFilters.splice(existing, 1);
         } else {
@@ -1047,7 +1391,7 @@ const BankTransactionsPage = () => {
 
   const handleBulkImport = async (parsedData) => {
     const batch = writeBatch(db);
-    
+
     const normalize = (s) => (s || '').toLocaleLowerCase('tr-TR').trim()
       .replace(/i̇/g, 'i')
       .replace(/ı/g, 'i');
@@ -1070,11 +1414,11 @@ const BankTransactionsPage = () => {
       } else if (item.bankName) {
         // Banka bulunamadı, yeni oluştur
         const newBankRef = await addDoc(collection(db, `users/${user.uid}/banks`), {
-          name: item.bankName, 
-          logo: '', 
-          createdAt: new Date(), 
-          deleted: false, 
-          order: currentBanks.length 
+          name: item.bankName,
+          logo: '',
+          createdAt: new Date(),
+          deleted: false,
+          order: currentBanks.length
         });
         bankId = newBankRef.id;
         currentBanks.push({ id: bankId, name: item.bankName });
@@ -1086,7 +1430,7 @@ const BankTransactionsPage = () => {
       let typeId = '';
       const normalizedItemType = normalize(item.typeName);
       const matchedType = currentTypes.find(t => normalize(t.name) === normalizedItemType);
-      
+
       if (matchedType) {
         typeId = matchedType.id;
       } else if (item.typeName) {
@@ -1112,7 +1456,7 @@ const BankTransactionsPage = () => {
         deleted: false
       });
     }
-    
+
     await batch.commit();
   };
 
@@ -1152,7 +1496,12 @@ const BankTransactionsPage = () => {
   };
 
   const saveCell = async (transId, propId, value) => {
-    await updateDoc(doc(db, `users/${user.uid}/bankTransactions`, transId), { [propId]: value });
+    let finalValue = value;
+    if (propId === 'amount') {
+      const cleanValue = value.toString().replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+      finalValue = parseFloat(cleanValue) || 0;
+    }
+    await updateDoc(doc(db, `users/${user.uid}/bankTransactions`, transId), { [propId]: finalValue });
     setEditingCell(null);
     setCellDraft(null);
   };
@@ -1203,7 +1552,7 @@ const BankTransactionsPage = () => {
     const total = idsToProcess.length;
     const batch = writeBatch(db);
     const affectedData = [];
-    
+
     // Process in chunks of 500 for Firestore limits
     for (let i = 0; i < total; i++) {
       const id = idsToProcess[i];
@@ -1211,7 +1560,7 @@ const BankTransactionsPage = () => {
       if (t) {
         const changes = {};
         const entry = { id, prev: {}, current: {} };
-        
+
         Object.keys(stagedChanges).forEach(key => {
           entry.prev[key] = t[key] || null;
           entry.current[key] = stagedChanges[key];
@@ -1221,7 +1570,7 @@ const BankTransactionsPage = () => {
         affectedData.push(entry);
         batch.update(doc(db, `users/${user.uid}/bankTransactions`, id), changes);
       }
-      
+
       // Update progress visually (simplified)
       if (i % 10 === 0 || i === total - 1) {
         setBulkProgress(Math.round(((i + 1) / total) * 100));
@@ -1230,7 +1579,7 @@ const BankTransactionsPage = () => {
 
     try {
       await batch.commit();
-      
+
       // Save to history
       await addDoc(collection(db, `users/${user.uid}/bulkHistory`), {
         timestamp: serverTimestamp(),
@@ -1290,9 +1639,9 @@ const BankTransactionsPage = () => {
 
     selectedIds.forEach((id, i) => {
       const t = transactions.find(item => item.id === id);
-      if (t) { 
-        affectedData.push({ id, ...t }); 
-        batch.update(doc(db, `users/${user.uid}/bankTransactions`, id), { deleted: true }); 
+      if (t) {
+        affectedData.push({ id, ...t });
+        batch.update(doc(db, `users/${user.uid}/bankTransactions`, id), { deleted: true });
       }
       if (i % 10 === 0) setBulkProgress(Math.round(((i + 1) / total) * 100));
     });
@@ -1316,7 +1665,7 @@ const BankTransactionsPage = () => {
     setBulkProgress(0);
     const batch = writeBatch(db);
     const total = historyItem.affectedData.length;
-    
+
     try {
       if (historyItem.type === 'DELETE') {
         historyItem.affectedData.forEach((item, i) => {
@@ -1356,16 +1705,16 @@ const BankTransactionsPage = () => {
         newVisualOrder = arrayMove(sortedTransactions, oldIndex, newIndex);
       } else {
         if (selectedIds.includes(over.id)) return; // Do nothing if dropped within selection
-        
+
         const sortedSelectedItems = sortedTransactions.filter(t => selectedIds.includes(t.id));
         const remainingTransactions = sortedTransactions.filter(t => !selectedIds.includes(t.id));
-        
+
         let dropIndex = remainingTransactions.findIndex(t => t.id === over.id);
         if (dropIndex === -1) return;
-        
+
         const activeOriginalIndex = sortedTransactions.findIndex(t => t.id === active.id);
         const overOriginalIndex = sortedTransactions.findIndex(t => t.id === over.id);
-        
+
         if (activeOriginalIndex < overOriginalIndex) {
           dropIndex += 1;
         }
@@ -1376,10 +1725,10 @@ const BankTransactionsPage = () => {
           ...remainingTransactions.slice(dropIndex)
         ];
       }
-      
+
       const newTransactions = [...transactions];
       const batch = writeBatch(db);
-      
+
       newVisualOrder.forEach((t, index) => {
         const tIndex = newTransactions.findIndex(tx => tx.id === t.id);
         if (tIndex !== -1) {
@@ -1398,7 +1747,7 @@ const BankTransactionsPage = () => {
     if (active && over && active.id !== over.id) {
       const oldIndex = banks.findIndex((bank) => bank.id === active.id);
       const newIndex = banks.findIndex((bank) => bank.id === over.id);
-      
+
       const newBanks = arrayMove(banks, oldIndex, newIndex);
       setBanks(newBanks);
 
@@ -1559,50 +1908,149 @@ const BankTransactionsPage = () => {
     await setDoc(configRef, { ...config, dateFormat: format }, { merge: true });
   };
 
+  const handleUpdateGroupBy = async (propId) => {
+    const configRef = doc(db, `users/${user.uid}/config`, 'bankSettings');
+    await setDoc(configRef, { ...config, groupBy: propId }, { merge: true });
+  };
+
+  const groupedTransactions = useMemo(() => {
+    if (!config.groupBy) return null;
+    const groups = {};
+    transactions.filter(t => !t.deleted).forEach(t => {
+      let key = 'Empty';
+      let label = 'Değer Yok';
+      let icon = null;
+      let color = 'Gray';
+
+      if (config.groupBy === 'bankId') {
+        key = t.bankId || 'Empty';
+        const bank = getBankInfo(key);
+        label = bank.name || 'Bilinmeyen Banka';
+        icon = bank.logo ? <img src={bank.logo} alt="" width="16" height="16" className="rounded-circle me-2" /> : <Landmark size={14} className="me-2 text-muted" />;
+      } else if (config.groupBy === 'type') {
+        key = t.type || 'Empty';
+        const tag = resolveTag(typeTags, key);
+        label = tag?.name || 'Türsüz';
+        color = tag?.color || 'Gray';
+      } else if (config.groupBy === 'quickActions') {
+        const ids = Array.isArray(t.quickActions) ? t.quickActions : [];
+        key = ids.length > 0 ? ids[0] : 'Empty';
+        const tag = resolveTag(quickActionTags, key);
+        label = tag?.name || 'İşlemsiz';
+        color = tag?.color || 'Gray';
+      }
+
+      if (!groups[key]) groups[key] = { id: key, label, icon, color, items: [] };
+      groups[key].items.push(t);
+    });
+    const groupsList = Object.values(groups);
+    const settings = groupSettings[config.groupBy] || {};
+    const order = settings.order || [];
+    const visibility = settings.visibility || {};
+
+    groupsList.sort((a, b) => {
+      const idxA = order.indexOf(a.id);
+      const idxB = order.indexOf(b.id);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.label.localeCompare(b.label);
+    });
+
+    return groupsList.filter(g => visibility[g.id] !== false);
+  }, [transactions, config.groupBy, banks, typeTags, quickActionTags, groupSettings]);
 
 
-  const renderCell = (propId, t) => {
+
+  const allGroupsForSettings = useMemo(() => {
+    if (!config.groupBy) return [];
+    const groups = {};
+    transactions.filter(t => !t.deleted).forEach(t => {
+      let key = 'Empty';
+      let label = 'Değer Yok';
+      let icon = null;
+      let color = 'Gray';
+
+      if (config.groupBy === 'bankId') {
+        key = t.bankId || 'Empty';
+        const bank = getBankInfo(key);
+        label = bank.name || 'Bilinmeyen Banka';
+        icon = bank.logo ? <img src={bank.logo} alt="" width="16" height="16" className="rounded-circle me-2" /> : <Landmark size={14} className="me-2 text-muted" />;
+      } else if (config.groupBy === 'type') {
+        key = t.type || 'Empty';
+        const tag = resolveTag(typeTags, key);
+        label = tag?.name || 'Türsüz';
+        color = tag?.color || 'Gray';
+      } else if (config.groupBy === 'quickActions') {
+        const ids = Array.isArray(t.quickActions) ? t.quickActions : [];
+        key = ids.length > 0 ? ids[0] : 'Empty';
+        const tag = resolveTag(quickActionTags, key);
+        label = tag?.name || 'İşlemsiz';
+        color = tag?.color || 'Gray';
+      }
+
+      if (!groups[key]) groups[key] = { id: key, label, icon, color, items: [] };
+      groups[key].items.push(t);
+    });
+    const groupsList = Object.values(groups);
+    const settings = groupSettings[config.groupBy] || {};
+    const order = settings.order || [];
+    
+    groupsList.sort((a, b) => {
+      const idxA = order.indexOf(a.id);
+      const idxB = order.indexOf(b.id);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.label.localeCompare(b.label);
+    });
+    return groupsList;
+  }, [transactions, config.groupBy, banks, typeTags, quickActionTags, groupSettings]);
+
+  const handleSelect = React.useCallback((id, checked) => {
+    setSelectedIds(prev => checked ? [...prev, id] : prev.filter(x => x !== id));
+  }, []);
+
+  const renderCell = React.useCallback((propId, t, tableId = 'LIST_MAIN') => {
     const bank = getBankInfo(t.bankId);
     const displayDate = displayDateFormatted(t.date, config.dateFormat);
     const isWrapped = config.propertyWrap?.[propId] !== false;
-    const isEditing = editingCell?.transId === t.id && editingCell?.propId === propId;
+    const isEditing = editingCell?.transId === t.id && editingCell?.propId === propId && editingCell?.tableId === tableId;
 
     const cellStyle = isWrapped ? {} : {
       whiteSpace: 'nowrap', overflow: isEditing ? 'visible' : 'hidden', textOverflow: 'ellipsis',
       maxWidth: propId === 'title' ? '300px' : '200px'
     };
 
-    const startEdit = (e) => {
+    const startEdit = async (e) => {
       e.stopPropagation();
-      setEditingCell({ transId: t.id, propId });
-      setCellDraft(t[propId] ?? '');
+      setEditTarget(e.currentTarget);
+      // Auto-save previous cell if exists
+      if (editingCell && cellDraft !== null) {
+        await saveCell(editingCell.transId, editingCell.propId, cellDraft);
+      }
+      setEditingCell({ transId: t.id, propId, tableId });
+      setSearchTerm('');
+      let initialValue = t[propId] ?? '';
+      if (typeof initialValue === 'number' && propId === 'amount') {
+        initialValue = initialValue.toString().replace('.', ',');
+      }
+      setCellDraft(initialValue);
     };
 
     // key is intentionally NOT in this object — must be passed directly on <td>
     const tdClass = `cell-editable${isEditing ? ' cell-editing' : ''}`;
     const tdClick = isEditing ? undefined : startEdit;
 
-    // Helper: wraps display + absolute-overlay input to prevent layout shift
-    const OverlayCell = ({ display, input }) => (
-      <div style={{ position: 'relative', minHeight: '1.2em' }}>
-        <span style={{ visibility: isEditing ? 'hidden' : 'visible' }}>{display}</span>
-        {isEditing && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center' }}>
-            {input}
-          </div>
-        )}
-      </div>
-    );
-
     switch (propId) {
       case 'date':
         return (
-          <td key={propId} style={{ ...cellStyle, position: 'relative' }} className={tdClass} onClick={tdClick}>
+          <td key={`${tableId}_${propId}`} style={{ ...cellStyle, position: 'relative' }} className={tdClass} onClick={tdClick}>
             {isEditing ? (
-              <DateCellInput 
-                value={t.date} 
-                onSave={(v) => { saveCell(t.id, 'date', v); setEditingCell(null); }} 
-                onCancel={() => setEditingCell(null)} 
+              <DateCellInput
+                value={t.date}
+                onSave={(v) => { saveCell(t.id, 'date', v); setEditingCell(null); }}
+                onCancel={() => setEditingCell(null)}
               />
             ) : (
               <span className="text-muted small">{displayDate || <span className="opacity-25">Empty</span>}</span>
@@ -1612,18 +2060,18 @@ const BankTransactionsPage = () => {
 
       case 'title':
         return (
-          <td key={propId} style={cellStyle} className={tdClass} onClick={tdClick}>
+          <td key={`${tableId}_${propId}`} style={cellStyle} className={tdClass} onClick={tdClick}>
             <OverlayCell
+              isEditing={isEditing}
               display={<span className={`fw-bold${!isWrapped ? ' text-truncate' : ''}`}>{t.title || <span className="opacity-25">Empty</span>}</span>}
               input={
-                <Form.Control
-                  type="text"
+                <LocalTextInput
                   value={cellDraft || ''}
                   autoFocus
+                  suggestions={uniqueTitles}
                   className="border-0 bg-transparent p-0 fw-bold cell-text-input"
-                  onChange={e => setCellDraft(e.target.value)}
-                  onBlur={() => saveCell(t.id, 'title', cellDraft)}
-                  onKeyDown={e => { if (e.key === 'Enter') saveCell(t.id, 'title', cellDraft); if (e.key === 'Escape') setEditingCell(null); }}
+                  onSave={(val) => saveCell(t.id, 'title', val)}
+                  onCancel={() => setEditingCell(null)}
                 />
               }
             />
@@ -1634,37 +2082,44 @@ const BankTransactionsPage = () => {
         const currentIds = Array.isArray(t.quickActions) ? t.quickActions : [];
         const draftIds = isEditing ? (Array.isArray(cellDraft) ? cellDraft : currentIds) : currentIds;
         return (
-          <td key={propId} style={{ ...cellStyle, position: 'relative', zIndex: isEditing ? 10 : 1 }} className={tdClass} onClick={tdClick}>
+          <td key={`${tableId}_${propId}`} style={{ ...cellStyle, position: 'relative', zIndex: isEditing ? 1000 : 1 }} className={tdClass} onClick={tdClick}>
             {isEditing ? (
-              <Dropdown show autoClose="outside"
-                onToggle={(open) => { if (!open) saveCell(t.id, 'quickActions', draftIds); }}
-              >
-                <Dropdown.Toggle as="div" className="p-0 border-0 bg-transparent dropdown-no-caret" style={{ cursor: 'default' }}>
-                  <div className={`d-flex gap-1 ${isWrapped ? 'flex-wrap' : 'overflow-hidden'}`}>
-                    {draftIds.map((idOrName, i) => {
-                      const tag = resolveTag(quickActionTags, idOrName);
-                      return tag ? (
-                        <span key={i} className="notion-tag m-0 text-nowrap d-inline-flex align-items-center gap-1" style={getTagStyleById(quickActionTags, idOrName)}>
-                          {tag.name}
-                          <X size={10} style={{ cursor: 'pointer' }} onClick={e => { e.stopPropagation(); setCellDraft(draftIds.filter(x => x !== idOrName)); }} />
-                        </span>
-                      ) : null;
-                    })}
-                    {draftIds.length === 0 && <span className="text-muted opacity-25 fs-14">Empty</span>}
-                  </div>
-                </Dropdown.Toggle>
-                <Dropdown.Menu show popperConfig={{ strategy: 'fixed' }} className="glass-card border-0 shadow-lg p-2 overflow-auto" style={{ minWidth: '220px', maxHeight: '300px', overflowX: 'hidden' }}>
-                  {quickActionTags.map(tag => (
-                    <div key={tag.id}
-                      className="d-flex align-items-center gap-2 p-1 px-2 rounded-1 cursor-pointer notion-option-item fs-14"
-                      onClick={e => { e.stopPropagation(); setCellDraft(draftIds.includes(tag.id) ? draftIds.filter(x => x !== tag.id) : [tag.id, ...draftIds]); }}
-                    >
-                      <span className="notion-tag m-0" style={getTagStyleById(quickActionTags, tag.id)}>{tag.name}</span>
-                      {draftIds.includes(tag.id) && <Check size={12} className="text-primary ms-auto" />}
+              <>
+                <div className={`d-flex gap-1 ${isWrapped ? 'flex-wrap' : 'overflow-hidden'}`} style={{ cursor: 'default' }}>
+                  {draftIds.map((idOrName, i) => {
+                    const tag = resolveTag(quickActionTags, idOrName);
+                    return tag ? (
+                      <span key={i} className="notion-tag m-0 text-nowrap d-inline-flex align-items-center gap-1" style={getTagStyleById(quickActionTags, idOrName)}>
+                        {tag.name}
+                        <X size={10} style={{ cursor: 'pointer' }} onClick={e => { e.stopPropagation(); setCellDraft(draftIds.filter(x => x !== idOrName)); }} />
+                      </span>
+                    ) : null;
+                  })}
+                  {draftIds.length === 0 && <span className="text-muted opacity-25 fs-14">Empty</span>}
+                </div>
+                <Overlay
+                  target={editTarget}
+                  show={isEditing}
+                  placement="bottom-start"
+                  rootClose
+                  onHide={() => { saveCell(t.id, 'quickActions', draftIds); setEditingCell(null); }}
+                  popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'offset', options: { offset: [0, 4] } }, { name: 'preventOverflow', options: { boundary: 'viewport' } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }}
+                >
+                  {({ placement, arrowProps, show: _show, popper, hasDoneInitialMeasure, ...props }) => (
+                    <div {...props} className="glass-card border-0 shadow-lg p-2 overflow-auto" style={{ ...props.style, zIndex: 20000, minWidth: '220px', maxHeight: '300px', overflowX: 'hidden', backgroundColor: 'white' }}>
+                      {quickActionTags.map(tag => (
+                        <div key={tag.id}
+                          className="d-flex align-items-center gap-2 p-1 px-2 rounded-1 cursor-pointer notion-option-item fs-14"
+                          onClick={e => { e.stopPropagation(); setCellDraft(draftIds.includes(tag.id) ? draftIds.filter(x => x !== tag.id) : [tag.id, ...draftIds]); }}
+                        >
+                          <span className="notion-tag m-0" style={getTagStyleById(quickActionTags, tag.id)}>{tag.name}</span>
+                          {draftIds.includes(tag.id) && <Check size={12} className="text-primary ms-auto" />}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </Dropdown.Menu>
-              </Dropdown>
+                  )}
+                </Overlay>
+              </>
             ) : (
               <div className={`d-flex gap-1 ${isWrapped ? 'flex-wrap' : 'overflow-hidden'}`}>
                 {currentIds.map((idOrName, i) => {
@@ -1684,31 +2139,40 @@ const BankTransactionsPage = () => {
         const typeTag = resolveTag(typeTags, t.type);
         const draftTypeId = isEditing ? cellDraft : t.type;
         return (
-          <td key={propId} style={{ ...cellStyle, position: 'relative', zIndex: isEditing ? 10 : 1 }} className={tdClass} onClick={tdClick}>
+          <td key={`${tableId}_${propId}`} style={{ ...cellStyle, position: 'relative', zIndex: isEditing ? 1000 : 1 }} className={tdClass} onClick={tdClick}>
             {isEditing ? (
-              <Dropdown show
-                onToggle={(open) => { if (!open) saveCell(t.id, 'type', draftTypeId); }}
-              >
-                <Dropdown.Toggle as="div" className="p-0 border-0 bg-transparent dropdown-no-caret" style={{ cursor: 'default' }}>
+              <>
+                <div className="p-0 border-0 bg-transparent" style={{ cursor: 'default' }}>
                   {draftTypeId ? (() => {
                     const tag = resolveTag(typeTags, draftTypeId);
                     return tag ? <span className="notion-tag m-0 d-inline-flex align-items-center gap-1" style={getTagStyleById(typeTags, draftTypeId)}>
                       {tag.name} <X size={10} style={{ cursor: 'pointer' }} onClick={e => { e.stopPropagation(); setCellDraft(''); }} />
                     </span> : null;
                   })() : <span className="text-muted opacity-25 fs-14">Empty</span>}
-                </Dropdown.Toggle>
-                <Dropdown.Menu show popperConfig={{ strategy: 'fixed' }} className="glass-card border-0 shadow-lg p-2 overflow-auto" style={{ minWidth: '200px', maxHeight: '300px', overflowX: 'hidden' }}>
-                  {typeTags.map(tag => (
-                    <div key={tag.id}
-                      className="d-flex align-items-center gap-2 p-1 px-2 rounded-1 cursor-pointer notion-option-item fs-14"
-                      onClick={e => { e.stopPropagation(); setCellDraft(draftTypeId === tag.id ? '' : tag.id); }}
-                    >
-                      <span className="notion-tag m-0" style={getTagStyleById(typeTags, tag.id)}>{tag.name}</span>
-                      {draftTypeId === tag.id && <Check size={12} className="text-primary ms-auto" />}
+                </div>
+                <Overlay
+                  target={editTarget}
+                  show={isEditing}
+                  placement="bottom-start"
+                  rootClose
+                  onHide={() => { saveCell(t.id, 'type', draftTypeId); setEditingCell(null); }}
+                  popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'offset', options: { offset: [0, 4] } }, { name: 'preventOverflow', options: { boundary: 'viewport' } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }}
+                >
+                  {({ placement, arrowProps, show: _show, popper, hasDoneInitialMeasure, ...props }) => (
+                    <div {...props} className="glass-card border-0 shadow-lg p-2 overflow-auto" style={{ ...props.style, zIndex: 20000, minWidth: '200px', maxHeight: '300px', overflowX: 'hidden', backgroundColor: 'white' }}>
+                      {typeTags.map(tag => (
+                        <div key={tag.id}
+                          className="d-flex align-items-center gap-2 p-1 px-2 rounded-1 cursor-pointer notion-option-item fs-14"
+                          onClick={e => { e.stopPropagation(); setCellDraft(draftTypeId === tag.id ? '' : tag.id); }}
+                        >
+                          <span className="notion-tag m-0" style={getTagStyleById(typeTags, tag.id)}>{tag.name}</span>
+                          {draftTypeId === tag.id && <Check size={12} className="text-primary ms-auto" />}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </Dropdown.Menu>
-              </Dropdown>
+                  )}
+                </Overlay>
+              </>
             ) : (
               typeTag
                 ? <span className="notion-tag m-0" style={getTagStyleById(typeTags, t.type)}>{typeTag.name}</span>
@@ -1720,18 +2184,18 @@ const BankTransactionsPage = () => {
 
       case 'amount':
         return (
-          <td key={propId} style={cellStyle} className={tdClass} onClick={tdClick}>
+          <td key={`${tableId}_${propId}`} style={cellStyle} className={tdClass} onClick={tdClick}>
             <OverlayCell
+              isEditing={isEditing}
               display={<span className="fw-medium">{t.amount ? formatCurrency(t.amount) : <span className="text-muted opacity-25">Empty</span>}</span>}
               input={
-                <Form.Control
-                  type="text"
+                <LocalTextInput
+                  inputMode="text"
                   value={cellDraft ?? ''}
                   autoFocus
                   className="border-0 bg-transparent p-0 fw-medium cell-text-input"
-                  onChange={e => setCellDraft(e.target.value)}
-                  onBlur={() => saveCell(t.id, 'amount', cellDraft)}
-                  onKeyDown={e => { if (e.key === 'Enter') saveCell(t.id, 'amount', cellDraft); if (e.key === 'Escape') setEditingCell(null); }}
+                  onSave={(val) => saveCell(t.id, 'amount', val)}
+                  onCancel={() => setEditingCell(null)}
                 />
               }
             />
@@ -1741,22 +2205,23 @@ const BankTransactionsPage = () => {
 
       case 'receiptUrl':
         return (
-          <td key={propId} style={cellStyle} className={tdClass} onClick={tdClick}>
+          <td key={`${tableId}_${propId}`} style={cellStyle} className={tdClass} onClick={tdClick}>
             <OverlayCell
+              isEditing={isEditing}
               display={
                 <div className="d-flex align-items-center justify-content-between w-100 cell-hover-actions">
                   {t.receiptUrl ? (
                     <a href={t.receiptUrl} target="_blank" rel="noreferrer" className="text-muted text-decoration-none small text-truncate d-inline-block flex-grow-1 pe-2" style={{ maxWidth: '100px' }}
-                        onClick={e => e.stopPropagation()}>
-                        {t.receiptUrl.replace(/^https?:\/\//, '').substring(0, 15)}...
+                      onClick={e => e.stopPropagation()}>
+                      {t.receiptUrl.replace(/^https?:\/\//, '').substring(0, 15)}...
                     </a>
                   ) : (
                     <span className="text-muted opacity-25 fs-14 flex-grow-1 pe-2">Empty</span>
                   )}
                   <div className="d-flex align-items-center gap-1 group-hover-visible bg-white-fade ps-1">
-                    <div 
-                      className="cursor-pointer text-muted p-1 hover-bg-light rounded d-flex align-items-center" 
-                      title="Panodan Yapıştır" 
+                    <div
+                      className="cursor-pointer text-muted p-1 hover-bg-light rounded d-flex align-items-center"
+                      title="Panodan Yapıştır"
                       onClick={async (e) => {
                         e.stopPropagation();
                         try {
@@ -1768,9 +2233,9 @@ const BankTransactionsPage = () => {
                       <Clipboard size={14} />
                     </div>
                     {t.receiptUrl && (
-                      <div 
-                        className="cursor-pointer text-muted p-1 hover-bg-light rounded d-flex align-items-center" 
-                        title="Kopyala" 
+                      <div
+                        className="cursor-pointer text-muted p-1 hover-bg-light rounded d-flex align-items-center"
+                        title="Kopyala"
                         onClick={(e) => {
                           e.stopPropagation();
                           navigator.clipboard.writeText(t.receiptUrl);
@@ -1780,9 +2245,9 @@ const BankTransactionsPage = () => {
                       </div>
                     )}
                     {t.receiptUrl && (
-                      <div 
-                        className="cursor-pointer text-danger p-1 hover-bg-light rounded d-flex align-items-center" 
-                        title="Temizle" 
+                      <div
+                        className="cursor-pointer text-danger p-1 hover-bg-light rounded d-flex align-items-center"
+                        title="Temizle"
                         onClick={(e) => {
                           e.stopPropagation();
                           saveCell(t.id, 'receiptUrl', '');
@@ -1795,15 +2260,14 @@ const BankTransactionsPage = () => {
                 </div>
               }
               input={
-                <Form.Control
+                <LocalTextInput
                   type="url"
                   value={cellDraft ?? ''}
                   autoFocus
                   placeholder="https://..."
                   className="border-0 bg-transparent p-0 cell-text-input"
-                  onChange={e => setCellDraft(e.target.value)}
-                  onBlur={() => saveCell(t.id, 'receiptUrl', cellDraft)}
-                  onKeyDown={e => { if (e.key === 'Enter') saveCell(t.id, 'receiptUrl', cellDraft); if (e.key === 'Escape') setEditingCell(null); }}
+                  onSave={(val) => saveCell(t.id, 'receiptUrl', val)}
+                  onCancel={() => setEditingCell(null)}
                 />
               }
             />
@@ -1814,30 +2278,37 @@ const BankTransactionsPage = () => {
         const draftBankId = isEditing ? cellDraft : t.bankId;
         const draftBank = getBankInfo(draftBankId);
         return (
-          <td key={propId} style={{ ...cellStyle, position: 'relative', zIndex: isEditing ? 10 : 1 }} className={tdClass} onClick={tdClick}>
+          <td key={`${tableId}_${propId}`} style={{ ...cellStyle, position: 'relative', zIndex: isEditing ? 1000 : 1 }} className={tdClass} onClick={tdClick}>
             {isEditing ? (
-              <Dropdown show align="end"
-                onToggle={(open) => { if (!open) saveCell(t.id, 'bankId', draftBankId); }}
-              >
-                <Dropdown.Toggle as="div" className="p-0 border-0 bg-transparent dropdown-no-caret" style={{ cursor: 'default' }}>
-                  <div className="d-flex align-items-center gap-2 small">
-                    {draftBank.logo ? <img src={draftBank.logo} alt="" width="16" height="16" className="object-fit-contain" /> : <Landmark size={14} className="text-muted" />}
-                    <span>{draftBank.name || <span className="text-muted opacity-50">Empty</span>}</span>
-                  </div>
-                </Dropdown.Toggle>
-                <Dropdown.Menu show popperConfig={{ strategy: 'fixed' }} className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '200px' }}>
-                  {banks.map(b => (
-                    <div key={b.id}
-                      className="d-flex align-items-center gap-2 p-1 px-2 rounded-1 cursor-pointer notion-option-item fs-14"
-                      onClick={e => { e.stopPropagation(); setCellDraft(b.id); }}
-                    >
-                      {b.logo ? <img src={b.logo} alt="" width="14" height="14" className="object-fit-contain" /> : <Landmark size={12} className="text-muted" />}
-                      <span>{b.name}</span>
-                      {draftBankId === b.id && <Check size={12} className="text-primary ms-auto" />}
+              <>
+                <div className="d-flex align-items-center gap-2 small" style={{ cursor: 'default' }}>
+                  {draftBank.logo ? <img src={draftBank.logo} alt="" width="16" height="16" className="object-fit-contain" /> : <Landmark size={14} className="text-muted" />}
+                  <span>{draftBank.name || <span className="text-muted opacity-50">Empty</span>}</span>
+                </div>
+                <Overlay
+                  target={editTarget}
+                  show={isEditing}
+                  placement="bottom-end"
+                  rootClose
+                  onHide={() => { saveCell(t.id, 'bankId', draftBankId); setEditingCell(null); }}
+                  popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'offset', options: { offset: [0, 4] } }, { name: 'preventOverflow', options: { boundary: 'viewport' } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }}
+                >
+                  {({ placement, arrowProps, show: _show, popper, hasDoneInitialMeasure, ...props }) => (
+                    <div {...props} className="glass-card border-0 shadow-lg p-2 overflow-auto" style={{ ...props.style, zIndex: 20000, minWidth: '200px', maxHeight: '300px', backgroundColor: 'white' }}>
+                      {banks.map(b => (
+                        <div key={b.id}
+                          className="d-flex align-items-center gap-2 p-1 px-2 rounded-1 cursor-pointer notion-option-item fs-14"
+                          onClick={e => { e.stopPropagation(); setCellDraft(b.id); }}
+                        >
+                          {b.logo ? <img src={b.logo} alt="" width="14" height="14" className="object-fit-contain" /> : <Landmark size={12} className="text-muted" />}
+                          <span>{b.name}</span>
+                          {draftBankId === b.id && <Check size={12} className="text-primary ms-auto" />}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </Dropdown.Menu>
-              </Dropdown>
+                  )}
+                </Overlay>
+              </>
             ) : (
               <div className="d-flex align-items-center gap-2 small">
                 {bank.logo ? <img src={bank.logo} alt="" width="18" height="18" className="object-fit-contain rounded-circle" /> : <Landmark size={14} className="text-muted" />}
@@ -1848,53 +2319,64 @@ const BankTransactionsPage = () => {
         );
       }
 
-      default: return <td key={propId} style={cellStyle}></td>;
+      default: return <td key={`${tableId}_${propId}`} style={cellStyle}></td>;
     }
-  };
+  }, [editingCell, cellDraft, searchTerm, config, editTarget, typeTags, quickActionTags, banks, uniqueTitles]);
 
 
 
   return (
     <div className="pb-5">
-      <div className="mb-4">
-        <h1 className="fw-bold mb-4">Banka</h1>
-        
-        {/* Gallery/Table Switcher Header */}
-        <div className="d-flex align-items-center justify-content-between mb-4" style={{ position: 'relative', zIndex: 1000 }}>
-          <div className="d-flex align-items-center gap-1">
-            <Button 
-              variant="light" 
-              size="sm" 
-              onClick={() => handleUpdateLayout('gallery_basic')}
-              className={`d-flex align-items-center gap-2 rounded-pill px-3 py-1 fw-medium small border-0 ${viewLayout === 'gallery_basic' ? 'bg-white shadow-sm' : 'bg-transparent text-muted'}`}
-            >
-              <LayoutGrid size={16} /> Galeri Basit
-            </Button>
-            <Button 
-              variant="light" 
-              size="sm" 
-              onClick={() => handleUpdateLayout('table')}
-              className={`d-flex align-items-center gap-2 rounded-pill px-3 py-1 fw-medium small border-0 ${viewLayout === 'table' ? 'bg-white shadow-sm' : 'bg-transparent text-muted'}`}
-            >
-              <ListIcon size={16} /> Tablo
-            </Button>
-            <Button 
-              variant="light" 
-              size="sm" 
-              onClick={() => handleUpdateLayout('gallery_advanced')}
-              className={`d-flex align-items-center gap-2 rounded-pill px-3 py-1 fw-medium small border-0 ${viewLayout === 'gallery_advanced' ? 'bg-white shadow-sm' : 'bg-transparent text-muted'}`}
-            >
-              <LayoutGrid size={16} /> Galeri Gelişmiş
-            </Button>
-          </div>
-
-          <div className="d-flex align-items-center gap-3">
-            <div className="d-flex align-items-center gap-3 text-muted opacity-75">
+      <style>{`
+        .notion-option-item:hover { background-color: rgba(0, 0, 0, 0.05); }
+        .dropdown-submenu { position: relative; }
+        .dropdown-submenu:hover > .submenu-content { 
+          opacity: 1 !important; 
+          visibility: visible !important; 
+          pointer-events: all !important;
+          transform: translateX(0) !important;
+        }
+        .submenu-content { 
+          position: absolute !important;
+          top: 0 !important;
+          left: 100% !important;
+          margin-left: 2px !important;
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          transform: translateX(-10px);
+          transition: all 0.2s ease-in-out;
+          background: white !important;
+          border: 1px solid rgba(0,0,0,0.1) !important;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+          border-radius: 8px !important;
+          min-width: 180px !important;
+          z-index: 10002 !important;
+          padding: 8px !important;
+        }
+        .transition-all { transition: all 0.2s ease-in-out; }
+        .hover-bg-light:hover { background-color: rgba(0, 0, 0, 0.03); }
+        .x-small { font-size: 11px; }
+        @media (max-width: 991px) {
+          .bank-card-col-simple {
+            max-width: 150px !important;
+            width: 150px !important;
+            flex: 0 0 150px !important;
+          }
+          .section-title { font-size: 23px !important; }
+        }
+      `}</style>
+      <div className="mb-md-4 mb-1">
+        {/* Mobile Header: Title + Switcher */}
+        <div className="d-md-none mb-4">
+          <div className="d-flex align-items-center justify-content-between mb-3">
+            <h1 className="fw-bold m-0 section-title">Banka</h1>
+            <div className="d-flex align-items-center gap-2">
               <Dropdown align="end" className="d-inline">
                 <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret" style={{ cursor: 'pointer' }}>
-                  <ArrowUpDown size={18} />
+                  <ArrowUpDown size={18} className="text-muted" />
                 </Dropdown.Toggle>
-                <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
+                <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
                   <div className="px-3 py-1 mb-1 small fw-bold text-muted opacity-50 fs-10">SIRALAMA SEÇENEKLERİ</div>
                   <Dropdown.Item onClick={() => handleAutoSort('name')} className="rounded-2 d-flex align-items-center gap-2">
                     <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><Type size={15} /></div> İsme Göre (A-Z)
@@ -1904,12 +2386,120 @@ const BankTransactionsPage = () => {
                   </Dropdown.Item>
                 </Dropdown.Menu>
               </Dropdown>
-              
+
+              <Dropdown align="end" className="d-inline">
+                <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret" style={{ cursor: 'pointer' }}>
+                  <SlidersHorizontal size={20} className="text-muted" />
+                </Dropdown.Toggle>
+                <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
+                  <div className="px-3 py-1 mb-1 small fw-bold text-muted opacity-50 fs-10">BANKA VISIBILITY</div>
+                  <div className="overflow-auto mb-2" style={{ maxHeight: '200px' }}>
+                    {banks.map(bank => (
+                      <div key={bank.id} className="d-flex align-items-center justify-content-between px-3 py-1 hover-bg-light rounded-2">
+                        <div className="d-flex align-items-center gap-2 overflow-hidden">
+                          {bank.logo ? <img src={bank.logo} alt="" width="14" height="14" className="object-fit-contain" /> : <Landmark size={12} className="text-muted" />}
+                          <span className="text-truncate" style={{ fontSize: '13px' }}>{bank.name}</span>
+                        </div>
+                        <div className="cursor-pointer d-flex align-items-center ps-2" onClick={(e) => { e.stopPropagation(); handleToggleBankVisibility(bank, !(bank.visible !== false)); }}>
+                          {bank.visible !== false ? <Eye size={14} className="text-dark" /> : <EyeOff size={14} className="text-muted opacity-25" />}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Dropdown.Menu>
+              </Dropdown>
+
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowBankModal(true)}
+                className="d-flex align-items-center gap-1 rounded-pill px-3 shadow-sm ms-2"
+              >
+                New <ChevronDown size={14} />
+              </Button>
+            </div>
+          </div>
+          <div className="d-flex align-items-center gap-1 mobile-scroll-x">
+            <Button
+              variant="light"
+              size="sm"
+              onClick={() => handleUpdateLayout('gallery_basic')}
+              className={`d-flex align-items-center gap-2 rounded-pill px-3 py-1 fw-medium small border-0 ${viewLayout === 'gallery_basic' ? 'bg-white shadow-sm' : 'bg-transparent text-muted'}`}
+            >
+              <LayoutGrid size={16} /> Galeri Basit
+            </Button>
+            <Button
+              variant="light"
+              size="sm"
+              onClick={() => handleUpdateLayout('table')}
+              className={`d-flex align-items-center gap-2 rounded-pill px-3 py-1 fw-medium small border-0 ${viewLayout === 'table' ? 'bg-white shadow-sm' : 'bg-transparent text-muted'}`}
+            >
+              <ListIcon size={16} /> Tablo
+            </Button>
+            <Button
+              variant="light"
+              size="sm"
+              onClick={() => handleUpdateLayout('gallery_advanced')}
+              className={`d-flex align-items-center gap-2 rounded-pill px-3 py-1 fw-medium small border-0 ${viewLayout === 'gallery_advanced' ? 'bg-white shadow-sm' : 'bg-transparent text-muted'}`}
+            >
+              <LayoutGrid size={16} /> Galeri Gelişmiş
+            </Button>
+          </div>
+        </div>
+
+        <h1 className="fw-bold mb-4 d-none d-md-block">Banka</h1>
+
+        {/* Gallery/Table Switcher Header */}
+        <div className="d-none d-md-flex align-items-center justify-content-between mb-4" style={{ position: 'relative', zIndex: 1000 }}>
+          <div className="d-none d-md-flex align-items-center gap-1 mobile-scroll-x">
+            <Button
+              variant="light"
+              size="sm"
+              onClick={() => handleUpdateLayout('gallery_basic')}
+              className={`d-flex align-items-center gap-2 rounded-pill px-3 py-1 fw-medium small border-0 ${viewLayout === 'gallery_basic' ? 'bg-white shadow-sm' : 'bg-transparent text-muted'}`}
+            >
+              <LayoutGrid size={16} /> Galeri Basit
+            </Button>
+            <Button
+              variant="light"
+              size="sm"
+              onClick={() => handleUpdateLayout('table')}
+              className={`d-flex align-items-center gap-2 rounded-pill px-3 py-1 fw-medium small border-0 ${viewLayout === 'table' ? 'bg-white shadow-sm' : 'bg-transparent text-muted'}`}
+            >
+              <ListIcon size={16} /> Tablo
+            </Button>
+            <Button
+              variant="light"
+              size="sm"
+              onClick={() => handleUpdateLayout('gallery_advanced')}
+              className={`d-flex align-items-center gap-2 rounded-pill px-3 py-1 fw-medium small border-0 ${viewLayout === 'gallery_advanced' ? 'bg-white shadow-sm' : 'bg-transparent text-muted'}`}
+            >
+              <LayoutGrid size={16} /> Galeri Gelişmiş
+            </Button>
+          </div>
+
+          <div className="d-none d-md-flex align-items-center gap-3 w-100 w-md-auto justify-content-between justify-content-md-end">
+            <div className="d-flex align-items-center gap-3 text-muted">
+              <Dropdown align="end" className="d-inline">
+                <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret" style={{ cursor: 'pointer' }}>
+                  <ArrowUpDown size={18} />
+                </Dropdown.Toggle>
+                <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
+                  <div className="px-3 py-1 mb-1 small fw-bold text-muted opacity-50 fs-10">SIRALAMA SEÇENEKLERİ</div>
+                  <Dropdown.Item onClick={() => handleAutoSort('name')} className="rounded-2 d-flex align-items-center gap-2">
+                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><Type size={15} /></div> İsme Göre (A-Z)
+                  </Dropdown.Item>
+                  <Dropdown.Item onClick={() => handleAutoSort('date')} className="rounded-2 d-flex align-items-center gap-2">
+                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><Calendar size={15} /></div> Eklenme Tarihi
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown>
+
               <Dropdown align="end" className="d-inline">
                 <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret" style={{ cursor: 'pointer' }}>
                   <SlidersHorizontal size={20} />
                 </Dropdown.Toggle>
-                <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
+                <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
                   <div className="px-3 py-1 mb-1 small fw-bold text-muted opacity-50 fs-10">BANKA VISIBILITY</div>
                   <div className="overflow-auto mb-2" style={{ maxHeight: '200px' }}>
                     {banks.map(bank => (
@@ -1940,9 +2530,9 @@ const BankTransactionsPage = () => {
                 </Dropdown.Menu>
               </Dropdown>
             </div>
-            <Button 
-              variant="primary" 
-              size="sm" 
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => setShowBankModal(true)}
               className="d-flex align-items-center gap-1 rounded-pill px-3 shadow-sm"
             >
@@ -1953,17 +2543,17 @@ const BankTransactionsPage = () => {
 
         {/* Banks Listing with Drag and Drop */}
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <DndContext 
+          <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
-            <SortableContext 
+            <SortableContext
               items={banks.map(b => b.id)}
               strategy={viewLayout === 'table' ? verticalListSortingStrategy : rectSortingStrategy}
             >
               {viewLayout === 'table' ? (
-                <div className="bg-white border shadow-sm overflow-hidden mb-5" style={{ borderRadius: '12px' }}>
+                <div className="bg-white border shadow-sm overflow-hidden mb-md-5 mb-0" style={{ borderRadius: '12px' }}>
                   <Table responsive hover className="notion-table mb-0 border-top">
                     <thead>
                       <tr className="bg-light bg-opacity-10 text-muted smaller">
@@ -1975,46 +2565,46 @@ const BankTransactionsPage = () => {
                     </thead>
                     <tbody>
                       {banks.filter(bank => bank.visible !== false).map(bank => (
-                        <SortableBankItem 
-                          key={bank.id} 
-                          bank={bank} 
-                          balance={calculateBalance(bank.id)} 
+                        <SortableBankItem
+                          key={bank.id}
+                          bank={bank}
+                          balance={calculateBalance(bank.id)}
                           viewLayout="table"
                           handleDeleteBank={handleDeleteBank}
                           onEditClick={handleEditClick}
                         />
                       ))}
                       <tr className="align-middle text-muted opacity-50 border-top">
-                         <td className="ps-4 py-3 fs-15">
-                            {banks.length} banka
-                         </td>
-                         <td className="fw-bold" style={{ fontSize: '15px' }}>
-                            {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(totalBalance)}
-                         </td>
-                         <td></td>
-                         <td></td>
+                        <td className="ps-4 py-3 fs-15">
+                          {banks.length} banka
+                        </td>
+                        <td className="fw-bold" style={{ fontSize: '15px' }}>
+                          {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(totalBalance)}
+                        </td>
+                        <td></td>
+                        <td></td>
                       </tr>
                     </tbody>
                   </Table>
                 </div>
               ) : (
-                <Row className="g-3 mb-5 row-cols-lg-6 row-cols-md-3 row-cols-2">
+                <Row className="g-3 mb-md-5 mb-0 row-cols-lg-6 row-cols-md-3 row-cols-2 flex-md-wrap flex-nowrap mobile-scroll-cards pb-2">
                   {banks.filter(bank => bank.visible !== false).map(bank => (
-                    <SortableBankItem 
-                      key={bank.id} 
-                      bank={bank} 
-                      balance={calculateBalance(bank.id)} 
+                    <SortableBankItem
+                      key={bank.id}
+                      bank={bank}
+                      balance={calculateBalance(bank.id)}
                       viewLayout={viewLayout}
                       handleDeleteBank={handleDeleteBank}
                       onEditClick={handleEditClick}
                     />
                   ))}
-                  
+
                   {/* New Bank Placeholder */}
-                  <Col>
-                    <div 
-                      className="h-100 bg-white border border-dashed d-flex flex-column justify-content-center p-2 text-muted opacity-50"
-                      style={{ border: '1px dashed rgba(0,0,0,0.1)', cursor: 'pointer', minHeight: viewLayout === 'gallery_advanced' ? '180px' : '85px' }}
+                  <Col className={viewLayout === 'gallery_basic' ? 'bank-card-col-simple' : ''}>
+                    <div
+                      className="h-100 bg-white border border-dashed shadow-sm d-flex flex-column justify-content-center p-2 text-muted opacity-50"
+                      style={{ border: '1px dashed rgba(0,0,0,0.1)', cursor: 'pointer', borderRadius: '12px', minHeight: viewLayout === 'gallery_advanced' ? '180px' : '85px' }}
                       onClick={() => setShowBankModal(true)}
                     >
                       <div className="d-flex align-items-center gap-2 mb-1 justify-content-center">
@@ -2032,19 +2622,19 @@ const BankTransactionsPage = () => {
         </div>
       </div>
 
-      <hr className="my-5 opacity-5" />
+      <hr className="my-md-5 my-4 opacity-5" />
 
       {/* Transactions Section */}
-      <div className="d-flex justify-content-between align-items-center mb-4" style={{ position: 'relative', zIndex: 1000 }}>
-        <h1 className="fw-bold m-0">Banka İşlemleri</h1>
-        <div className="d-flex align-items-center gap-3">
-          <div className="d-flex align-items-center gap-3 text-muted opacity-75">
+      <div className="d-flex align-items-center justify-content-between mb-4 gap-3" style={{ position: 'relative', zIndex: 1000 }}>
+        <h1 className="fw-bold m-0 section-title">Banka İşlemleri</h1>
+        <div className="d-flex align-items-center gap-3 mobile-scroll-x w-auto">
+          <div className="d-flex align-items-center gap-3 text-muted  ">
 
             <Dropdown align="end" className="d-inline" autoClose="outside" onToggle={(isOpen) => !isOpen && setSettingsView('main')}>
               <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret" style={{ cursor: 'pointer' }}>
                 <SlidersHorizontal size={20} />
               </Dropdown.Toggle>
-              <Dropdown.Menu className="glass-card border-0 shadow-lg p-0 overflow-hidden" style={{ width: '280px', zIndex: 10001 }}>
+              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-0 overflow-hidden" style={{ width: '280px', zIndex: 10001 }}>
                 {settingsView === 'main' ? (
                   <div className="p-2">
                     <Dropdown.Item onClick={() => setSettingsView('visibility')} className="rounded-2 d-flex align-items-center justify-content-between py-2">
@@ -2057,40 +2647,9 @@ const BankTransactionsPage = () => {
                         <ChevronRight size={14} />
                       </div>
                     </Dropdown.Item>
-                    <Dropdown.Item className="rounded-2 d-flex align-items-center justify-content-between py-2">
-                      <div className="d-flex align-items-center gap-2">
-                        <ListFilter size={18} className="text-muted" />
-                        <span>Filter</span>
-                      </div>
-                      <ChevronRight size={14} className="text-muted opacity-50" />
-                    </Dropdown.Item>
-                    <Dropdown.Item className="rounded-2 d-flex align-items-center justify-content-between py-2">
-                      <div className="d-flex align-items-center gap-2">
-                        <ArrowUpDown size={18} className="text-muted" />
-                        <span>Sort</span>
-                      </div>
-                      <div className="d-flex align-items-center gap-2 text-muted opacity-50">
-                        <span>Date</span>
-                        <ChevronRight size={14} />
-                      </div>
-                    </Dropdown.Item>
-                    <Dropdown.Item className="rounded-2 d-flex align-items-center justify-content-between py-2">
-                      <div className="d-flex align-items-center gap-2">
-                        <Rows size={18} className="text-muted" />
-                        <span>Group</span>
-                      </div>
-                      <ChevronRight size={14} className="text-muted opacity-50" />
-                    </Dropdown.Item>
-                    <Dropdown.Item className="rounded-2 d-flex align-items-center justify-content-between py-2">
-                      <div className="d-flex align-items-center gap-2">
-                        <PaintRoller size={18} className="text-muted" />
-                        <span>Conditional color</span>
-                      </div>
-                      <ChevronRight size={14} className="text-muted opacity-50" />
-                    </Dropdown.Item>
-                    
+
                     <div className="dropdown-divider mx-2 opacity-10"></div>
-                    
+
                     <div className="px-3 py-1 mt-2 mb-1 small fw-bold text-muted opacity-50" style={{ fontSize: '10px' }}>İŞLEM SEÇENEKLERİ</div>
                     <Dropdown.Item onClick={() => setShowTagModal(true)} className="rounded-2 d-flex align-items-center gap-2">
                       <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><Settings size={15} /></div> Etiketleri Yönet
@@ -2106,7 +2665,7 @@ const BankTransactionsPage = () => {
                     </div>
                     <div className="p-2">
                       <div className="overflow-auto" style={{ maxHeight: '400px' }}>
-                        <DndContext 
+                        <DndContext
                           sensors={sensors}
                           collisionDetection={closestCenter}
                           onDragEnd={(e) => {
@@ -2119,8 +2678,8 @@ const BankTransactionsPage = () => {
                             }
                           }}
                         >
-                          <SortableContext 
-                            items={Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id)} 
+                          <SortableContext
+                            items={Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id)}
                             strategy={verticalListSortingStrategy}
                           >
                             <div className="d-flex align-items-center justify-content-between px-2 py-1 mb-1">
@@ -2135,9 +2694,9 @@ const BankTransactionsPage = () => {
                                 const prop = PROPERTIES.find(p => p.id === id);
                                 if (!prop) return null;
                                 return (
-                                  <SortablePropertyItem 
-                                    key={id} 
-                                    prop={prop} 
+                                  <SortablePropertyItem
+                                    key={id}
+                                    prop={prop}
                                     icon={getPropertyIcon(id, config)}
                                     isVisible={config.propertyVisibility?.[id] !== false}
                                     toggleVisibility={(id) => handleUpdatePropertyVisibility(id, !(config.propertyVisibility?.[id] !== false))}
@@ -2153,27 +2712,27 @@ const BankTransactionsPage = () => {
               </Dropdown.Menu>
             </Dropdown>
           </div>
-          <Button 
-            variant="light" 
-            size="sm" 
+          <Button
+            variant="light"
+            size="sm"
             onClick={() => setShowImportModal(true)}
             className="d-flex align-items-center gap-2 rounded-pill px-3 shadow-sm border glass-card"
           >
-            <Upload size={14} /> Import
+            <Upload size={14} /> <span className="d-none d-md-inline">Import</span>
           </Button>
           <div className="d-flex align-items-center shadow-sm rounded-pill overflow-hidden" style={{ background: '#0d6efd' }}>
-            <Button 
-              variant="primary" 
-              size="sm" 
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleQuickNewTransaction}
               className="border-0 px-3 h-100 rounded-0 border-end"
               style={{ borderColor: 'rgba(255,255,255,0.2) !important' }}
             >
               New
             </Button>
-            <Button 
-              variant="primary" 
-              size="sm" 
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => setShowTransactionModal(true)}
               className="border-0 px-2 h-100 rounded-0 d-flex align-items-center"
             >
@@ -2183,24 +2742,24 @@ const BankTransactionsPage = () => {
         </div>
       </div>
 
-    {selectedIds.length > 0 && (
+      {selectedIds.length > 0 && (
         <div className="position-sticky top-0 mb-2" style={{ zIndex: 2000 }}>
           <div className="glass-card p-1 d-flex align-items-center flex-wrap gap-1" style={{ minHeight: '48px', height: 'auto', width: 'fit-content', maxWidth: '100%' }}>
             <div className="px-3 border-end text-primary fw-medium small d-flex align-items-center gap-2">
               {selectedIds.length} selected
-              <div 
-                className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all cursor-pointer" 
+              <div
+                className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all cursor-pointer"
                 style={{ width: '16px', height: '16px' }}
                 onClick={() => setSelectedIds([])}
               >
                 <X size={12} />
               </div>
             </div>
-            <div className="d-flex align-items-center gap-1 px-1">
+            <div className="d-flex align-items-center gap-1 px-1 mobile-scroll-x">
               {/* Date Update */}
-              <BulkDateInput 
-                value={stagedChanges.date} 
-                onSave={(val) => setStagedChanges(prev => ({ ...prev, date: val }))} 
+              <BulkDateInput
+                value={stagedChanges.date}
+                onSave={(val) => setStagedChanges(prev => ({ ...prev, date: val }))}
                 onClear={() => setStagedChanges(prev => {
                   const newState = { ...prev };
                   delete newState.date;
@@ -2210,13 +2769,13 @@ const BankTransactionsPage = () => {
 
               {/* Bank Update */}
               <Dropdown autoClose="outside" className="d-inline">
-                <Dropdown.Toggle as="div" className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedChanges.bankId ? 'text-primary' : 'opacity-75'}`} style={{ minWidth: '80px', minHeight: '40px' }}>
+                <Dropdown.Toggle as="div" className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedChanges.bankId ? 'text-primary' : ' '}`} style={{ minWidth: '80px', minHeight: '40px' }}>
                   <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                     <Landmark size={10} /> Bankalar
                     {stagedChanges.bankId && (
-                      <X 
-                        size={10} 
-                        className="ms-1 hover-text-danger transition-colors cursor-pointer" 
+                      <X
+                        size={10}
+                        className="ms-1 hover-text-danger transition-colors cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
                           setStagedChanges(prev => {
@@ -2235,10 +2794,10 @@ const BankTransactionsPage = () => {
                     </div>
                   )}
                 </Dropdown.Toggle>
-                <Dropdown.Menu className="glass-card border-0 shadow-lg p-1" style={{ minWidth: '150px' }}>
+                <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1" style={{ minWidth: '150px' }}>
                   {banks.map(bank => (
-                    <Dropdown.Item 
-                      key={bank.id} 
+                    <Dropdown.Item
+                      key={bank.id}
                       className={`rounded-2 py-2 d-flex align-items-center gap-2 ${stagedChanges.bankId === bank.id ? 'bg-light text-primary' : ''}`}
                       onClick={() => setStagedChanges(prev => ({ ...prev, bankId: bank.id }))}
                     >
@@ -2251,13 +2810,13 @@ const BankTransactionsPage = () => {
 
               {/* Type Update */}
               <Dropdown autoClose="outside" className="d-inline">
-                <Dropdown.Toggle as="div" className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedChanges.type ? 'text-primary' : 'opacity-75'}`} style={{ minWidth: '90px', minHeight: '40px' }}>
+                <Dropdown.Toggle as="div" className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedChanges.type ? 'text-primary' : ' '}`} style={{ minWidth: '90px', minHeight: '40px' }}>
                   <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                     <Tag size={10} /> İşlem Türü
                     {stagedChanges.type && (
-                      <X 
-                        size={10} 
-                        className="ms-1 hover-text-danger transition-colors cursor-pointer" 
+                      <X
+                        size={10}
+                        className="ms-1 hover-text-danger transition-colors cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
                           setStagedChanges(prev => {
@@ -2277,10 +2836,10 @@ const BankTransactionsPage = () => {
                     </div>
                   )}
                 </Dropdown.Toggle>
-                <Dropdown.Menu className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ minWidth: '150px', maxHeight: '300px', overflowX: 'hidden' }}>
+                <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ minWidth: '150px', maxHeight: '300px', overflowX: 'hidden' }}>
                   {typeTags.map(tag => (
-                    <Dropdown.Item 
-                      key={tag.id} 
+                    <Dropdown.Item
+                      key={tag.id}
                       className={`rounded-2 py-2 d-flex align-items-center gap-2 ${stagedChanges.type === tag.id ? 'bg-light text-primary' : ''}`}
                       onClick={() => setStagedChanges(prev => ({ ...prev, type: tag.id }))}
                     >
@@ -2294,13 +2853,13 @@ const BankTransactionsPage = () => {
 
               {/* Quick Actions Update */}
               <Dropdown autoClose="outside" className="d-inline">
-                <Dropdown.Toggle as="div" className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedChanges.quickActions?.length > 0 ? 'text-primary' : 'opacity-75'}`} style={{ minWidth: '100px', minHeight: '40px' }}>
+                <Dropdown.Toggle as="div" className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedChanges.quickActions?.length > 0 ? 'text-primary' : ' '}`} style={{ minWidth: '100px', minHeight: '40px' }}>
                   <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                     <Zap size={10} /> Hızlı İşlemler
                     {stagedChanges.quickActions?.length > 0 && (
-                      <X 
-                        size={10} 
-                        className="ms-1 hover-text-danger transition-colors cursor-pointer" 
+                      <X
+                        size={10}
+                        className="ms-1 hover-text-danger transition-colors cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
                           setStagedChanges(prev => {
@@ -2325,17 +2884,17 @@ const BankTransactionsPage = () => {
                     </div>
                   )}
                 </Dropdown.Toggle>
-                <Dropdown.Menu className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ minWidth: '150px', maxHeight: '300px', overflowX: 'hidden' }}>
+                <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ minWidth: '150px', maxHeight: '300px', overflowX: 'hidden' }}>
                   {quickActionTags.map(tag => {
                     const isSelected = stagedChanges.quickActions?.includes(tag.id);
                     return (
-                      <Dropdown.Item 
-                        key={tag.id} 
+                      <Dropdown.Item
+                        key={tag.id}
                         className={`rounded-2 py-2 d-flex align-items-center justify-content-between gap-3 ${isSelected ? 'bg-light text-primary' : ''}`}
                         onClick={() => {
                           setStagedChanges(prev => {
                             const current = prev.quickActions || [];
-                            const next = current.includes(tag.id) 
+                            const next = current.includes(tag.id)
                               ? current.filter(id => id !== tag.id)
                               : [...current, tag.id];
                             return { ...prev, quickActions: next };
@@ -2355,34 +2914,34 @@ const BankTransactionsPage = () => {
               <div className="border-start ms-1 ps-1 d-flex align-items-center gap-1">
                 {Object.keys(stagedChanges).length > 0 && (
                   <div className="d-flex align-items-center gap-1 me-1">
-                    <Button 
-                      variant="primary" 
-                      size="sm" 
+                    <Button
+                      variant="primary"
+                      size="sm"
                       className="position-relative overflow-hidden rounded-pill px-3 fw-bold d-flex align-items-center gap-2 shadow-sm border-0 transition-all"
                       disabled={isBulkProcessing}
                       onClick={handleBulkSave}
-                      style={{ 
-                        minWidth: '90px', 
+                      style={{
+                        minWidth: '90px',
                         height: '32px',
                         background: 'linear-gradient(135deg, #006fee 0%, #005bc4 100%)',
                         fontSize: '13px'
                       }}
                     >
-                      <div 
-                        className="position-absolute top-0 start-0 h-100 transition-all duration-300" 
-                        style={{ 
-                          width: `${bulkProgress}%`, 
+                      <div
+                        className="position-absolute top-0 start-0 h-100 transition-all duration-300"
+                        style={{
+                          width: `${bulkProgress}%`,
                           backgroundColor: 'rgba(255,255,255,0.3)',
                           zIndex: 0
-                        }} 
+                        }}
                       />
                       <span className="position-relative" style={{ zIndex: 1 }}>
                         {isBulkProcessing ? `%${bulkProgress}` : 'Kaydet'}
                       </span>
                     </Button>
-                    <Button 
-                      variant="light" 
-                      size="sm" 
+                    <Button
+                      variant="light"
+                      size="sm"
                       className="rounded-circle d-flex align-items-center justify-content-center p-0 shadow-sm border"
                       style={{ width: '28px', height: '28px' }}
                       onClick={() => setStagedChanges({})}
@@ -2397,18 +2956,18 @@ const BankTransactionsPage = () => {
                 <Button variant="link" className="text-danger p-2 hover-bg-light rounded-2" onClick={handleBulkDelete} disabled={isBulkProcessing}>
                   <Trash2 size={16} />
                 </Button>
-                
+
                 {/* Bulk History (Undo) */}
                 <Dropdown align="end">
                   <Dropdown.Toggle as="div" className="text-muted p-2 hover-bg-light rounded-2 cursor-pointer transition-all">
                     <RotateCcw size={16} />
                   </Dropdown.Toggle>
-                  <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '350px' }}>
+                  <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '350px' }}>
                     <div className="d-flex align-items-center justify-content-between px-2 border-bottom pb-1 mb-2">
                       <div className="x-small fw-bold text-muted">TOPLU İŞLEM GEÇMİŞİ</div>
                       {bulkHistory.length > 0 && (
-                        <div 
-                          className="x-small text-danger fw-bold cursor-pointer hover-opacity-75 transition-all" 
+                        <div
+                          className="x-small text-danger fw-bold cursor-pointer hover-  transition-all"
                           style={{ fontSize: '10px', letterSpacing: '0.02em' }}
                           onClick={(e) => { e.stopPropagation(); handleClearBulkHistory(); }}
                         >
@@ -2426,7 +2985,7 @@ const BankTransactionsPage = () => {
                               {item.timestamp?.toDate().toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
-                          <div className="small fw-medium text-dark opacity-75">
+                          <div className="small fw-medium text-dark  ">
                             {item.type === 'DELETE' && '🗑️ Toplu Silme'}
                             {item.type === 'BULK_UPDATE' && (
                               <div className="d-flex flex-column">
@@ -2443,9 +3002,9 @@ const BankTransactionsPage = () => {
                                       displayVal = ids.map(id => resolveTag(quickActionTags, id)?.name || id).join(', ');
                                     }
                                     if (field === 'date' && val) displayVal = displayDateFormatted(val, config.dateFormat);
-                                    
+
                                     return <div key={field} className="text-truncate" style={{ maxWidth: '200px' }}>
-                                      <span className="opacity-75">{label}:</span> <span className="text-dark fw-bold">{displayVal || 'Boş'}</span>
+                                      <span className=" ">{label}:</span> <span className="text-dark fw-bold">{displayVal || 'Boş'}</span>
                                     </div>;
                                   })}
                                 </div>
@@ -2458,9 +3017,9 @@ const BankTransactionsPage = () => {
                           </div>
                         </div>
                         <div className="d-flex align-items-center gap-2">
-                          <Button 
-                            variant="primary" 
-                            size="sm" 
+                          <Button
+                            variant="primary"
+                            size="sm"
                             className="px-2 py-0.5 rounded-pill transition-all shadow-sm border-0"
                             style={{ fontSize: '11px', fontWeight: 600, height: '24px' }}
                             disabled={isBulkProcessing}
@@ -2468,9 +3027,9 @@ const BankTransactionsPage = () => {
                           >
                             Geri Al
                           </Button>
-                          <Button 
-                            variant="outline-danger" 
-                            size="sm" 
+                          <Button
+                            variant="outline-danger"
+                            size="sm"
                             className="px-2 py-1 x-small fw-bold rounded-pill transition-all d-flex align-items-center justify-content-center"
                             onClick={() => handleDeleteBulkHistory(item.id)}
                             style={{ width: '28px', height: '28px' }}
@@ -2487,319 +3046,352 @@ const BankTransactionsPage = () => {
           </div>
         </div>
       )}
-      
-      <DndContext 
-        sensors={sensors} 
-        collisionDetection={closestCenter} 
-        onDragStart={(e) => setActiveDragId(e.active.id)}
-        onDragEnd={handleTransactionDragEnd}
-      >
+
         <Card className="bg-white border shadow-sm" style={{ overflow: 'visible', borderRadius: '12px' }}>
-          {config.filters?.length > 0 && (
-            <div className="sticky-top bg-white border-bottom py-2 px-3 d-flex align-items-center gap-2 flex-wrap" style={{ zIndex: 101, top: '0', borderTopLeftRadius: '12px', borderTopRightRadius: '12px' }}>
-              <div className="text-muted x-small fw-bold d-flex align-items-center gap-1 opacity-50 pe-2 border-end">
-                <Filter size={12} /> FILTERS
-              </div>
-              {config.filters.map(f => {
-                const p = PROPERTIES.find(item => item.id === f.propId);
-                const label = config.propertyLabels?.[f.propId] || p?.label;
-                return (
-                  <div key={f.propId} className="glass-card border rounded-pill px-2 py-1 d-flex align-items-center gap-2 shadow-sm" style={{ fontSize: '12px' }}>
-                    <span className="text-muted">{label}</span>
-                    <Dropdown>
-                      <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary">
-                        {f.operator.replace(/_/g, ' ')}
-                      </Dropdown.Toggle>
-                      <Dropdown.Menu className="glass-card border-0 shadow-lg p-1">
-                        {(() => {
-                          if (['type', 'quickActions', 'bankId'].includes(f.propId)) return ['contains', 'does_not_contain', 'is_empty', 'is_not_empty'];
-                          if (f.propId === 'date') return ['is', 'between', 'is_empty', 'is_not_empty'];
-                          return ['is', 'is_not', 'contains', 'does_not_contain', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];
-                        })().map(op => (
-                          <Dropdown.Item key={op} className="small rounded-2" onClick={() => handleUpdateFilter(f.propId, op, f.value)}>
-                            {op.replace(/_/g, ' ')}
-                          </Dropdown.Item>
-                        ))}
-                      </Dropdown.Menu>
-                    </Dropdown>
-                    {!['is_empty', 'is_not_empty'].includes(f.operator) && (
-                      ['type', 'quickActions', 'bankId'].includes(f.propId) ? (
-                        <Dropdown>
-                          <Dropdown.Toggle as="span" className="fw-medium cursor-pointer hover-text-primary text-truncate d-inline-flex align-items-center" style={{ maxWidth: '120px' }}>
-                            {(() => {
-                              if (!f.value) return 'Seçiniz...';
-                              const ids = f.value.split(',').filter(v => v);
-                              if (ids.length > 1) return `${ids.length} Seçili`;
-                              if (f.propId === 'bankId') return getBankInfo(ids[0]).name || 'Bilinmiyor';
-                              if (f.propId === 'type') return typeTags.find(t => t.id === ids[0])?.name || 'Bilinmiyor';
-                              if (f.propId === 'quickActions') return quickActionTags.find(t => t.id === ids[0])?.name || 'Bilinmiyor';
-                              return f.value;
-                            })()}
-                          </Dropdown.Toggle>
-                          <Dropdown.Menu className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ maxHeight: '300px', minWidth: '150px' }}>
-                            {(f.propId === 'bankId' 
-                              ? [...banks].sort((a, b) => (a.order || 0) - (b.order || 0))
-                              : f.propId === 'type' 
-                                ? [...typeTags].sort((a, b) => (a.order || 0) - (b.order || 0))
-                                : [...quickActionTags].sort((a, b) => (a.order || 0) - (b.order || 0))
-                            ).map(item => {
-                              const colorObj = COLORS.find(c => c.name === item.color) || COLORS[0];
-                              const isSelected = (f.value || '').split(',').includes(item.id);
-                              return (
-                                <Dropdown.Item 
-                                  key={item.id} 
-                                  className="small rounded-2 py-2 mb-1" 
-                                  onClick={(e) => { e.stopPropagation(); handleUpdateFilter(f.propId, f.operator, item.id); }}
-                                >
-                                  <div className="d-flex align-items-center justify-content-between">
-                                    <div className="d-flex align-items-center">
-                                      {f.propId === 'bankId' && item.logo && (
-                                        <img src={item.logo} alt="" width="14" height="14" className="me-2 rounded-circle" style={{ objectFit: 'contain' }} />
-                                      )}
-                                      <span className="px-2 py-0.5 rounded-1" style={f.propId !== 'bankId' ? { backgroundColor: colorObj.bg, color: colorObj.text, fontSize: '11px' } : {}}>
-                                        {item.name}
-                                      </span>
-                                    </div>
-                                    {isSelected && <Check size={14} className="text-primary" />}
+          <Table responsive hover className="notion-table mb-0 border-top-0" style={{ overflow: 'visible', borderCollapse: 'separate', borderSpacing: 0 }}>
+            <thead className="sticky-top bg-white" style={{ zIndex: 1010, top: 0 }}>
+              {config.filters?.length > 0 && (
+                <tr className="bg-white border-bottom">
+                  <th colSpan={100} className="py-2 px-3 border-bottom font-normal">
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                      <div className="text-muted x-small fw-bold d-flex align-items-center gap-1 opacity-50 pe-2 border-end">
+                        <Filter size={12} /> FILTERS
+                      </div>
+                      {config.filters.map(f => {
+                        const p = PROPERTIES.find(item => item.id === f.propId);
+                        const label = config.propertyLabels?.[f.propId] || p?.label;
+                        return (
+                          <div key={f.propId} className="glass-card border rounded-pill px-2 py-1 d-flex align-items-center gap-2 shadow-sm bg-white" style={{ fontSize: '12px', fontWeight: 400 }}>
+                            <span className="text-muted">{label}</span>
+                            <Dropdown autoClose="outside">
+                              <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary">
+                                {f.operator.replace(/_/g, ' ')}
+                              </Dropdown.Toggle>
+                              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1">
+                                {(() => {
+                                  if (['type', 'quickActions', 'bankId'].includes(f.propId)) return ['contains', 'does_not_contain', 'is_empty', 'is_not_empty'];
+                                  if (f.propId === 'date') return ['is', 'between', 'is_empty', 'is_not_empty'];
+                                  return ['is', 'is_not', 'contains', 'does_not_contain', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];
+                                })().map(op => (
+                                  <Dropdown.Item key={op} className="small rounded-2" onClick={() => handleUpdateFilter(f.propId, op, f.value)}>
+                                    {op.replace(/_/g, ' ')}
+                                  </Dropdown.Item>
+                                ))}
+                              </Dropdown.Menu>
+                            </Dropdown>
+                            {!['is_empty', 'is_not_empty'].includes(f.operator) && (
+                              ['type', 'quickActions', 'bankId'].includes(f.propId) ? (
+                                <Dropdown>
+                                  <Dropdown.Toggle as="span" className="fw-medium cursor-pointer hover-text-primary text-truncate d-inline-flex align-items-center" style={{ maxWidth: '120px' }}>
+                                    {(() => {
+                                      if (!f.value) return 'Seçiniz...';
+                                      const ids = f.value.split(',').filter(v => v);
+                                      if (ids.length > 1) return `${ids.length} Seçili`;
+                                      if (f.propId === 'bankId') return getBankInfo(ids[0]).name || 'Bilinmiyor';
+                                      if (f.propId === 'type') return typeTags.find(t => t.id === ids[0])?.name || 'Bilinmiyor';
+                                      if (f.propId === 'quickActions') return quickActionTags.find(t => t.id === ids[0])?.name || 'Bilinmiyor';
+                                      return f.value;
+                                    })()}
+                                  </Dropdown.Toggle>
+                                  <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ maxHeight: '300px', minWidth: '150px' }}>
+                                    {(f.propId === 'bankId'
+                                      ? [...banks].sort((a, b) => (a.order || 0) - (b.order || 0))
+                                      : f.propId === 'type'
+                                        ? [...typeTags].sort((a, b) => (a.order || 0) - (b.order || 0))
+                                        : [...quickActionTags].sort((a, b) => (a.order || 0) - (b.order || 0))
+                                    ).map(item => {
+                                      const colorObj = COLORS.find(c => c.name === item.color) || COLORS[0];
+                                      const isSelected = (f.value || '').split(',').includes(item.id);
+                                      return (
+                                        <Dropdown.Item
+                                          key={item.id}
+                                          className="small rounded-2 py-2 mb-1"
+                                          onClick={(e) => { e.stopPropagation(); handleUpdateFilter(f.propId, f.operator, item.id); }}
+                                        >
+                                          <div className="d-flex align-items-center justify-content-between">
+                                            <div className="d-flex align-items-center">
+                                              {f.propId === 'bankId' && item.logo && (
+                                                <img src={item.logo} alt="" width="14" height="14" className="me-2 rounded-circle" style={{ objectFit: 'contain' }} />
+                                              )}
+                                              <span className="px-2 py-0.5 rounded-1" style={f.propId !== 'bankId' ? { backgroundColor: colorObj.bg, color: colorObj.text, fontSize: '11px' } : {}}>
+                                                {item.name}
+                                              </span>
+                                            </div>
+                                            {isSelected && <Check size={14} className="text-primary" />}
+                                          </div>
+                                        </Dropdown.Item>
+                                      );
+                                    })}
+                                  </Dropdown.Menu>
+                                </Dropdown>
+                              ) : f.propId === 'date' ? (
+                                f.operator === 'between' ? (
+                                  <div className="d-flex align-items-center gap-1">
+                                    <LocalTextInput
+                                      type="date"
+                                      size="sm"
+                                      className="border-0 bg-transparent p-0 fw-medium"
+                                      style={{ width: '90px', fontSize: '11px' }}
+                                      value={(f.value || '').split(',')[0] || ''}
+                                      onSave={val => {
+                                        const parts = (f.value || '').split(',');
+                                        handleUpdateFilter(f.propId, f.operator, `${val},${parts[1] || ''}`);
+                                      }}
+                                    />
+                                    <span className="text-muted opacity-50" style={{ fontSize: '10px' }}>-</span>
+                                    <LocalTextInput
+                                      type="date"
+                                      size="sm"
+                                      className="border-0 bg-transparent p-0 fw-medium"
+                                      style={{ width: '90px', fontSize: '11px' }}
+                                      value={(f.value || '').split(',')[1] || ''}
+                                      onSave={val => {
+                                        const parts = (f.value || '').split(',');
+                                        handleUpdateFilter(f.propId, f.operator, `${parts[0] || ''},${val}`);
+                                      }}
+                                    />
                                   </div>
-                                </Dropdown.Item>
-                              );
-                            })}
-                          </Dropdown.Menu>
-                        </Dropdown>
-                      ) : f.propId === 'date' ? (
-                        f.operator === 'between' ? (
-                          <div className="d-flex align-items-center gap-1">
-                            <Form.Control 
-                              type="date"
-                              size="sm"
-                              className="border-0 bg-transparent p-0 fw-medium"
-                              style={{ width: '90px', fontSize: '11px' }}
-                              value={(f.value || '').split(',')[0] || ''}
-                              onChange={e => {
-                                const parts = (f.value || '').split(',');
-                                handleUpdateFilter(f.propId, f.operator, `${e.target.value},${parts[1] || ''}`);
-                              }}
-                            />
-                            <span className="text-muted opacity-50" style={{ fontSize: '10px' }}>-</span>
-                            <Form.Control 
-                              type="date"
-                              size="sm"
-                              className="border-0 bg-transparent p-0 fw-medium"
-                              style={{ width: '90px', fontSize: '11px' }}
-                              value={(f.value || '').split(',')[1] || ''}
-                              onChange={e => {
-                                const parts = (f.value || '').split(',');
-                                handleUpdateFilter(f.propId, f.operator, `${parts[0] || ''},${e.target.value}`);
-                              }}
-                            />
-                          </div>
-                        ) : (
-                          <Form.Control 
-                            type="date"
-                            size="sm"
-                            className="border-0 bg-transparent p-0 fw-medium"
-                            style={{ width: '100px', fontSize: '12px' }}
-                            value={f.value || ''}
-                            onChange={e => handleUpdateFilter(f.propId, f.operator, e.target.value)}
-                          />
-                        )
-                      ) : (
-                        <Form.Control 
-                          size="sm" 
-                          className="border-0 bg-transparent p-0 fw-medium" 
-                          style={{ width: '100px', fontSize: '12px' }}
-                          value={f.value}
-                          onChange={e => handleUpdateFilter(f.propId, f.operator, e.target.value)}
-                          placeholder="Değer girin..."
-                        />
-                      )
-                    )}
-                    <X size={14} className="text-muted cursor-pointer hover-text-danger" onClick={() => handleUpdateFilter(f.propId, null, null)} />
-                  </div>
-                );
-              })}
-              <Button variant="link" size="sm" className="text-muted p-0 x-small" onClick={() => updateConfig({ filters: [] })}>Clear all</Button>
-            </div>
-          )}
-          <Table hover className="notion-table mb-0 border-top-0" style={{ overflow: 'visible', borderCollapse: 'separate', borderSpacing: 0 }}>
-            <thead className="sticky-top bg-white" style={{ zIndex: 100, top: config.filters?.length > 0 ? '45px' : '0' }}>
-              <tr className="bg-white">
-              <th style={{ width: '1px', whiteSpace: 'nowrap', backgroundColor: 'inherit' }} className="ps-2">
-                <Form.Check 
-                  ref={selectAllRef}
-                  type="checkbox" 
-                  className="notion-checkbox custom-checkbox-sm" 
-                  checked={selectedIds.length === filteredTransactions.length && filteredTransactions.length > 0}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedIds(filteredTransactions.map(t => t.id));
-                    } else {
-                      setSelectedIds([]);
-                    }
-                  }}
-                />
-              </th>
-              {(config.propertyOrder || PROPERTIES.map(p => p.id))
-                .filter(id => config.propertyVisibility?.[id] !== false)
-                .map(id => {
-                  const p = PROPERTIES.find(item => item.id === id);
-                  const label = config.propertyLabels?.[id] || p.label;
-                  const currentIcon = getPropertyIcon(id, config);
-                  return (
-                    <th key={id} style={id === 'title' ? { width: '25%' } : {}}>
-                      <Dropdown autoClose="outside">
-                        <Dropdown.Toggle as="div" className="d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded px-2 py-1 flex-grow-1" style={{ marginLeft: '-8px' }}>
-                          <span className="text-muted d-flex align-items-center">{currentIcon}</span>
-                          <span className="text-nowrap">{label}</span>
-                          {config.sortConfig?.propId === id && (
-                            <div className="ms-auto d-flex align-items-center gap-1">
-                              <span 
-                                className="text-primary opacity-75 d-flex align-items-center cursor-pointer hover-bg-secondary rounded p-0 justify-content-center"
-                                style={{ width: '16px', height: '16px' }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSort(id, config.sortConfig.direction === 'asc' ? 'desc' : 'asc');
-                                }}
-                              >
-                                {config.sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
-                              </span>
-                              <div 
-                                className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all" 
-                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSort(null, null);
-                                }}
-                              >
-                                <X size={10} />
-                              </div>
-                            </div>
-                          )}
-                        </Dropdown.Toggle>
-                        <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '240px' }}>
-                          <div className="px-1 py-1 mb-2 d-flex flex-column gap-1">
-                            <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2 small" onClick={() => handleUpdateFilter(id, 'contains', '')}>
-                              <Filter size={14} className="text-muted" /> Filter
-                            </Dropdown.Item>
-                            <div className="dropdown-divider opacity-10"></div>
-                            <div className="d-flex align-items-center gap-2">
-                              <Dropdown autoClose="outside" className="d-inline">
-                                <Dropdown.Toggle as="div" className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 cursor-pointer hover-bg-secondary hover-text-white transition-all" style={{ width: '28px', height: '28px' }}>
-                                  {currentIcon}
-                                </Dropdown.Toggle>
-                                <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '180px' }}>
-                                  <div className="x-small fw-bold text-muted mb-2 px-2">CHOOSE ICON</div>
-                                  <div className="d-flex flex-wrap gap-1 justify-content-center">
-                                    {ICON_LIST.map(item => (
-                                      <div 
-                                        key={item.name} 
-                                        className={`rounded d-flex align-items-center justify-content-center cursor-pointer hover-bg-light p-1 ${config.propertyIcons?.[id] === item.name ? 'bg-primary text-white' : ''}`}
-                                        style={{ width: '30px', height: '30px' }}
-                                        onClick={() => handleUpdatePropertyIcon(id, item.name)}
-                                      >
-                                        {item.icon}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </Dropdown.Menu>
-                              </Dropdown>
-                              <div className="position-relative flex-grow-1">
-                                <Form.Control 
-                                  size="sm" 
-                                  value={label} 
-                                  onChange={(e) => handleUpdatePropertyLabel(id, e.target.value)}
-                                  className="border-primary-focus bg-light"
-                                  style={{ fontSize: '14px', paddingRight: '25px' }}
+                                ) : (
+                                  <LocalTextInput
+                                    type="date"
+                                    size="sm"
+                                    className="border-0 bg-transparent p-0 fw-medium"
+                                    style={{ width: '100px', fontSize: '12px' }}
+                                    value={f.value || ''}
+                                    onSave={val => handleUpdateFilter(f.propId, f.operator, val)}
+                                  />
+                                )
+                              ) : (
+                                <LocalTextInput
+                                  size="sm"
+                                  className="border-0 bg-transparent p-0 fw-medium"
+                                  style={{ width: '100px', fontSize: '12px' }}
+                                  value={f.value}
+                                  onSave={val => handleUpdateFilter(f.propId, f.operator, val)}
+                                  onCancel={() => {}}
+                                  placeholder="Değer girin..."
                                 />
-                                <div className="position-absolute end-0 top-50 translate-middle-y pe-2 opacity-50">
-                                  <div className="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white" style={{ width: '14px', height: '14px', fontSize: '9px' }}>i</div>
+                              )
+                            )}
+                            <X size={14} className="text-muted cursor-pointer hover-text-danger" onClick={() => handleUpdateFilter(f.propId, null, null)} />
+                          </div>
+                        );
+                      })}
+                      <Button variant="link" size="sm" className="text-muted p-0 x-small text-decoration-none ms-auto" onClick={() => updateConfig({ filters: [] })}>Clear all</Button>
+                    </div>
+                  </th>
+                </tr>
+              )}
+              <tr className="bg-white">
+                <th style={{ width: '1px', whiteSpace: 'nowrap', backgroundColor: 'inherit' }} className="ps-2">
+                  <Form.Check
+                    ref={selectAllRef}
+                    type="checkbox"
+                    className="notion-checkbox custom-checkbox-sm"
+                    checked={selectedIds.length === filteredTransactions.length && filteredTransactions.length > 0}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedIds(filteredTransactions.map(t => t.id));
+                      } else {
+                        setSelectedIds([]);
+                      }
+                    }}
+                  />
+                </th>
+                {(config.propertyOrder || PROPERTIES.map(p => p.id))
+                  .filter(id => config.propertyVisibility?.[id] !== false)
+                  .map(id => {
+                    const p = PROPERTIES.find(item => item.id === id);
+                    const label = config.propertyLabels?.[id] || p.label;
+                    const currentIcon = getPropertyIcon(id, config);
+                    return (
+                      <th key={id} style={id === 'title' ? { width: '25%' } : {}}>
+                        <Dropdown autoClose="outside">
+                          <Dropdown.Toggle as="button" type="button" className="btn btn-link p-0 text-decoration-none border-0 d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded px-2 py-1 flex-grow-1 text-dark" style={{ marginLeft: '-8px' }}>
+                            <span className="text-muted d-flex align-items-center">{currentIcon}</span>
+                            <span className="text-nowrap">{label}</span>
+                            {config.sortConfig?.propId === id && (
+                              <div className="ms-auto d-flex align-items-center gap-1">
+                                <span
+                                  className="text-primary   d-flex align-items-center cursor-pointer hover-bg-secondary rounded p-0 justify-content-center"
+                                  style={{ width: '16px', height: '16px' }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSort(id, config.sortConfig.direction === 'asc' ? 'desc' : 'asc');
+                                  }}
+                                >
+                                  {config.sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+                                </span>
+                                <div
+                                  className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all"
+                                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSort(null, null);
+                                  }}
+                                >
+                                  <X size={10} />
+                                </div>
+                              </div>
+                            )}
+                          </Dropdown.Toggle>
+                          <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '240px', zIndex: 10005 }}>
+                            <div className="px-1 py-1 mb-2 d-flex flex-column gap-1">
+                              <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2 small" onClick={() => handleUpdateFilter(id, 'contains', '')}>
+                                <Filter size={14} className="text-muted" /> Filter
+                              </Dropdown.Item>
+                              <div className="dropdown-divider opacity-10"></div>
+                              <div className="position-relative dropdown-submenu">
+                                <div className="rounded-2 d-flex align-items-center justify-content-between py-2 small px-2 w-100 cursor-pointer hover-bg-light text-start transition-all">
+                                  <div className="d-flex align-items-center gap-2"><Sigma size={14} className="text-muted" /> Hesapla</div>
+                                  <ChevronRight size={14} className="text-muted opacity-50" />
+                                </div>
+                                <div className="submenu-content glass-card border shadow-lg p-2">
+                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${!config.columnCalculations?.[id] || config.columnCalculations?.[id] === 'none' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'none' } })}>Hiçbiri</div>
+                                  <div className="dropdown-divider opacity-10"></div>
+                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_all' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_all' } })}>Tümünü Say</div>
+                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_values' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_values' } })}>Değerleri Say</div>
+                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_unique' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_unique' } })}>Benzersizleri Say</div>
+                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_empty' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_empty' } })}>Boş Olanları Say</div>
+                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_not_empty' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_not_empty' } })}>Dolu Olanları Say</div>
+                                  {id === 'amount' && (
+                                    <>
+                                      <div className="dropdown-divider opacity-10"></div>
+                                      <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'sum' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'sum' } })}>Toplam (Sum)</div>
+                                      <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'avg' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'avg' } })}>Ortalama (Avg)</div>
+                                      <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'min' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'min' } })}>En Küçük (Min)</div>
+                                      <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light ${config.columnCalculations?.[id] === 'max' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'max' } })}>En Büyük (Max)</div>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="dropdown-divider opacity-10"></div>
+                              <div className="d-flex align-items-center gap-2">
+                                <Dropdown autoClose="outside" className="d-inline">
+                                  <Dropdown.Toggle as="div" className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 cursor-pointer hover-bg-secondary hover-text-white transition-all" style={{ width: '28px', height: '28px' }}>
+                                    {currentIcon}
+                                  </Dropdown.Toggle>
+                                  <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '180px' }}>
+                                    <div className="x-small fw-bold text-muted mb-2 px-2">CHOOSE ICON</div>
+                                    <div className="d-flex flex-wrap gap-1 justify-content-center">
+                                      {ICON_LIST.map(item => (
+                                        <div
+                                          key={item.name}
+                                          className={`rounded d-flex align-items-center justify-content-center cursor-pointer hover-bg-light p-1 ${config.propertyIcons?.[id] === item.name ? 'bg-primary text-white' : ''}`}
+                                          style={{ width: '30px', height: '30px' }}
+                                          onClick={() => handleUpdatePropertyIcon(id, item.name)}
+                                        >
+                                          {item.icon}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </Dropdown.Menu>
+                                </Dropdown>
+                                <div className="position-relative flex-grow-1">
+                                  <Form.Control
+                                    size="sm"
+                                    value={label}
+                                    onChange={(e) => handleUpdatePropertyLabel(id, e.target.value)}
+                                    className="border-primary-focus bg-light"
+                                    style={{ fontSize: '14px', paddingRight: '25px' }}
+                                  />
+                                  <div className="position-absolute end-0 top-50 translate-middle-y pe-2 opacity-50">
+                                    <div className="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white" style={{ width: '14px', height: '14px', fontSize: '9px' }}>i</div>
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
-                          <div className="dropdown-divider opacity-10"></div>
-                          <Dropdown.Item 
-                            className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${config.sortConfig?.propId === id && config.sortConfig?.direction === 'asc' ? 'bg-light text-primary fw-medium' : ''}`}
-                            onClick={() => handleSort(id, 'asc')}
-                          >
-                            <ArrowUp size={14} /> Sort ascending
-                          </Dropdown.Item>
-                          <Dropdown.Item 
-                            className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${config.sortConfig?.propId === id && config.sortConfig?.direction === 'desc' ? 'bg-light text-primary fw-medium' : ''}`}
-                            onClick={() => handleSort(id, 'desc')}
-                          >
-                            <ArrowDown size={14} /> Sort descending
-                          </Dropdown.Item>
-                          <div className="dropdown-divider opacity-10"></div>
-                          <Dropdown.Item 
-                            className="rounded-2 d-flex align-items-center justify-content-between py-2 small"
-                            onClick={() => handleToggleWrap(id)}
-                          >
-                            <div className="d-flex align-items-center gap-2">
-                              <WrapText size={14} className="text-muted" /> Wrap content
-                            </div>
-                            {config.propertyWrap?.[id] !== false ? (
-                              <Eye size={14} className="text-primary" />
-                            ) : (
-                              <EyeOff size={14} className="text-muted opacity-50" />
+                            <div className="dropdown-divider opacity-10"></div>
+                            <Dropdown.Item
+                              className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${config.sortConfig?.propId === id && config.sortConfig?.direction === 'asc' ? 'bg-light text-primary fw-medium' : ''}`}
+                              onClick={() => handleSort(id, 'asc')}
+                            >
+                              <ArrowUp size={14} /> Sort ascending
+                            </Dropdown.Item>
+                            <Dropdown.Item
+                              className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${config.sortConfig?.propId === id && config.sortConfig?.direction === 'desc' ? 'bg-light text-primary fw-medium' : ''}`}
+                              onClick={() => handleSort(id, 'desc')}
+                            >
+                              <ArrowDown size={14} /> Sort descending
+                            </Dropdown.Item>
+                            <div className="dropdown-divider opacity-10"></div>
+                            <Dropdown.Item
+                              className="rounded-2 d-flex align-items-center justify-content-between py-2 small"
+                              onClick={() => handleToggleWrap(id)}
+                            >
+                              <div className="d-flex align-items-center gap-2">
+                                <WrapText size={14} className="text-muted" /> Wrap content
+                              </div>
+                              {config.propertyWrap?.[id] !== false ? (
+                                <Eye size={14} className="text-primary" />
+                              ) : (
+                                <EyeOff size={14} className="text-muted opacity-50" />
+                              )}
+                            </Dropdown.Item>
+                            <Dropdown.Item
+                              className="rounded-2 d-flex align-items-center gap-2 py-2 small"
+                              onClick={() => handleUpdatePropertyVisibility(id, false)}
+                            >
+                              <Eye size={14} className="text-muted" /> Hide in view
+                            </Dropdown.Item>
+                            {['quickActions', 'type', 'bankId'].includes(id) && (
+                              <>
+                                <div className="dropdown-divider opacity-10"></div>
+                                <Dropdown.Item
+                                  className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${config.groupBy === id ? 'bg-light text-primary fw-medium' : ''}`}
+                                  onClick={() => handleUpdateGroupBy(config.groupBy === id ? null : id)}
+                                >
+                                  <Layers size={14} className={config.groupBy === id ? 'text-primary' : 'text-muted'} /> Gruplandır: {label}
+                                </Dropdown.Item>
+                              </>
                             )}
-                          </Dropdown.Item>
-                          <Dropdown.Item 
-                            className="rounded-2 d-flex align-items-center gap-2 py-2 small"
-                            onClick={() => handleUpdatePropertyVisibility(id, false)}
-                          >
-                            <Eye size={14} className="text-muted" /> Hide in view
-                          </Dropdown.Item>
-                          {id === 'date' && (
-                            <>
-                              <div className="dropdown-divider opacity-10"></div>
-                              <Dropdown autoClose="outside" className="w-100">
-                                <Dropdown.Toggle as="div" className="rounded-2 d-flex align-items-center justify-content-between py-2 small px-3 w-100 cursor-pointer hover-bg-light dropdown-no-caret text-start">
-                                  <div className="d-flex align-items-center gap-2">
-                                    <Calendar size={14} className="text-muted" /> Date format
-                                  </div>
-                                  <ChevronDown size={14} className="text-muted opacity-50" />
-                                </Dropdown.Toggle>
-                                <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '180px' }}>
-                                  {['DD/MM/YYYY', 'DD.MM.YYYY', 'DD MMMM YYYY', 'DD MMM YYYY'].map(fmt => (
-                                    <Dropdown.Item 
-                                      key={fmt}
-                                      className={`rounded-2 d-flex align-items-center justify-content-between py-2 small ${config.dateFormat === fmt || (!config.dateFormat && fmt === 'DD/MM/YYYY') ? 'bg-light text-primary fw-medium' : ''}`}
-                                      onClick={() => handleUpdateDateFormat(fmt)}
-                                    >
-                                      {fmt === 'DD/MM/YYYY' && '01/12/2026'}
-                                      {fmt === 'DD.MM.YYYY' && '01.12.2026'}
-                                      {fmt === 'DD MMMM YYYY' && '01 Ocak 2026'}
-                                      {fmt === 'DD MMM YYYY' && '01 Oca 2026'}
-                                      {(config.dateFormat === fmt || (!config.dateFormat && fmt === 'DD/MM/YYYY')) && <Check size={14} className="text-primary" />}
-                                    </Dropdown.Item>
-                                  ))}
-                                </Dropdown.Menu>
-                              </Dropdown>
-                            </>
-                          )}
-                        </Dropdown.Menu>
-                      </Dropdown>
-                    </th>
-                  );
-                })
-              }
-            </tr>
-          </thead>
-          <SortableContext items={visibleTransactions.map(t => t.id)} strategy={verticalListSortingStrategy}>
-            <tbody>
+                            {id === 'date' && (
+                              <>
+                                <div className="dropdown-divider opacity-10"></div>
+                                <Dropdown autoClose="outside" className="w-100">
+                                  <Dropdown.Toggle as="div" className="rounded-2 d-flex align-items-center justify-content-between py-2 small px-3 w-100 cursor-pointer hover-bg-light dropdown-no-caret text-start">
+                                    <div className="d-flex align-items-center gap-2">
+                                      <Calendar size={14} className="text-muted" /> Date format
+                                    </div>
+                                    <ChevronDown size={14} className="text-muted opacity-50" />
+                                  </Dropdown.Toggle>
+                                  <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '180px' }}>
+                                    {['DD/MM/YYYY', 'DD.MM.YYYY', 'DD MMMM YYYY', 'DD MMM YYYY'].map(fmt => (
+                                      <Dropdown.Item
+                                        key={fmt}
+                                        className={`rounded-2 d-flex align-items-center justify-content-between py-2 small ${config.dateFormat === fmt || (!config.dateFormat && fmt === 'DD/MM/YYYY') ? 'bg-light text-primary fw-medium' : ''}`}
+                                        onClick={() => handleUpdateDateFormat(fmt)}
+                                      >
+                                        {fmt === 'DD/MM/YYYY' && '01/12/2026'}
+                                        {fmt === 'DD.MM.YYYY' && '01.12.2026'}
+                                        {fmt === 'DD MMMM YYYY' && '01 Ocak 2026'}
+                                        {fmt === 'DD MMM YYYY' && '01 Oca 2026'}
+                                        {(config.dateFormat === fmt || (!config.dateFormat && fmt === 'DD/MM/YYYY')) && <Check size={14} className="text-primary" />}
+                                      </Dropdown.Item>
+                                    ))}
+                                  </Dropdown.Menu>
+                                </Dropdown>
+                              </>
+                            )}
+                          </Dropdown.Menu>
+                        </Dropdown>
+                      </th>
+                    );
+                  })
+                }
+              </tr>
+            </thead>
+              <tbody>
                 {visibleTransactions.map((t, index) => (
-                  <SortableTransactionRow 
-                    key={t.id} 
-                    t={t} 
-                    config={config} 
+                  <TransactionRow
+                    key={`LIST_MAIN_${t.id}`}
+                    t={t}
+                    config={config}
                     selectedIds={selectedIds}
+                    isEditing={editingCell?.transId === t.id && editingCell?.tableId === 'LIST_MAIN'}
                     renderCell={renderCell}
-                    onSelect={(id, checked) => {
-                      if (checked) setSelectedIds([...selectedIds, id]);
-                      else setSelectedIds(selectedIds.filter(sid => sid !== id));
-                    }}
+                    onSelect={handleSelect}
+                    tableId="LIST_MAIN"
                   />
                 ))}
                 {/* Sentinel for Infinite Scroll */}
@@ -2807,14 +3399,27 @@ const BankTransactionsPage = () => {
                   <td colSpan="100%" className="border-0"></td>
                 </tr>
               </tbody>
-            </SortableContext>
-            
+            {Object.keys(config.columnCalculations || {}).some(k => config.columnCalculations[k] !== 'none') && (
+              <tfoot className="border-top bg-light bg-opacity-10 position-sticky bottom-0" style={{ zIndex: 10, backgroundColor: '#fcfcfc' }}>
+                <tr className="bg-white">
+                  <td style={{ width: '1px' }} className="bg-white border-bottom-0"></td>
+                  {(config.propertyOrder || PROPERTIES.map(p => p.id))
+                    .filter(id => config.propertyVisibility?.[id] !== false)
+                    .map(id => (
+                      <td key={id} className="py-2 px-2 border-start border-light border-opacity-10 bg-white border-bottom-0">
+                        {renderCalculatedValue(id, getCalculatedValue(id, filteredTransactions))}
+                      </td>
+                    ))}
+                </tr>
+              </tfoot>
+            )}
+
             {selectedIds.length === transactions.length && transactions.length > 0 && !isGlobalSelected && totalCount > transactions.length && (
               <div className="bg-light-primary text-center py-2 small border-bottom border-top">
                 Sayfadaki {transactions.length} işlemin tümü seçildi. <span className="text-primary fw-bold cursor-pointer" onClick={() => setIsGlobalSelected(true)}>Tüm {totalCount} işlemi seç</span>
               </div>
             )}
-            
+
             {isGlobalSelected && (
               <div className="bg-light-primary text-center py-2 small border-bottom border-top">
                 Tüm {totalCount} işlem seçildi. <span className="text-primary fw-bold cursor-pointer" onClick={() => { setIsGlobalSelected(false); setSelectedIds([]); }}>Seçimi temizle</span>
@@ -2822,22 +3427,22 @@ const BankTransactionsPage = () => {
             )}
           </Table>
         </Card>
-        
-            {limitCount < sortedTransactions.length && (
-          <div className="d-flex align-items-center gap-4 mt-2">
-            <div className="d-flex align-items-center gap-2 py-2 px-3 hover-bg-light cursor-pointer text-muted small rounded-2" 
+
+        {limitCount < sortedTransactions.length && (
+          <div className="d-flex align-items-center gap-4 mt-2 mobile-scroll-x">
+            <div className="d-flex align-items-center gap-2 py-2 px-3 hover-bg-light cursor-pointer text-muted small rounded-2"
               style={{ width: 'fit-content' }}
               onClick={() => setLimitCount(prev => prev + 100)}>
-              <Plus size={14} className="opacity-50" /> 
+              <Plus size={14} className="opacity-50" />
               <span>Daha fazla göster</span>
             </div>
-            
+
             <div className="d-flex align-items-center gap-2 text-muted x-small border-start ps-4">
               <span className="opacity-50 fw-bold">GÖRÜNÜM LİMİTİ:</span>
               {[20, 50, 100, 500].map(v => (
-                <span 
-                  key={v} 
-                  className={`cursor-pointer hover-text-primary px-2 py-1 rounded ${limitCount === v && !isInfiniteScroll ? 'bg-light-primary text-primary fw-bold' : ''}`} 
+                <span
+                  key={v}
+                  className={`cursor-pointer hover-text-primary px-2 py-1 rounded ${limitCount === v && !isInfiniteScroll ? 'bg-light-primary text-primary fw-bold' : ''}`}
                   onClick={() => {
                     setIsInfiniteScroll(false);
                     setLimitCount(v);
@@ -2846,8 +3451,8 @@ const BankTransactionsPage = () => {
                   {v}
                 </span>
               ))}
-              <span 
-                className={`cursor-pointer hover-text-primary px-2 py-1 rounded ${isInfiniteScroll ? 'bg-light-primary text-primary fw-bold' : ''}`} 
+              <span
+                className={`cursor-pointer hover-text-primary px-2 py-1 rounded ${isInfiniteScroll ? 'bg-light-primary text-primary fw-bold' : ''}`}
                 onClick={() => {
                   setIsInfiniteScroll(true);
                   setLimitCount(100); // Start with 100 when view all is clicked
@@ -2859,66 +3464,459 @@ const BankTransactionsPage = () => {
           </div>
         )}
 
-        <DragOverlay>
-          {activeDragId && selectedIds.length > 1 && selectedIds.includes(activeDragId) ? (
-            <div className="position-relative" style={{ width: '800px', cursor: 'grabbing' }}>
-              {transactions
-                .filter(t => selectedIds.includes(t.id))
-                .slice(0, 3) // Show max 3 visually
-                .map((t, idx) => (
-                  <Table 
-                    key={t.id} 
-                    className="notion-table mb-0 glass-card overflow-hidden" 
-                    style={{ 
-                      opacity: 1 - (idx * 0.1),
-                      transform: `scale(${1 - (idx * 0.02)})`,
-                      zIndex: 1000 - idx,
-                      position: idx > 0 ? 'absolute' : 'relative',
-                      top: idx > 0 ? `${idx * 10}px` : '0',
-                      left: idx > 0 ? `${idx * 10}px` : '0',
-                      pointerEvents: 'none'
-                    }}
-                  >
-                    <tbody>
-                      <tr className="align-middle group bg-white">
-                        <td className="ps-2" style={{ width: '60px' }}>
-                          <div className="d-flex align-items-center gap-2 opacity-100" style={{ width: '50px' }}>
-                            <div className="text-muted opacity-50 position-relative">
-                              <GripVertical size={14} />
-                            </div>
-                            <Form.Check type="checkbox" className="notion-checkbox custom-checkbox-sm" checked={true} readOnly />
-                          </div>
-                        </td>
-                        {(config.propertyOrder || PROPERTIES.map(p => p.id))
-                          .filter(id => config.propertyVisibility?.[id] !== false)
-                          .map(id => renderCell(id, t))}
-                      </tr>
-                    </tbody>
-                  </Table>
-                ))}
-              {selectedIds.length > 3 && (
-                <div className="text-center text-primary bg-light rounded py-1 px-3 small fw-bold shadow" style={{ position: 'absolute', bottom: '-20px', left: '20px', zIndex: 1001 }}>
-                  + {selectedIds.length - 3} işlem daha
+      <hr className="my-md-5 my-4 opacity-5" />
+
+      {config.groupBy && (
+        <div className="mt-5 pb-5">
+          <div className="d-flex align-items-center justify-content-between mb-4 gap-3">
+            <h1 className="fw-bold m-0 section-title">Banka Grup İşlemleri</h1>
+            <Dropdown autoClose="outside">
+              <Dropdown.Toggle as="div" className="cursor-pointer text-muted hover-text-primary p-2 rounded-circle hover-bg-light transition-all d-flex align-items-center justify-content-center">
+                <Settings size={20} />
+              </Dropdown.Toggle>
+              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-3" style={{ width: '280px' }}>
+                <div className="x-small fw-bold text-muted mb-3 px-1">GRUP AYARLARI</div>
+                <div className="group-settings-list" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGroupOrderDragEnd}>
+                    <SortableContext items={allGroupsForSettings.map(g => g.id)} strategy={verticalListSortingStrategy}>
+                      {allGroupsForSettings.map(group => (
+                        <SortableGroupItem
+                          key={group.id}
+                          id={group.id}
+                          label={group.label}
+                          icon={group.icon}
+                          visible={(groupSettings[config.groupBy]?.visibility?.[group.id]) !== false}
+                          onToggle={() => toggleGroupVisibility(group.id)}
+                        />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
                 </div>
-              )}
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+                {allGroupsForSettings.length === 0 && (
+                  <div className="text-center py-4 text-muted small opacity-50 italic">
+                    Görüntülenecek grup yok
+                  </div>
+                )}
+              </Dropdown.Menu>
+            </Dropdown>
+          </div>
+          {groupedTransactions.map(group => {
+            const isCollapsed = collapsedGroups[group.id];
+            const localConfig = groupConfigs[group.id] || {};
+            const localFilters = localConfig.filters || [];
+            const localSort = localConfig.sortConfig || null;
+
+            const groupSpecificFiltered = applyFilters(group.items, localFilters);
+            const groupSpecificSorted = applySort(groupSpecificFiltered, localSort);
+
+            const currentLimit = groupLimits[group.id] || 5;
+            const itemsToShow = groupSpecificSorted.slice(0, currentLimit);
+
+            return (
+              <div key={group.id} className="mb-4">
+                <div 
+                  className="d-flex align-items-center gap-2 mb-2 cursor-pointer hover-bg-light p-1 rounded transition-all"
+                  onClick={() => setCollapsedGroups(prev => ({ ...prev, [group.id]: !prev[group.id] }))}
+                  style={{ width: 'fit-content' }}
+                >
+                  <div className="d-flex align-items-center opacity-50">
+                    {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                  </div>
+                  <div className="d-flex align-items-center">
+                    {group.icon}
+                    <span className="notion-tag m-0 fs-14 fw-bold" style={getTagStyleByColor(group.color)}>
+                      {group.label}
+                    </span>
+                    <span className="ms-2 text-muted x-small opacity-50 fw-normal">{groupSpecificSorted.length}</span>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      className="ms-3 rounded-circle d-flex align-items-center justify-content-center p-0 shadow-sm border-0 transition-all"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleQuickNewInGroup(group);
+                      }}
+                      style={{ width: '20px', height: '20px', background: 'linear-gradient(135deg, #006fee 0%, #005bc4 100%)', opacity: 0.8 }}
+                      title="Bu gruba yeni işlem ekle"
+                    >
+                      <Plus size={12} className="text-white" />
+                    </Button>
+                  </div>
+                </div>
+                {!isCollapsed && (
+                  <>
+                    <Card className="bg-white border shadow-sm rounded-3 overflow-visible mb-3">
+                      <Table responsive hover className="notion-table mb-0 border-top-0" style={{ overflow: 'visible', borderCollapse: 'separate', borderSpacing: 0 }}>
+                        <thead className="sticky-top bg-white" style={{ zIndex: 1010, top: 0 }}>
+                          {localFilters.length > 0 && (
+                            <tr className="bg-white border-bottom">
+                              <th colSpan={100} className="py-2 px-3 border-bottom font-normal">
+                                <div className="d-flex align-items-center gap-2 flex-wrap">
+                                  <div className="text-muted x-small fw-bold d-flex align-items-center gap-1 opacity-50 pe-2 border-end">
+                                    <Filter size={12} /> FILTERS
+                                  </div>
+                                  {localFilters.map(f => {
+                                    const p = PROPERTIES.find(item => item.id === f.propId);
+                                    const label = config.propertyLabels?.[f.propId] || p?.label;
+                                    return (
+                                      <div key={f.propId} className="glass-card border rounded-pill px-2 py-1 d-flex align-items-center gap-2 shadow-sm bg-white" style={{ fontSize: '12px', fontWeight: 400 }}>
+                                        <span className="text-muted">{label}</span>
+                                        <Dropdown>
+                                          <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary">
+                                            {f.operator.replace(/_/g, ' ')}
+                                          </Dropdown.Toggle>
+                                          <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1" style={{ zIndex: 9999 }}>
+                                            {(() => {
+                                              if (['type', 'quickActions', 'bankId'].includes(f.propId)) return ['contains', 'does_not_contain', 'is_empty', 'is_not_empty'];
+                                              if (f.propId === 'date') return ['is', 'between', 'is_empty', 'is_not_empty'];
+                                              return ['is', 'is_not', 'contains', 'does_not_contain', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];
+                                            })().map(op => (
+                                              <Dropdown.Item key={op} className="small rounded-2" onClick={() => handleUpdateGroupFilter(group.id, f.propId, op, f.value)}>
+                                                {op.replace(/_/g, ' ')}
+                                              </Dropdown.Item>
+                                            ))}
+                                          </Dropdown.Menu>
+                                        </Dropdown>
+                                        {!['is_empty', 'is_not_empty'].includes(f.operator) && (
+                                          ['type', 'quickActions', 'bankId'].includes(f.propId) ? (
+                                            <Dropdown>
+                                              <Dropdown.Toggle as="span" className="fw-medium cursor-pointer hover-text-primary text-truncate d-inline-flex align-items-center" style={{ maxWidth: '120px' }}>
+                                                {(() => {
+                                                  if (!f.value) return 'Seçiniz...';
+                                                  const ids = f.value.split(',').filter(v => v);
+                                                  if (ids.length > 1) return `${ids.length} Seçili`;
+                                                  if (f.propId === 'bankId') return getBankInfo(ids[0]).name || 'Bilinmiyor';
+                                                  if (f.propId === 'type') return typeTags.find(t => t.id === ids[0])?.name || 'Bilinmiyor';
+                                                  if (f.propId === 'quickActions') return quickActionTags.find(t => t.id === ids[0])?.name || 'Bilinmiyor';
+                                                  return f.value;
+                                                })()}
+                                              </Dropdown.Toggle>
+                                              <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ maxHeight: '300px', minWidth: '150px', zIndex: 9999 }}>
+                                                {(f.propId === 'bankId'
+                                                  ? [...banks].sort((a, b) => (a.order || 0) - (b.order || 0))
+                                                  : f.propId === 'type'
+                                                    ? [...typeTags].sort((a, b) => (a.order || 0) - (b.order || 0))
+                                                    : [...quickActionTags].sort((a, b) => (a.order || 0) - (b.order || 0))
+                                                ).map(item => {
+                                                  const colorObj = COLORS.find(c => c.name === item.color) || COLORS[0];
+                                                  const isSelected = (f.value || '').split(',').includes(item.id);
+                                                  return (
+                                                    <Dropdown.Item
+                                                      key={item.id}
+                                                      className="small rounded-2 py-2 mb-1"
+                                                      onClick={(e) => { e.stopPropagation(); handleUpdateGroupFilter(group.id, f.propId, f.operator, item.id); }}
+                                                    >
+                                                      <div className="d-flex align-items-center justify-content-between">
+                                                        <div className="d-flex align-items-center">
+                                                          {f.propId === 'bankId' && item.logo && (
+                                                            <img src={item.logo} alt="" width="14" height="14" className="me-2 rounded-circle" style={{ objectFit: 'contain' }} />
+                                                          )}
+                                                          <span className="px-2 py-0.5 rounded-1" style={f.propId !== 'bankId' ? { backgroundColor: colorObj.bg, color: colorObj.text, fontSize: '11px' } : {}}>
+                                                            {item.name}
+                                                          </span>
+                                                        </div>
+                                                        {isSelected && <Check size={14} className="text-primary" />}
+                                                      </div>
+                                                    </Dropdown.Item>
+                                                  );
+                                                })}
+                                              </Dropdown.Menu>
+                                            </Dropdown>
+                                          ) : f.propId === 'date' ? (
+                                            f.operator === 'between' ? (
+                                              <div className="d-flex align-items-center gap-1">
+                                                <LocalTextInput
+                                                  type="date"
+                                                  size="sm"
+                                                  className="border-0 bg-transparent p-0 fw-medium"
+                                                  style={{ width: '90px', fontSize: '11px' }}
+                                                  value={(f.value || '').split(',')[0] || ''}
+                                                  onSave={val => {
+                                                    const parts = (f.value || '').split(',');
+                                                    handleUpdateGroupFilter(group.id, f.propId, f.operator, `${val},${parts[1] || ''}`);
+                                                  }}
+                                                />
+                                                <span className="text-muted opacity-50" style={{ fontSize: '10px' }}>-</span>
+                                                <LocalTextInput
+                                                  type="date"
+                                                  size="sm"
+                                                  className="border-0 bg-transparent p-0 fw-medium"
+                                                  style={{ width: '90px', fontSize: '11px' }}
+                                                  value={(f.value || '').split(',')[1] || ''}
+                                                  onSave={val => {
+                                                    const parts = (f.value || '').split(',');
+                                                    handleUpdateGroupFilter(group.id, f.propId, f.operator, `${parts[0] || ''},${val}`);
+                                                  }}
+                                                />
+                                              </div>
+                                            ) : (
+                                              <LocalTextInput
+                                                type="date"
+                                                size="sm"
+                                                className="border-0 bg-transparent p-0 fw-medium"
+                                                style={{ width: '100px', fontSize: '12px' }}
+                                                value={f.value || ''}
+                                                onSave={val => handleUpdateGroupFilter(group.id, f.propId, f.operator, val)}
+                                              />
+                                            )
+                                          ) : (
+                                            <LocalTextInput
+                                              size="sm"
+                                              className="border-0 bg-transparent p-0 fw-medium"
+                                              style={{ width: '100px', fontSize: '12px' }}
+                                              value={f.value}
+                                              onSave={val => handleUpdateGroupFilter(group.id, f.propId, f.operator, val)}
+                                              onCancel={() => {}}
+                                              placeholder="Değer girin..."
+                                            />
+                                          )
+                                        )}
+                                        <X size={14} className="text-muted cursor-pointer hover-text-danger" onClick={() => handleUpdateGroupFilter(group.id, f.propId, null, null)} />
+                                      </div>
+                                    );
+                                  })}
+                                  <Button variant="link" size="sm" className="text-muted p-0 x-small text-decoration-none ms-auto" onClick={() => handleClearGroupFilters(group.id)}>Clear all</Button>
+                                </div>
+                              </th>
+                            </tr>
+                          )}
+                          <tr className="bg-white">
+                            <th style={{ width: '1px', whiteSpace: 'nowrap', backgroundColor: 'inherit' }} className="ps-2">
+                              <Form.Check
+                                type="checkbox"
+                                className="notion-checkbox custom-checkbox-sm"
+                                checked={groupSpecificSorted.length > 0 && groupSpecificSorted.every(t => selectedIds.includes(t.id))}
+                                onChange={(e) => {
+                                  const groupIds = groupSpecificSorted.map(t => t.id);
+                                  if (e.target.checked) {
+                                    setSelectedIds(prev => [...new Set([...prev, ...groupIds])]);
+                                  } else {
+                                    setSelectedIds(prev => prev.filter(id => !groupIds.includes(id)));
+                                  }
+                                }}
+                              />
+                            </th>
+                            {(config.propertyOrder || PROPERTIES.map(p => p.id))
+                              .filter(id => config.propertyVisibility?.[id] !== false)
+                              .map(id => {
+                                const p = PROPERTIES.find(item => item.id === id);
+                                const label = config.propertyLabels?.[id] || p.label;
+                                const currentIcon = getPropertyIcon(id, config);
+                                const isGroupFiltered = localFilters.some(f => f.propId === id);
+                                const isGroupSorted = localSort?.propId === id;
+
+                                return (
+                                  <th key={id} style={id === 'title' ? { width: '25%' } : {}}>
+                                    <Dropdown autoClose="outside">
+                                      <Dropdown.Toggle as="button" type="button" className="btn btn-link p-0 text-decoration-none border-0 d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded px-2 py-1 flex-grow-1 text-dark" style={{ marginLeft: '-8px' }}>
+                                        <span className={`d-flex align-items-center ${isGroupFiltered ? 'text-primary' : 'text-muted'}`}>{currentIcon}</span>
+                                        <span className={`text-nowrap ${isGroupFiltered ? 'text-primary fw-bold' : ''}`}>{label}</span>
+                                        {isGroupSorted && (
+                                          <div className="ms-auto d-flex align-items-center gap-1">
+                                            <span
+                                              className="text-primary d-flex align-items-center cursor-pointer hover-bg-secondary rounded p-0 justify-content-center"
+                                              style={{ width: '16px', height: '16px' }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleGroupSort(group.id, id, localSort.direction === 'asc' ? 'desc' : 'asc');
+                                              }}
+                                            >
+                                              {localSort.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+                                            </span>
+                                            <div
+                                              className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all"
+                                              style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleGroupSort(group.id, null, null);
+                                              }}
+                                            >
+                                              <X size={10} />
+                                            </div>
+                                          </div>
+                                        )}
+                                      </Dropdown.Toggle>
+                                      <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '240px', zIndex: 10005 }}>
+                                        <div className="px-1 py-1 mb-2 d-flex flex-column gap-1">
+                                          <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2 small" onClick={() => handleUpdateGroupFilter(group.id, id, 'contains', '')}>
+                                            <Filter size={14} className="text-muted" /> Filter
+                                          </Dropdown.Item>
+                                          <div className="dropdown-divider opacity-10"></div>
+                                         <div className="position-relative dropdown-submenu">
+                                           <div className="rounded-2 d-flex align-items-center justify-content-between py-2 small px-2 w-100 cursor-pointer hover-bg-light text-start transition-all">
+                                             <div className="d-flex align-items-center gap-2"><Sigma size={14} className="text-muted" /> Hesapla</div>
+                                             <ChevronRight size={14} className="text-muted opacity-50" />
+                                           </div>
+                                           <div className="submenu-content glass-card border shadow-lg p-2">
+                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${!config.columnCalculations?.[id] || config.columnCalculations?.[id] === 'none' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'none' } })}>Hiçbiri</div>
+                                             <div className="dropdown-divider opacity-10"></div>
+                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_all' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_all' } })}>Tümünü Say</div>
+                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_values' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_values' } })}>Değerleri Say</div>
+                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_unique' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_unique' } })}>Benzersizleri Say</div>
+                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_empty' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_empty' } })}>Boş Olanları Say</div>
+                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_not_empty' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_not_empty' } })}>Dolu Olanları Say</div>
+                                             {id === 'amount' && (
+                                               <>
+                                                 <div className="dropdown-divider opacity-10"></div>
+                                                 <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'sum' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'sum' } })}>Toplam (Sum)</div>
+                                                 <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'avg' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'avg' } })}>Ortalama (Avg)</div>
+                                                 <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'min' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'min' } })}>En Küçük (Min)</div>
+                                                 <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light ${config.columnCalculations?.[id] === 'max' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'max' } })}>En Büyük (Max)</div>
+                                               </>
+                                             )}
+                                           </div>
+                                         </div>
+                                         <div className="dropdown-divider opacity-10"></div>
+                                          <div className="d-flex align-items-center gap-2">
+                                            <Dropdown autoClose="outside" className="d-inline">
+                                              <Dropdown.Toggle as="div" className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 cursor-pointer hover-bg-secondary hover-text-white transition-all" style={{ width: '28px', height: '28px' }}>
+                                                {currentIcon}
+                                              </Dropdown.Toggle>
+                                              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '180px' }}>
+                                                <div className="x-small fw-bold text-muted mb-2 px-2">CHOOSE ICON</div>
+                                                <div className="d-flex flex-wrap gap-1 justify-content-center">
+                                                  {ICON_LIST.map(item => (
+                                                    <div
+                                                      key={item.name}
+                                                      className={`rounded d-flex align-items-center justify-content-center cursor-pointer hover-bg-light p-1 ${config.propertyIcons?.[id] === item.name ? 'bg-primary text-white' : ''}`}
+                                                      style={{ width: '30px', height: '30px' }}
+                                                      onClick={() => handleUpdatePropertyIcon(id, item.name)}
+                                                    >
+                                                      {item.icon}
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </Dropdown.Menu>
+                                            </Dropdown>
+                                            <div className="position-relative flex-grow-1">
+                                              <Form.Control
+                                                size="sm"
+                                                value={label}
+                                                onChange={(e) => handleUpdatePropertyLabel(id, e.target.value)}
+                                                className="border-primary-focus bg-light"
+                                                style={{ fontSize: '14px', paddingRight: '25px' }}
+                                              />
+                                              <div className="position-absolute end-0 top-50 translate-middle-y pe-2 opacity-50">
+                                                <div className="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white" style={{ width: '14px', height: '14px', fontSize: '9px' }}>i</div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="dropdown-divider opacity-10"></div>
+                                        <Dropdown.Item
+                                          className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${isGroupSorted && localSort.direction === 'asc' ? 'bg-light text-primary fw-medium' : ''}`}
+                                          onClick={() => handleGroupSort(group.id, id, 'asc')}
+                                        >
+                                          <ArrowUp size={14} /> Sort ascending
+                                        </Dropdown.Item>
+                                        <Dropdown.Item
+                                          className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${isGroupSorted && localSort.direction === 'desc' ? 'bg-light text-primary fw-medium' : ''}`}
+                                          onClick={() => handleGroupSort(group.id, id, 'desc')}
+                                        >
+                                          <ArrowDown size={14} /> Sort descending
+                                        </Dropdown.Item>
+                                        <div className="dropdown-divider opacity-10"></div>
+                                        <Dropdown.Item
+                                          className="rounded-2 d-flex align-items-center justify-content-between py-2 small"
+                                          onClick={() => handleToggleWrap(id)}
+                                        >
+                                          <div className="d-flex align-items-center gap-2">
+                                            <WrapText size={14} className="text-muted" /> Wrap content
+                                          </div>
+                                          {config.propertyWrap?.[id] !== false ? (
+                                            <Eye size={14} className="text-primary" />
+                                          ) : (
+                                            <EyeOff size={14} className="text-muted opacity-50" />
+                                          )}
+                                        </Dropdown.Item>
+                                        <Dropdown.Item
+                                          className="rounded-2 d-flex align-items-center gap-2 py-2 small"
+                                          onClick={() => handleUpdatePropertyVisibility(id, false)}
+                                        >
+                                          <Eye size={14} className="text-muted" /> Hide in view
+                                        </Dropdown.Item>
+                                      </Dropdown.Menu>
+                                    </Dropdown>
+                                  </th>
+                                );
+                              })}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {itemsToShow.map((t, index) => (
+                            <TransactionRow
+                              key={`LIST_GROUP_${group.id}_${t.id}`}
+                              t={t}
+                              config={config}
+                              selectedIds={selectedIds}
+                              isEditing={editingCell?.transId === t.id && editingCell?.tableId === `LIST_GROUP_${group.id}`}
+                              renderCell={renderCell}
+                              onSelect={handleSelect}
+                              tableId={`LIST_GROUP_${group.id}`}
+                            />
+                          ))}
+                        </tbody>
+                        {Object.keys(config.columnCalculations || {}).some(k => config.columnCalculations[k] !== 'none') && (
+                          <tfoot className="border-top bg-light bg-opacity-10 position-sticky bottom-0" style={{ zIndex: 10, backgroundColor: '#fcfcfc' }}>
+                            <tr className="bg-white">
+                              <td style={{ width: '1px' }} className="bg-white border-bottom-0"></td>
+                              {(config.propertyOrder || PROPERTIES.map(p => p.id))
+                                .filter(id => config.propertyVisibility?.[id] !== false)
+                                .map(id => (
+                                  <td key={id} className="py-2 px-2 border-start border-light border-opacity-10 bg-white border-bottom-0">
+                                    {renderCalculatedValue(id, getCalculatedValue(id, groupSpecificSorted))}
+                                  </td>
+                                ))}
+                            </tr>
+                          </tfoot>
+                        )}
+                      </Table>
+                    </Card>
+
+                    <div className="d-flex align-items-center gap-4 mt-2 mb-5 mobile-scroll-x">
+                      {currentLimit < groupSpecificSorted.length && (
+                        <div className="d-flex align-items-center gap-2 py-2 px-3 hover-bg-light cursor-pointer text-muted small rounded-2"
+                          style={{ width: 'fit-content' }}
+                          onClick={() => setGroupLimits(prev => ({ ...prev, [group.id]: (prev[group.id] || 5) + 5 }))}>
+                          <Plus size={14} className="opacity-50" />
+                          <span>Daha fazla göster</span>
+                        </div>
+                      )}
+
+                      <div className="d-flex align-items-center gap-2 text-muted x-small border-start ps-4">
+                        <span className="opacity-50 fw-bold">GÖRÜNÜM LİMİTİ:</span>
+                        {[5, 10, 20, 50, 100].map(v => (
+                          <span
+                            key={v}
+                            className={`cursor-pointer hover-text-primary px-2 py-1 rounded ${currentLimit === v ? 'bg-light-primary text-primary fw-bold' : ''}`}
+                            onClick={() => setGroupLimits(prev => ({ ...prev, [group.id]: v }))}
+                          >
+                            {v}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Transaction Modal */}
       <Modal show={showTransactionModal} onHide={() => setShowTransactionModal(false)} size="lg" className="shadow-lg notion-modal">
         <Modal.Body className="p-5">
           <Form onSubmit={handleAddTransaction}>
-            <Form.Control 
-              type="text" 
-              value={title} 
-              onChange={e => setTitle(e.target.value)} 
-              placeholder="New page" 
-              className="border-0 bg-transparent h1 fw-bold mb-4 p-0 notion-title-input" 
+            <Form.Control
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="New page"
+              className="border-0 bg-transparent h1 fw-bold mb-4 p-0 notion-title-input"
               style={{ fontSize: '40px', color: '#37352f', opacity: title ? 1 : 0.2 }}
             />
-            
+
             <div className="notion-properties" style={{ fontSize: '14px' }}>
               {/* Date */}
               <div className="py-1 d-flex align-items-center mb-2 notion-property-row">
@@ -2927,10 +3925,10 @@ const BankTransactionsPage = () => {
                   <span className="text-muted">Date</span>
                 </div>
                 <div className="flex-grow-1 notion-value-col">
-                  <Form.Control 
-                    type="date" 
-                    value={date} 
-                    onChange={e => setDate(e.target.value)} 
+                  <Form.Control
+                    type="date"
+                    value={date}
+                    onChange={e => setDate(e.target.value)}
                     className="border-0 bg-transparent p-0"
                     style={{ fontSize: '14px', width: 'fit-content' }}
                   />
@@ -2983,7 +3981,7 @@ const BankTransactionsPage = () => {
                         </div>
                       </div>
                     </Dropdown.Toggle>
-                    <Dropdown.Menu className="glass-card border-0 shadow-lg p-2 notion-dropdown-menu overflow-auto" style={{ width: '280px', maxHeight: '300px', overflowX: 'hidden' }}>
+                    <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2 notion-dropdown-menu overflow-auto" style={{ width: '280px', maxHeight: '300px', overflowX: 'hidden' }}>
                       <div className="p-2 pt-0">
                         <div className="text-muted x-small mb-2 ps-1 fs-12">Select an option or create one</div>
                         <div className="notion-options-list">
@@ -3069,7 +4067,7 @@ const BankTransactionsPage = () => {
                         </div>
                       </div>
                     </Dropdown.Toggle>
-                    <Dropdown.Menu className="glass-card border-0 shadow-lg p-2 notion-dropdown-menu overflow-auto" style={{ width: '280px', maxHeight: '300px', overflowX: 'hidden' }}>
+                    <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2 notion-dropdown-menu overflow-auto" style={{ width: '280px', maxHeight: '300px', overflowX: 'hidden' }}>
                       <div className="p-2 pt-0">
                         <div className="text-muted x-small mb-2 ps-1 fs-12">Select an option or create one</div>
                         <div className="notion-options-list">
@@ -3116,11 +4114,11 @@ const BankTransactionsPage = () => {
                   <span className="text-muted">Tutar</span>
                 </div>
                 <div className="flex-grow-1 notion-value-col">
-                  <Form.Control 
-                    type="text" 
-                    value={amount} 
-                    onChange={e => setAmount(e.target.value.replace(/[^0-9,]/g, ''))} 
-                    placeholder="Empty" 
+                  <Form.Control
+                    type="text"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value.replace(/[^0-9,]/g, ''))}
+                    placeholder="Empty"
                     className="border-0 bg-transparent p-0"
                     style={{ fontSize: '14px' }}
                   />
@@ -3135,11 +4133,11 @@ const BankTransactionsPage = () => {
                   <span className="text-muted">Dekont</span>
                 </div>
                 <div className="flex-grow-1 notion-value-col">
-                  <Form.Control 
-                    type="text" 
-                    value={receiptUrl} 
-                    onChange={e => setReceiptUrl(e.target.value)} 
-                    placeholder="Empty" 
+                  <Form.Control
+                    type="text"
+                    value={receiptUrl}
+                    onChange={e => setReceiptUrl(e.target.value)}
+                    placeholder="Empty"
                     className="border-0 bg-transparent p-0"
                     style={{ fontSize: '14px' }}
                   />
@@ -3164,12 +4162,12 @@ const BankTransactionsPage = () => {
                         <span className="text-muted opacity-50">Empty</span>
                       )}
                     </Dropdown.Toggle>
-                    <Dropdown.Menu className="glass-card border-0 shadow-lg p-2 notion-dropdown-menu" style={{ width: '280px' }}>
+                    <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2 notion-dropdown-menu" style={{ width: '280px' }}>
                       <div className="p-2 pt-0">
-                        <Form.Control 
-                          size="sm" 
-                          placeholder="Search for a bank..." 
-                          className="border-0 bg-light mb-2 fs-14" 
+                        <Form.Control
+                          size="sm"
+                          placeholder="Search for a bank..."
+                          className="border-0 bg-light mb-2 fs-14"
                           value={bankSearch}
                           onChange={e => setBankSearch(e.target.value)}
                         />
@@ -3177,9 +4175,9 @@ const BankTransactionsPage = () => {
                           {banks
                             .filter(b => b?.name?.toLowerCase().includes(bankSearch.toLowerCase()))
                             .map((bank, i) => (
-                              <div 
-                                key={i} 
-                                className="d-flex align-items-center justify-content-between p-1 px-2 rounded-1 notion-option-item cursor-pointer fs-14" 
+                              <div
+                                key={i}
+                                className="d-flex align-items-center justify-content-between p-1 px-2 rounded-1 notion-option-item cursor-pointer fs-14"
                                 onClick={() => setFormBankId(bank.id)}
                               >
                                 <div className="d-flex align-items-center gap-2">
@@ -3198,7 +4196,7 @@ const BankTransactionsPage = () => {
             </div>
 
             <hr className="mb-4 opacity-5" />
-            
+
             <div className="d-flex justify-content-end">
               <Button variant="primary" type="submit" className="rounded-pill px-4 fw-bold shadow-sm">Kaydet</Button>
             </div>
@@ -3277,7 +4275,7 @@ const BankTransactionsPage = () => {
               {quickActionTags.map((tag) => (
                 <Dropdown key={tag.id}>
                   <Dropdown.Toggle as="div" className="notion-tag cursor-pointer" style={getTagStyleById(quickActionTags, tag.id)}>{tag.name}</Dropdown.Toggle>
-                  <Dropdown.Menu className="glass-card border-0 shadow">
+                  <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow">
                     <div className="p-2 d-flex flex-wrap gap-1" style={{ width: '120px' }}>
                       {COLORS.map(c => (
                         <div key={c.name} onClick={() => handleUpdateTag('quickActions', tag.id, tag.name, c.name)}
@@ -3302,7 +4300,7 @@ const BankTransactionsPage = () => {
               {typeTags.map((tag) => (
                 <Dropdown key={tag.id}>
                   <Dropdown.Toggle as="div" className="notion-tag cursor-pointer" style={getTagStyleById(typeTags, tag.id)}>{tag.name}</Dropdown.Toggle>
-                  <Dropdown.Menu className="glass-card border-0 shadow">
+                  <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow">
                     <div className="p-2 d-flex flex-wrap gap-1" style={{ width: '120px' }}>
                       {COLORS.map(c => (
                         <div key={c.name} onClick={() => handleUpdateTag('transactionTypes', tag.id, tag.name, c.name)}
@@ -3323,10 +4321,10 @@ const BankTransactionsPage = () => {
         </Modal.Body>
       </Modal>
 
-      <ImportModal 
-        show={showImportModal} 
-        onHide={() => setShowImportModal(false)} 
-        onImport={handleBulkImport} 
+      <ImportModal
+        show={showImportModal}
+        onHide={() => setShowImportModal(false)}
+        onImport={handleBulkImport}
       />
     </div>
   );

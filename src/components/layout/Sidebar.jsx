@@ -12,7 +12,8 @@ import {
   LayoutDashboard,
   Wallet,
   Settings,
-  RefreshCw
+  RefreshCw,
+  Menu
 } from 'lucide-react';
 import logo from '../../assets/logo.svg';
 import logoIcon from '../../assets/logo-icon.svg';
@@ -27,11 +28,19 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
     navigate('/login');
   };
 
-  const handleClearCache = () => {
-    if (window.confirm('Tüm önbellek ve yerel veriler temizlenecek. Devam edilsin mi?')) {
-      localStorage.clear();
-      sessionStorage.clear();
-      window.location.reload();
+  const handleClearCache = async () => {
+    if (window.confirm('Tüm önbellek, Firestore verileri ve yerel veriler temizlenecek. Devam edilsin mi? Bu işlem sonrası sayfa yenilenecektir.')) {
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+        if (db?._delegate?._persistence) {
+          await db._delegate._persistence.clear();
+        }
+        window.location.reload();
+      } catch (err) {
+        console.error('Clear cache error:', err);
+        window.location.reload();
+      }
     }
   };
 
@@ -47,8 +56,16 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
     <div className={`glass-sidebar ${isCollapsed ? 'collapsed' : ''}`} style={{ width: isCollapsed ? '80px' : '260px' }}>
       {/* Toggle Button */}
       <button
-        className="btn btn-link text-dark position-absolute sidebar-toggle-btn"
-        style={{ right: '-15px', top: '20px', zIndex: 1001, background: 'white', borderRadius: '50%', padding: '2px', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}
+        className="btn btn-link text-dark position-absolute sidebar-toggle-btn d-none d-lg-flex"
+        style={{ 
+          right: '12px', 
+          top: '12px', 
+          zIndex: 1001, 
+          background: 'rgba(0,0,0,0.03)', 
+          borderRadius: '8px', 
+          padding: '6px',
+          transition: 'all 0.2s'
+        }}
         onClick={() => setIsCollapsed(!isCollapsed)}
       >
         {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
