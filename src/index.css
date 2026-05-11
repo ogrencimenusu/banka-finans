@@ -17,14 +17,14 @@
 }
 
 [data-theme="dark"] {
-  --glass-bg: rgba(25, 25, 35, 0.75);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  --glass-bg: rgba(25, 25, 35, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
   --bg-gradient: linear-gradient(135deg, #0f1115 0%, #1a1d23 100%);
   --text-main: #e0e0e0;
   --text-muted: #a0a0a0;
-  --card-bg: rgba(30, 30, 40, 0.6);
-  --sidebar-bg: rgba(20, 20, 30, 0.6);
+  --card-bg: rgba(30, 30, 40, 0.95);
+  --sidebar-bg: rgba(20, 20, 30, 0.8);
 }
 
 body {
@@ -482,9 +482,9 @@ body {
   color: #fff !important;
 }
 
-[data-theme="dark"] .text-muted,
-[data-theme="dark"] .smaller,
-[data-theme="dark"] .x-small {
+[data-theme="dark"] .text-muted:not(.text-success):not(.text-danger),
+[data-theme="dark"] .smaller:not(.text-success):not(.text-danger),
+[data-theme="dark"] .x-small:not(.text-success):not(.text-danger) {
   color: var(--text-muted) !important;
 }
 
@@ -614,6 +614,10 @@ body {
     border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
+[data-theme="dark"] .modal-backdrop.show {
+    opacity: .9 !important;
+}
+
 [data-theme="dark"] .modal-header,
 [data-theme="dark"] .modal-footer {
     border-color: rgba(255, 255, 255, 0.1) !important;
@@ -625,7 +629,7 @@ body {
 
 /* Specific component fixes */
 [data-theme="dark"] .glass-card {
-    background: rgba(255, 255, 255, 0.03) !important;
+    background: var(--glass-bg) !important;
     backdrop-filter: blur(20px);
     border-color: rgba(255, 255, 255, 0.1) !important;
 }
@@ -719,6 +723,35 @@ body {
 }
 
 /* Specific fix for color picker boxes in dark mode */
-[data-theme="dark"] .dropdown-menu div[style*="background-color"] {
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+/* Global fix for dropdown stacking and glass effects in production */
+:root {
+  --glass-blur: blur(12px);
+}
+
+.dropdown-menu {
+  z-index: 10001 !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  backdrop-filter: var(--glass-blur) !important;
+}
+
+.glass-card {
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  backdrop-filter: var(--glass-blur) !important;
+}
+
+.main-content-inner, .animate-fade-in {
+  transform: none !important;
+  perspective: none !important;
+  filter: none !important;
+}
+
+/* Fix dropdown clipping in responsive tables */
+.table-responsive:has(.notion-table) {
+  overflow: visible !important;
+}
+
+@media (max-width: 991px) {
+  .table-responsive:has(.notion-table) {
+    overflow-x: auto !important;
+  }
 }

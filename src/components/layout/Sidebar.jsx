@@ -34,14 +34,35 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
   };
 
   const handleClearCache = async () => {
-    if (window.confirm('Tüm önbellek, Firestore verileri ve yerel veriler temizlenecek. Devam edilsin mi? Bu işlem sonrası sayfa yenilenecektir.')) {
+    if (window.confirm('Tüm önbellek, çerezler ve yerel veriler temizlenecek. Bu işlem sonrası sayfa tamamen sıfırlanacaktır. Devam edilsin mi?')) {
       try {
+        // 1. Local & Session Storage
         localStorage.clear();
         sessionStorage.clear();
-        if (db?._delegate?._persistence) {
-          await db._delegate._persistence.clear();
+
+        // 2. Cache Storage (Browser Cache)
+        if ('caches' in window) {
+          const names = await caches.keys();
+          await Promise.all(names.map(name => caches.delete(name)));
         }
-        window.location.reload();
+
+        // 3. Cookies
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i];
+          const eqPos = cookie.indexOf("=");
+          const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+          document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+        }
+
+        // 4. Service Workers
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(r => r.unregister()));
+        }
+
+        // 5. Hard Reload
+        window.location.href = window.location.origin + '?clear=' + Date.now();
       } catch (err) {
         console.error('Clear cache error:', err);
         window.location.reload();
@@ -118,7 +139,10 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
           </div>
           {!isCollapsed && (
             <div className="overflow-hidden">
-              <div className="text-truncate fw-bold small">{user?.displayName}</div>
+              <div className="fw-bold small d-flex align-items-center justify-content-between w-100">
+                <span className="text-truncate">{user?.displayName}</span>
+                <span className="text-muted smaller opacity-50 fw-normal ms-2" style={{ fontSize: '11px' }}>v1.0.2</span>
+              </div>
               <div className="text-truncate text-muted smaller" style={{ fontSize: '11px' }}>{user?.email}</div>
             </div>
           )}

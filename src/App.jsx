@@ -371,8 +371,8 @@ const Dashboard = () => {
 
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
         .animate-fade-in {
           animation: fadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;

@@ -109,6 +109,22 @@ const COLORS = [
   { name: 'Red', bg: '#fdebec', text: '#d44c47' },
 ];
 
+const getTagStyleByColor = (colorName) => {
+  const color = COLORS.find(c => c.name === colorName) || COLORS[0];
+  return {
+    backgroundColor: color.bg,
+    color: color.text,
+    padding: '2px 8px',
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: '500',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    whiteSpace: 'nowrap'
+  };
+};
+
 const PROPERTIES = [
   { id: 'date', label: 'Tarih', icon: <Calendar size={14} /> },
   { id: 'institutionId', label: 'Aracı Kurum', icon: <Landmark size={14} /> },
@@ -975,13 +991,16 @@ const FinanceTransactionsPage = () => {
 
     if (config.filters && config.filters.length > 0) {
       config.filters.forEach(f => {
+        const filterValueRaw = (f.value || '');
+        if (!filterValueRaw && !['is_empty', 'is_not_empty'].includes(f.operator)) return;
+
         result = result.filter(t => {
           let rawVal = (t[f.propId] || '').toString().toLowerCase();
           let displayVal = rawVal;
           if (f.propId === 'institutionId') displayVal = (getInstitutionInfo(t[f.propId]).name || '').toLowerCase();
           if (f.propId === 'stockId') displayVal = (getStockInfo(t[f.propId]).name || '').toLowerCase();
           
-          const filterVal = (f.value || '').toString().toLowerCase();
+          const filterVal = filterValueRaw.toLowerCase();
 
           if (f.operator === 'is_empty') return !t[f.propId];
           if (f.operator === 'is_not_empty') return !!t[f.propId];
@@ -1603,29 +1622,62 @@ const FinanceTransactionsPage = () => {
         </div>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={async (e) => { const { active, over } = e; if (active && over && active.id !== over.id) { const oldIdx = institutions.findIndex(i => i.id === active.id), newIdx = institutions.findIndex(i => i.id === over.id); const reordered = arrayMove(institutions, oldIdx, newIdx); setInstitutions(reordered); const batch = writeBatch(db); reordered.forEach((inst, i) => batch.update(doc(db, `users/${user.uid}/institutions`, inst.id), { order: i })); await batch.commit(); } }}>
           <SortableContext items={institutions.map(i => i.id)} strategy={config.viewLayout === 'table' ? verticalListSortingStrategy : rectSortingStrategy}>
-            <div style={{ overflowX: 'auto', overflowY: 'visible', paddingBottom: '8px' }}>
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'nowrap', minWidth: 'max-content' }} className="mb-0 pb-2">
-                {institutions.filter(inst => inst.visible !== false).map(inst => (
-                  <div key={inst.id} style={{ width: '220px', flexShrink: 0 }}>
-                    <SortableBankItem 
-                      bank={inst} 
-                      stats={institutionStats[inst.id]} 
-                      viewLayout={config.viewLayout} 
-                      handleDeleteBank={id => updateDoc(doc(db, `users/${user.uid}/institutions`, id), { deleted: true })} 
-                      onEditClick={i => { setEditingInstitution(i); setEditInstitutionName(i.name); setEditInstitutionLogo(i.logo || ''); setShowEditModal(true); }} 
-                    />
-                  </div>
-                ))}
-                <div style={{ width: '220px', flexShrink: 0 }}>
-                  <div className="h-100 bg-white border shadow-sm d-flex align-items-center justify-content-center p-2 text-muted opacity-50 cursor-pointer rounded-3" style={{ minHeight: '140px', borderStyle: 'dashed', borderColor: '#ccc' }} onClick={() => setShowInstitutionModal(true)}>
-                    <div className="text-center">
-                      <Plus size={20} className="mb-2" />
-                      <div className="small fw-bold">Yeni Kurum</div>
+            {config.viewLayout === 'table' ? (
+              <div className="bg-white border rounded-4 overflow-hidden mb-0 shadow-sm">
+                <Table hover className="mb-0 fs-14 align-middle">
+                  <thead className="bg-light bg-opacity-50">
+                    <tr className="text-muted x-small fw-bold text-uppercase border-bottom">
+                      <th className="ps-4 py-3" style={{ width: '40%' }}>Kurum</th>
+                      <th style={{ width: '30%' }}>Net Kar/Zarar</th>
+                      <th className="text-end pe-4" style={{ width: '30%' }}>Portföy Değeri</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {institutions.filter(inst => inst.visible !== false).map(inst => (
+                      <SortableBankItem 
+                        key={inst.id}
+                        bank={inst} 
+                        stats={institutionStats[inst.id]} 
+                        viewLayout="table" 
+                        handleDeleteBank={id => updateDoc(doc(db, `users/${user.uid}/institutions`, id), { deleted: true })} 
+                        onEditClick={i => { setEditingInstitution(i); setEditInstitutionName(i.name); setEditInstitutionLogo(i.logo || ''); setShowEditModal(true); }} 
+                      />
+                    ))}
+                    <tr className="border-top">
+                      <td colSpan="3" className="p-0">
+                        <div className="py-2 px-4 hover-bg-light cursor-pointer text-muted x-small d-flex align-items-center gap-2" onClick={() => setShowInstitutionModal(true)}>
+                          <Plus size={14} /> Yeni Kurum Ekle
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </Table>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto', overflowY: 'visible', paddingBottom: '8px' }}>
+                <div style={{ display: 'flex', gap: '16px', flexWrap: 'nowrap', minWidth: 'max-content' }} className="mb-0 pb-2">
+                  {institutions.filter(inst => inst.visible !== false).map(inst => (
+                    <div key={inst.id} style={{ width: '240px', flexShrink: 0 }}>
+                      <SortableBankItem 
+                        bank={inst} 
+                        stats={institutionStats[inst.id]} 
+                        viewLayout={config.viewLayout} 
+                        handleDeleteBank={id => updateDoc(doc(db, `users/${user.uid}/institutions`, id), { deleted: true })} 
+                        onEditClick={i => { setEditingInstitution(i); setEditInstitutionName(i.name); setEditInstitutionLogo(i.logo || ''); setShowEditModal(true); }} 
+                      />
+                    </div>
+                  ))}
+                  <div style={{ width: '240px', flexShrink: 0 }}>
+                    <div className="h-100 bg-white border shadow-sm d-flex align-items-center justify-content-center p-2 text-muted opacity-50 cursor-pointer rounded-3" style={{ minHeight: '140px', borderStyle: 'dashed', borderColor: '#ccc' }} onClick={() => setShowInstitutionModal(true)}>
+                      <div className="text-center">
+                        <Plus size={20} className="mb-2" />
+                        <div className="small fw-bold">Yeni Kurum</div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </SortableContext>
         </DndContext>
 
@@ -2120,13 +2172,13 @@ const FinanceTransactionsPage = () => {
         )}
       </div>
 
-      <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
+      <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3" style={{ position: 'relative', zIndex: 100 }}>
         <h1 className="fw-bold m-0 text-nowrap flex-shrink-0">Finans İşlemleri</h1>
-        <div className="d-flex align-items-center gap-3 mobile-scroll-x w-100 w-md-auto ms-md-auto justify-content-end">
+        <div className="d-flex align-items-center gap-3 w-100 w-md-auto ms-md-auto justify-content-end" style={{ overflow: 'visible !important' }}>
           <div className="d-flex align-items-center gap-3 text-muted">
             <Dropdown align="end" className="d-inline" autoClose="outside" onToggle={(isOpen) => !isOpen && setSettingsView('main')}>
               <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret cursor-pointer hover-text-primary transition-all"><SlidersHorizontal size={20} /></Dropdown.Toggle>
-              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-0 overflow-hidden" style={{ width: '280px', zIndex: 10001 }}>
+              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-0 overflow-hidden" style={{ width: '280px', zIndex: 10005 }}>
                 {settingsView === 'main' ? (
                   <div className="p-2">
                     <Dropdown.Item onClick={() => setSettingsView('visibility')} className="rounded-2 d-flex align-items-center justify-content-between py-2">
@@ -2198,7 +2250,7 @@ const FinanceTransactionsPage = () => {
                   </div>
                   {stagedChanges.date && <div className="fw-bold x-small mt-0.5">{stagedChanges.date}</div>}
                 </Dropdown.Toggle>
-                <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2">
+                <Dropdown.Menu rootCloseEvent="mousedown" className="glass-card border-0 shadow-lg p-2" style={{ zIndex: 10005 }}>
                   <Form.Control type="date" size="sm" value={stagedChanges.date || ''} onChange={e => setStagedChanges(prev => ({ ...prev, date: e.target.value }))} />
                 </Dropdown.Menu>
               </Dropdown>
@@ -2212,7 +2264,7 @@ const FinanceTransactionsPage = () => {
                   </div>
                   {stagedChanges.institutionId && <div className="fw-bold x-small mt-0.5 text-truncate" style={{ maxWidth: '80px' }}>{getInstitutionInfo(stagedChanges.institutionId).name}</div>}
                 </Dropdown.Toggle>
-                <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1" style={{ minWidth: '180px', maxHeight: '300px', overflowY: 'auto' }}>
+                <Dropdown.Menu rootCloseEvent="mousedown" className="glass-card border-0 shadow-lg p-1" style={{ minWidth: '180px', maxHeight: '300px', overflowY: 'auto', zIndex: 10005 }}>
                   {institutions.map(i => <Dropdown.Item key={i.id} onClick={() => setStagedChanges(prev => ({ ...prev, institutionId: i.id }))} className="small rounded-2">{i.name}</Dropdown.Item>)}
                 </Dropdown.Menu>
               </Dropdown>
@@ -2226,7 +2278,7 @@ const FinanceTransactionsPage = () => {
                   </div>
                   {stagedChanges.stockId && <div className="fw-bold x-small mt-0.5 text-truncate" style={{ maxWidth: '80px' }}>{getStockInfo(stagedChanges.stockId).name}</div>}
                 </Dropdown.Toggle>
-                <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1" style={{ minWidth: '180px', maxHeight: '300px', overflowY: 'auto' }}>
+                <Dropdown.Menu rootCloseEvent="mousedown" className="glass-card border-0 shadow-lg p-1" style={{ minWidth: '180px', maxHeight: '300px', overflowY: 'auto', zIndex: 10005 }}>
                   {stocks.map(s => <Dropdown.Item key={s.id} onClick={() => setStagedChanges(prev => ({ ...prev, stockId: s.id }))} className="small rounded-2">{s.name}</Dropdown.Item>)}
                 </Dropdown.Menu>
               </Dropdown>
@@ -2240,7 +2292,7 @@ const FinanceTransactionsPage = () => {
                   </div>
                   {stagedChanges.type && <div className="fw-bold x-small mt-0.5">{stagedChanges.type}</div>}
                 </Dropdown.Toggle>
-                <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1">
+                <Dropdown.Menu rootCloseEvent="mousedown" className="glass-card border-0 shadow-lg p-1" style={{ zIndex: 10005 }}>
                   {['ALIŞ', 'SATIŞ'].map(t => <Dropdown.Item key={t} onClick={() => setStagedChanges(prev => ({ ...prev, type: t }))} className="small rounded-2">{t}</Dropdown.Item>)}
                 </Dropdown.Menu>
               </Dropdown>
@@ -2254,7 +2306,7 @@ const FinanceTransactionsPage = () => {
                   </div>
                   {stagedChanges.taxRate !== undefined && <div className="fw-bold x-small mt-0.5">%{stagedChanges.taxRate}</div>}
                 </Dropdown.Toggle>
-                <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '100px' }}>
+                <Dropdown.Menu rootCloseEvent="mousedown" className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '100px', zIndex: 10005 }}>
                   <Form.Control type="text" size="sm" placeholder="Oran (%)" value={stagedChanges.taxRate ?? ''} onChange={e => setStagedChanges(prev => ({ ...prev, taxRate: e.target.value.replace(/[^0-9,]/g, '') }))} onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }} />
                 </Dropdown.Menu>
               </Dropdown>
@@ -2270,8 +2322,8 @@ const FinanceTransactionsPage = () => {
               <Button variant="link" className="text-danger p-2 hover-bg-light rounded-pill" onClick={handleBulkDelete} disabled={isBulkProcessing}><Trash2 size={16} /></Button>
 
               <Dropdown align="end">
-                <Dropdown.Toggle as="div" className="text-muted p-2 hover-bg-light rounded-pill cursor-pointer"><RotateCcw size={16} /></Dropdown.Toggle>
-                <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '320px', maxHeight: '400px', overflowY: 'auto' }}>
+                <Dropdown.Toggle as="div" className="text-muted p-2 hover-bg-light rounded-pill cursor-pointer d-inline-block"><RotateCcw size={16} /></Dropdown.Toggle>
+                <Dropdown.Menu rootCloseEvent="mousedown" className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '320px', maxHeight: '400px', overflowY: 'auto', zIndex: 10005 }}>
                   <div className="d-flex align-items-center justify-content-between px-2 border-bottom pb-2 mb-2">
                     <span className="x-small fw-bold text-muted">İŞLEM GEÇMİŞİ</span>
                     {bulkHistory.length > 0 && <span className="x-small text-danger fw-bold cursor-pointer" onClick={handleClearBulkHistory}>TEMİZLE</span>}
@@ -2293,12 +2345,12 @@ const FinanceTransactionsPage = () => {
         </div>
       )}
 
-      <Card className="bg-white border shadow-sm rounded-3 overflow-hidden">
-        <div className="table-responsive">
+      <Card className="bg-white border shadow-sm rounded-3" style={{ overflow: 'visible', zIndex: 15 }}>
+        <div className="table-responsive" style={{ overflow: 'visible' }}>
           <Table hover className="notion-table mb-0" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
-          <thead className="sticky-top bg-white" style={{ zIndex: 101, top: 0 }}>
+          <thead className="sticky-top bg-white" style={{ zIndex: 5, top: 0 }}>
             {config.filters?.length > 0 && (
-              <tr className="bg-light">
+              <tr className="bg-light" style={{ position: 'relative', zIndex: 10 }}>
                 <th colSpan={100} className="py-2 px-3 border-bottom font-normal">
                   <div className="d-flex align-items-center gap-2 flex-wrap">
                     <div className="text-muted x-small fw-bold d-flex align-items-center gap-1 opacity-50 pe-2 border-end">
@@ -2311,10 +2363,10 @@ const FinanceTransactionsPage = () => {
                         <div key={f.propId} className="glass-card border rounded-pill px-2 py-1 d-flex align-items-center gap-2 shadow-sm bg-white" style={{ fontSize: '11px', fontWeight: 400 }}>
                           <span className="text-muted">{label}</span>
                           <Dropdown autoClose="outside">
-                            <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary">
+                            <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary d-inline-block">
                               {f.operator.replace(/_/g, ' ')}
                             </Dropdown.Toggle>
-                            <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1" style={{ zIndex: 2000 }}>
+                            <Dropdown.Menu rootCloseEvent="mousedown" className="glass-card border-0 shadow-lg p-1" style={{ zIndex: 10005 }}>
                               {['contains', 'does_not_contain', 'is_empty', 'is_not_empty'].map(op => <Dropdown.Item key={op} onClick={() => handleUpdateFilter(f.propId, op, f.value)} className="small rounded-2">{op.replace(/_/g, ' ')}</Dropdown.Item>)}
                             </Dropdown.Menu>
                           </Dropdown>
@@ -2325,7 +2377,7 @@ const FinanceTransactionsPage = () => {
                                   <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary text-truncate d-inline-block" style={{ maxWidth: '100px' }}>
                                     {getInstitutionInfo(f.value).name || 'Seçiniz...'}
                                   </Dropdown.Toggle>
-                                  <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                  <Dropdown.Menu rootCloseEvent="mousedown" className="glass-card border-0 shadow-lg p-1" style={{ maxHeight: '300px', overflowY: 'auto', zIndex: 10005 }}>
                                     {institutions.map(i => <Dropdown.Item key={i.id} onClick={() => handleUpdateFilter(f.propId, f.operator, i.id)} className="small rounded-2">{i.name}</Dropdown.Item>)}
                                   </Dropdown.Menu>
                                 </Dropdown>
@@ -2334,7 +2386,7 @@ const FinanceTransactionsPage = () => {
                                   <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary text-truncate d-inline-block" style={{ maxWidth: '100px' }}>
                                     {getStockInfo(f.value).name || 'Seçiniz...'}
                                   </Dropdown.Toggle>
-                                  <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                  <Dropdown.Menu rootCloseEvent="mousedown" className="glass-card border-0 shadow-lg p-1" style={{ maxHeight: '300px', overflowY: 'auto', zIndex: 10005 }}>
                                     {[...stocks].sort((a, b) => (stockRemainingQuantities[b.id] || 0) - (stockRemainingQuantities[a.id] || 0)).map(s => {
                                       const qty = stockRemainingQuantities[s.id] || 0;
                                       return (
@@ -2348,11 +2400,22 @@ const FinanceTransactionsPage = () => {
                                 </Dropdown>
                               ) : f.propId === 'type' ? (
                                 <Dropdown autoClose="outside">
-                                  <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary">
+                                  <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary d-inline-block">
                                     {f.value || 'Seçiniz...'}
                                   </Dropdown.Toggle>
-                                  <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1">
-                                    {['ALIŞ', 'SATIŞ'].map(type => <Dropdown.Item key={type} onClick={() => handleUpdateFilter(f.propId, f.operator, type)} className="small rounded-2">{type}</Dropdown.Item>)}
+                                  <Dropdown.Menu rootCloseEvent="mousedown" className="glass-card border-0 shadow-lg p-1" style={{ zIndex: 10005 }}>
+                                    {['ALIŞ', 'SATIŞ'].map(type => (
+                                      <Dropdown.Item 
+                                        key={type} 
+                                        onClick={() => handleUpdateFilter(f.propId, f.operator, type)} 
+                                        className="small rounded-2 py-1"
+                                      >
+                                        <span style={getTagStyleByColor(type === 'ALIŞ' ? 'Green' : 'Red')}>
+                                          {type === 'ALIŞ' ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
+                                          {type}
+                                        </span>
+                                      </Dropdown.Item>
+                                    ))}
                                   </Dropdown.Menu>
                                 </Dropdown>
                               ) : (
@@ -2390,7 +2453,7 @@ const FinanceTransactionsPage = () => {
                           </div>
                         )}
                       </Dropdown.Toggle>
-                    <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '220px' }}>
+                    <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '220px', zIndex: 10005 }}>
                         <div className="x-small fw-bold text-muted px-2 mb-2">İŞLEMLER</div>
                         <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2" onClick={() => handleSort(id, 'asc')}><ArrowUp size={14} className="text-muted" /> Artan Sırala</Dropdown.Item>
                         <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2" onClick={() => handleSort(id, 'desc')}><ArrowDown size={14} className="text-muted" /> Azalan Sırala</Dropdown.Item>
@@ -2590,13 +2653,32 @@ const FinanceTransactionsPage = () => {
       <Modal show={showEditStockModal} onHide={() => setShowEditStockModal(false)} centered className="glass-card">
         <Modal.Header closeButton className="border-0"><Modal.Title className="fw-bold">Hisse Düzenle</Modal.Title></Modal.Header>
         <Modal.Body className="p-4">
+          {editingStock && (
+            <div className="mb-4 p-3 rounded-3 bg-light bg-opacity-50 border border-light">
+              <div className="d-flex justify-content-between align-items-center mb-1">
+                <span className="x-small text-muted fw-bold">SON GÜNCELLEME:</span>
+                <span className="x-small fw-bold text-muted opacity-75">{editingStock.updatedAt ? formatDate(editingStock.updatedAt) : 'Hiç güncellenmedi'}</span>
+              </div>
+              <div className="d-flex justify-content-between align-items-center">
+                <span className="x-small text-muted fw-bold">ÖNCEKİ FİYAT:</span>
+                <span className="x-small fw-bold">{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 8 }).format(parseNum(editingStock.currentPrice))} TL</span>
+              </div>
+            </div>
+          )}
           <Form.Group className="mb-3">
             <Form.Label className="small fw-bold opacity-50">HİSSE KODU</Form.Label>
             <Form.Control className="border-0 bg-light" value={editStockName} onChange={(e) => setEditStockName(e.target.value)} />
           </Form.Group>
           <Form.Group className="mb-3">
-            <Form.Label className="small fw-bold opacity-50">GÜNCEL FİYAT</Form.Label>
-            <Form.Control className="border-0 bg-light" value={editStockValue} onChange={(e) => setEditStockValue(e.target.value.replace(/[^0-9,.]/g, ''))} />
+            <div className="d-flex justify-content-between align-items-center mb-1">
+              <Form.Label className="small fw-bold opacity-50 m-0">GÜNCEL FİYAT</Form.Label>
+              {editingStock && editStockValue && (
+                <span className={`fw-bold x-small ${((parseNum(editStockValue) - parseNum(editingStock.currentPrice)) / parseNum(editingStock.currentPrice)) >= 0 ? 'text-success' : 'text-danger'}`}>
+                  {((parseNum(editStockValue) - parseNum(editingStock.currentPrice)) / parseNum(editingStock.currentPrice) * 100).toFixed(2)}%
+                </span>
+              )}
+            </div>
+            <Form.Control className="border-0 bg-light" value={editStockValue} onChange={(e) => setEditStockValue(e.target.value.replace(/[^0-9,.]/g, ''))} autoFocus />
           </Form.Group>
           <Button variant="success" className="w-100 rounded-pill mt-3 py-2 fw-bold" onClick={handleUpdateStock}>Değişiklikleri Kaydet</Button>
         </Modal.Body>

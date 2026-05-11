@@ -803,6 +803,25 @@ const BankTransactionsPage = () => {
     await setDoc(doc(db, `users/${user.uid}/groupSettings`, 'bankGroups'), newSettings);
   };
 
+  const handleToggleGroupCollapse = async (groupId) => {
+    const newCollapsed = { ...collapsedGroups, [groupId]: !collapsedGroups[groupId] };
+    setCollapsedGroups(newCollapsed);
+    
+    if (user && config.groupBy) {
+      const currentGroupBy = config.groupBy;
+      const settings = groupSettings[currentGroupBy] || {};
+      const newSettings = { 
+        ...groupSettings, 
+        [currentGroupBy]: { 
+          ...settings, 
+          collapsedGroups: newCollapsed 
+        } 
+      };
+      setGroupSettings(newSettings);
+      await setDoc(doc(db, `users/${user.uid}/groupSettings`, 'bankGroups'), newSettings);
+    }
+  };
+
   const handleGroupOrderDragEnd = async (event) => {
     const { active, over } = event;
     if (active && over && active.id !== over.id) {
@@ -1086,6 +1105,14 @@ const BankTransactionsPage = () => {
     return () => { unsubBanks(); unsubTrans(); unsubConfig(); unsubQA(); unsubTT(); unsubHistory(); unsubGroupSettings(); unsubGroupConfigs(); };
   }, [user]);
 
+  useEffect(() => {
+    if (config.groupBy && groupSettings[config.groupBy]?.collapsedGroups) {
+      setCollapsedGroups(groupSettings[config.groupBy].collapsedGroups);
+    } else {
+      setCollapsedGroups({});
+    }
+  }, [config.groupBy, groupSettings]);
+
   const applyFilters = (data, filters) => {
     return data.filter(t => {
       const bank = getBankInfo(t.bankId);
@@ -1094,8 +1121,10 @@ const BankTransactionsPage = () => {
 
       const activeFilters = Array.isArray(filters) ? filters : [];
       for (const f of activeFilters) {
-        const val = t[f.propId];
         const filterValueRaw = (f.value || '');
+        if (!filterValueRaw && !['is_empty', 'is_not_empty'].includes(f.operator)) continue;
+
+        const val = t[f.propId];
         const filterValLower = filterValueRaw.toLowerCase();
         const stringVal = (val || '').toString().toLowerCase();
 
@@ -2473,7 +2502,7 @@ const BankTransactionsPage = () => {
         <h1 className="fw-bold mb-4 d-none d-md-block">Banka</h1>
 
         {/* Gallery/Table Switcher Header */}
-        <div className="d-none d-md-flex align-items-center justify-content-between mb-4" style={{ position: 'relative', zIndex: 1000 }}>
+        <div className="d-none d-md-flex align-items-center justify-content-between mb-4" style={{ position: 'relative', zIndex: '1100 !important' }}>
           <div className="d-none d-md-flex align-items-center gap-1 mobile-scroll-x">
             <Button
               variant="light"
@@ -2565,7 +2594,7 @@ const BankTransactionsPage = () => {
         </div>
 
         {/* Banks Listing with Drag and Drop */}
-        <div style={{ position: 'relative', zIndex: 1 }}>
+        <div style={{ position: 'relative', zIndex: 5 }}>
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -2648,9 +2677,9 @@ const BankTransactionsPage = () => {
       <hr className="my-md-5 my-4 opacity-5" />
 
       {/* Transactions Section */}
-      <div className="d-flex align-items-center justify-content-between mb-4 gap-3" style={{ position: 'relative', zIndex: 1000 }}>
+      <div className="d-flex align-items-center justify-content-between mb-4 gap-3" style={{ position: 'relative', zIndex: 20 }}>
         <h1 className="fw-bold m-0 section-title">Banka İşlemleri</h1>
-        <div className="d-flex align-items-center gap-3 mobile-scroll-x w-auto">
+        <div className="d-flex align-items-center gap-3 w-auto" style={{ overflow: 'visible !important' }}>
           <div className="d-flex align-items-center gap-3 text-muted  ">
 
             <Dropdown align="end" className="d-inline" autoClose="outside" onToggle={(isOpen) => !isOpen && setSettingsView('main')}>
@@ -3068,11 +3097,11 @@ const BankTransactionsPage = () => {
         </div>
       )}
 
-        <Card className="glass-card border shadow-sm" style={{ overflow: 'visible', borderRadius: '12px' }}>
+        <Card className="glass-card border shadow-sm" style={{ overflow: 'visible', borderRadius: '12px', position: 'relative', zIndex: 15 }}>
           <Table responsive hover className="notion-table mb-0 border-top-0" style={{ overflow: 'visible', borderCollapse: 'separate', borderSpacing: 0 }}>
             <thead className="sticky-top" style={{ zIndex: 1010, top: 0 }}>
               {config.filters?.length > 0 && (
-                <tr className="border-bottom">
+                <tr className="border-bottom" style={{ position: 'relative', zIndex: 10 }}>
                   <th colSpan={100} className="py-2 px-3 border-bottom font-normal">
                     <div className="d-flex align-items-center gap-2 flex-wrap">
                       <div className="text-muted x-small fw-bold d-flex align-items-center gap-1 opacity-50 pe-2 border-end">
@@ -3088,7 +3117,7 @@ const BankTransactionsPage = () => {
                               <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary">
                                 {f.operator.replace(/_/g, ' ')}
                               </Dropdown.Toggle>
-                              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ placement: 'bottom-start', modifiers: [{ name: 'offset', options: { offset: [0, 5] } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1">
+                              <Dropdown.Menu rootCloseEvent="mousedown" className="glass-card border-0 shadow-lg p-1" style={{ zIndex: 10005 }}>
                                 {(() => {
                                   if (['type', 'quickActions', 'bankId'].includes(f.propId)) return ['contains', 'does_not_contain', 'is_empty', 'is_not_empty'];
                                   if (f.propId === 'date') return ['is', 'between', 'is_empty', 'is_not_empty'];
@@ -3114,7 +3143,7 @@ const BankTransactionsPage = () => {
                                       return f.value;
                                     })()}
                                   </Dropdown.Toggle>
-                                  <Dropdown.Menu popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ maxHeight: '300px', minWidth: '150px' }}>
+                                  <Dropdown.Menu className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ maxHeight: '300px', minWidth: '150px', zIndex: 10005 }}>
                                     {(f.propId === 'bankId'
                                       ? [...banks].sort((a, b) => (a.order || 0) - (b.order || 0))
                                       : f.propId === 'type'
@@ -3134,7 +3163,7 @@ const BankTransactionsPage = () => {
                                               {f.propId === 'bankId' && item.logo && (
                                                 <img src={item.logo} alt="" width="14" height="14" className="me-2 rounded-circle" style={{ objectFit: 'contain' }} />
                                               )}
-                                              <span className="px-2 py-0.5 rounded-1" style={f.propId !== 'bankId' ? { backgroundColor: colorObj.bg, color: colorObj.text, fontSize: '11px' } : {}}>
+                                              <span className={f.propId !== 'bankId' ? "notion-tag m-0 text-nowrap" : ""} style={f.propId !== 'bankId' ? { ...getTagStyleByColor(item.color), fontSize: '11px' } : {}}>
                                                 {item.name}
                                               </span>
                                             </div>
@@ -3203,7 +3232,7 @@ const BankTransactionsPage = () => {
                   </th>
                 </tr>
               )}
-              <tr>
+              <tr style={{ position: 'relative', zIndex: 5 }}>
                 <th style={{ width: '1px', whiteSpace: 'nowrap', backgroundColor: 'inherit' }} className="ps-2">
                   <Form.Check
                     ref={selectAllRef}
@@ -3537,7 +3566,7 @@ const BankTransactionsPage = () => {
               <div key={group.id} className="mb-4">
                 <div 
                   className="d-flex align-items-center gap-2 mb-2 cursor-pointer hover-bg-light p-1 rounded transition-all"
-                  onClick={() => setCollapsedGroups(prev => ({ ...prev, [group.id]: !prev[group.id] }))}
+                  onClick={() => handleToggleGroupCollapse(group.id)}
                   style={{ width: 'fit-content' }}
                 >
                   <div className="d-flex align-items-center opacity-50">
@@ -3548,7 +3577,14 @@ const BankTransactionsPage = () => {
                     <span className="notion-tag m-0 fs-14 fw-bold" style={getTagStyleByColor(group.color)}>
                       {group.label}
                     </span>
-                    <span className="ms-2 text-muted x-small opacity-50 fw-normal">{groupSpecificSorted.length}</span>
+                    <span className="ms-2 text-muted x-small opacity-50 fw-normal">
+                      {groupSpecificSorted.length}
+                      {config.columnCalculations?.amount === 'sum' && (
+                        <span className="ms-1 fw-bold text-dark opacity-100">
+                          · Toplam: {formatCurrency(getCalculatedValue('amount', groupSpecificSorted))} TL
+                        </span>
+                      )}
+                    </span>
                     <Button
                       variant="primary"
                       size="sm"
@@ -3566,11 +3602,11 @@ const BankTransactionsPage = () => {
                 </div>
                 {!isCollapsed && (
                   <>
-                    <Card className="glass-card border shadow-sm rounded-3 overflow-visible mb-3">
+                    <Card className="glass-card border shadow-sm rounded-3 overflow-visible mb-3" style={{ position: 'relative', zIndex: 15 }}>
                       <Table responsive hover className="notion-table mb-0 border-top-0" style={{ overflow: 'visible', borderCollapse: 'separate', borderSpacing: 0 }}>
                         <thead className="sticky-top" style={{ zIndex: 1010, top: 0 }}>
                           {localFilters.length > 0 && (
-                            <tr className="border-bottom">
+                            <tr className="border-bottom" style={{ position: 'relative', zIndex: 10 }}>
                               <th colSpan={100} className="py-2 px-3 border-bottom font-normal">
                                 <div className="d-flex align-items-center gap-2 flex-wrap">
                                   <div className="text-muted x-small fw-bold d-flex align-items-center gap-1 opacity-50 pe-2 border-end">
@@ -3580,7 +3616,7 @@ const BankTransactionsPage = () => {
                                     const p = PROPERTIES.find(item => item.id === f.propId);
                                     const label = config.propertyLabels?.[f.propId] || p?.label;
                                     return (
-                                      <div key={f.propId} className="border rounded-pill px-2 py-1 d-flex align-items-center gap-2 shadow-sm" style={{ fontSize: '12px', fontWeight: 400 }}>
+                                      <div key={f.propId} className="glass-card border rounded-pill px-2 py-1 d-flex align-items-center gap-2 shadow-sm" style={{ fontSize: '12px', fontWeight: 400 }}>
                                         <span className="text-muted">{label}</span>
                                         <Dropdown>
                                           <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary">
@@ -3632,7 +3668,7 @@ const BankTransactionsPage = () => {
                                                           {f.propId === 'bankId' && item.logo && (
                                                             <img src={item.logo} alt="" width="14" height="14" className="me-2 rounded-circle" style={{ objectFit: 'contain' }} />
                                                           )}
-                                                          <span className="px-2 py-0.5 rounded-1" style={f.propId !== 'bankId' ? { backgroundColor: colorObj.bg, color: colorObj.text, fontSize: '11px' } : {}}>
+                                                          <span className={f.propId !== 'bankId' ? "notion-tag m-0 text-nowrap" : ""} style={f.propId !== 'bankId' ? { ...getTagStyleByColor(item.color), fontSize: '11px' } : {}}>
                                                             {item.name}
                                                           </span>
                                                         </div>
@@ -3701,7 +3737,7 @@ const BankTransactionsPage = () => {
                               </th>
                             </tr>
                           )}
-                          <tr>
+                          <tr style={{ position: 'relative', zIndex: 5 }}>
                             <th style={{ width: '1px', whiteSpace: 'nowrap', backgroundColor: 'inherit' }} className="ps-2">
                               <Form.Check
                                 type="checkbox"
