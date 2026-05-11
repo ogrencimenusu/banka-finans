@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './components/auth/LoginPage';
 import BankTransactionsPage from './components/bank/BankTransactionsPage';
-import FinancePage from './components/finance/FinancePage';
 import FinanceTransactionsPage from './components/finance/FinanceTransactionsPage';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -203,13 +202,6 @@ const Dashboard = () => {
       path: '/finance',
       icon: <PieChart size={32} className="text-success" />,
       color: 'success'
-    },
-    {
-      title: 'Yapılandırma',
-      description: 'Hisse senedi ve aracı kurum ayarlarınızı yapın.',
-      path: '/finance-setup',
-      icon: <Settings size={32} className="text-warning" />,
-      color: 'warning'
     }
   ];
 
@@ -218,13 +210,13 @@ const Dashboard = () => {
       {/* Navigation Cards */}
       <div className="row g-4 justify-content-center">
         {cards.map((card, index) => (
-          <div key={index} className="col-12 col-md-6 col-xl-4">
+          <div key={index} className="col-12 col-md-6">
             <Link to={card.path} className="text-decoration-none h-100 d-block">
               <div className="glass-card p-4 h-100 dashboard-nav-card transition-all position-relative overflow-hidden border-0 shadow-hover">
                 <div className={`icon-box rounded-4 bg-${card.color} bg-opacity-10 p-3 d-inline-flex mb-4 transition-all`}>
                   {card.icon}
                 </div>
-                <h3 className="fw-bold mb-2 h4 text-dark">{card.title}</h3>
+                <h3 className="fw-bold mb-2 h4">{card.title}</h3>
                 <p className="text-muted mb-4 small">{card.description}</p>
                 <div className="d-flex align-items-center text-primary fw-bold gap-2 mt-auto">
                   <span>İncele</span>
@@ -387,13 +379,21 @@ const Dashboard = () => {
           opacity: 0;
         }
         .dashboard-nav-card {
-          border: 1px solid rgba(255, 255, 255, 0.5) !important;
+          border: 1px solid rgba(255, 255, 255, 0.2) !important;
           transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+        [data-theme="dark"] .dashboard-nav-card {
+          border: 1px solid rgba(255, 255, 255, 0.05) !important;
+          background: rgba(255, 255, 255, 0.03) !important;
         }
         .dashboard-nav-card:hover, .hover-translate-y:hover {
           transform: translateY(-8px);
           background: rgba(255, 255, 255, 0.85) !important;
           box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1) !important;
+        }
+        [data-theme="dark"] .dashboard-nav-card:hover, [data-theme="dark"] .hover-translate-y:hover {
+          background: rgba(255, 255, 255, 0.08) !important;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
         }
         .dashboard-nav-card:hover .icon-box {
           transform: scale(1.1) rotate(5deg);
@@ -447,7 +447,6 @@ function App() {
                   <Routes>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/bank-transactions" element={<BankTransactionsPage />} />
-                    <Route path="/finance-setup" element={<FinancePage />} />
                     <Route path="/finance" element={<FinanceTransactionsPage />} />
                     <Route path="/trash" element={<TrashPage />} />
                   </Routes>

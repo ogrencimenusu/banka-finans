@@ -31,9 +31,6 @@ const AppNavbar = () => {
               <Plus size={18} /> Banka İşlemleri
             </Nav.Link>
 
-            <Nav.Link as={Link} to="/finance-setup" className="d-flex align-items-center gap-1">
-              <Settings size={18} /> Finans Tanımları
-            </Nav.Link>
             <Nav.Link as={Link} to="/finance" className="d-flex align-items-center gap-1">
               <PieChart size={18} /> Finans İşlemleri
             </Nav.Link>

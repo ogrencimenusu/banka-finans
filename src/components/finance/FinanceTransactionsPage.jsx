@@ -160,19 +160,19 @@ const SimulationCalculatorCard = ({
   setSimPrice 
 }) => {
   return (
-    <Card className="glass-card border shadow-lg p-4 h-100" style={{ borderRadius: '20px', background: 'linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%)' }}>
+    <Card className="glass-card border shadow-lg p-4 h-100" style={{ borderRadius: '20px' }}>
       <div className="d-flex align-items-center gap-3 mb-4">
         <div className="rounded bg-success bg-opacity-10 d-flex align-items-center justify-content-center" style={{ width: '40px', height: '40px' }}>
           <Sparkles size={20} className="text-success" />
         </div>
-        <span className="fw-bold fs-18 text-dark">Kazanç Hesaplayıcı</span>
+        <span className="fw-bold fs-18">Kazanç Hesaplayıcı</span>
       </div>
       
       <Row className="g-3">
         <Col xs={12}>
           <Form.Select 
             size="lg" 
-            className="rounded-3 border-light bg-white fs-15 py-2.5"
+            className="rounded-3 border-light bg-theme-light fs-15 py-2.5"
             value={simStockId}
             onChange={e => {
               setSimStockId(e.target.value);
@@ -193,7 +193,7 @@ const SimulationCalculatorCard = ({
             size="lg" 
             type="text" 
             placeholder="Adet" 
-            className="rounded-3 border-light bg-white fs-15 py-2.5"
+            className="rounded-3 border-light bg-theme-light fs-15 py-2.5"
             value={simQuantity}
             onChange={e => setSimQuantity(e.target.value.replace(/[^0-9,.]/g, ''))}
           />
@@ -287,7 +287,7 @@ const ImportModal = ({ show, onHide, onImport }) => {
   };
   return (
     <Modal show={show} onHide={onHide} size="lg" className="glass-card">
-      <Modal.Header closeButton className="border-0"><Modal.Title className="fw-bold text-dark">İşlemleri İçe Aktar</Modal.Title></Modal.Header>
+      <Modal.Header closeButton className="border-0"><Modal.Title className="fw-bold">İşlemleri İçe Aktar</Modal.Title></Modal.Header>
       <Modal.Body className="p-4">
         <div className="alert alert-info border-0 rounded-3 small mb-3">Verileri sütunları ile birlikte (başlıksız) buraya yapıştırın. Format: Kurum, Sembol Borsa, Sembol, Durum, Adet, Fiyat, Komisyon... Tarih</div>
         <Form.Control as="textarea" rows={10} className="glass-card p-3 border-0 bg-light" placeholder="Verileri buraya yapıştırın..." value={text} onChange={e => setText(e.target.value)} style={{ fontSize: '13px' }} />
@@ -382,13 +382,13 @@ const SortableBankItem = ({ bank, stats, viewLayout, handleDeleteBank, onEditCli
 
   return (
     <Col ref={setNodeRef} style={style} {...attributes}>
-      <Card className="bg-white border shadow-sm p-3 position-relative group" style={{ borderRadius: '20px', transition: 'all 0.2s ease-in-out' }}>
+      <Card className="glass-card border shadow-sm p-3 position-relative group" style={{ borderRadius: '20px', transition: 'all 0.2s ease-in-out' }}>
         <div className="d-flex align-items-center justify-content-between">
           <div className="d-flex align-items-center gap-2">
             <div className="rounded-circle bg-light d-flex align-items-center justify-content-center overflow-hidden border shadow-sm" style={{ width: '32px', height: '32px' }}>
               {bank.logo ? <img src={bank.logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Landmark size={16} className="text-muted" />}
             </div>
-            <span className="fw-bold fs-16 text-dark text-truncate" style={{ maxWidth: '120px' }}>{bank.name}</span>
+            <span className="fw-bold fs-16 text-truncate" style={{ maxWidth: '120px' }}>{bank.name}</span>
           </div>
           <div className="d-flex align-items-center gap-1 group-hover-visible transition-all">
             <div {...listeners} style={{ cursor: 'grab' }} className="text-muted p-1 hover-bg-light rounded"><GripVertical size={14} /></div>
@@ -434,7 +434,7 @@ const SortableBankItem = ({ bank, stats, viewLayout, handleDeleteBank, onEditCli
           </div>
           <div className="d-flex justify-content-between align-items-center mt-2 pt-2 border-top border-light border-opacity-10">
             <span className="x-small text-muted fw-bold text-nowrap">PORTFÖY DEĞERİ:</span>
-            <span className="x-small fw-bold text-dark text-nowrap ms-2">{formatCurrency(stats?.totalInvestment || 0)} TL</span>
+            <span className="x-small fw-bold text-nowrap ms-2">{formatCurrency(stats?.totalInvestment || 0)} TL</span>
           </div>
           <div className="d-flex justify-content-between align-items-center mb-1">
             <span className="x-small text-muted fw-bold text-nowrap">BRÜT DEĞER:</span>
@@ -465,7 +465,7 @@ const SortableInstitutionDropdownItem = ({ inst, handleToggleInstitutionVisibili
         <span className="text-truncate" style={{ fontSize: '13px' }}>{inst.name}</span>
       </div>
       <div className="cursor-pointer d-flex align-items-center ps-2" onClick={(e) => { e.stopPropagation(); handleToggleInstitutionVisibility(inst, !(inst.visible !== false)); }}>
-        {inst.visible !== false ? <Eye size={14} className="text-dark" /> : <EyeOff size={14} className="text-muted opacity-25" />}
+        {inst.visible !== false ? <Eye size={14} /> : <EyeOff size={14} className="text-muted opacity-25" />}
       </div>
     </div>
   );
@@ -531,6 +531,49 @@ const FinanceTransactionsPage = () => {
   const [simStockId, setSimStockId] = useState('');
   const [simQuantity, setSimQuantity] = useState('');
   const [simPrice, setSimPrice] = useState('');
+
+  // Stock Edit States
+  const [showEditStockModal, setShowEditStockModal] = useState(false);
+  const [editingStock, setEditingStock] = useState(null);
+  const [editStockName, setEditStockName] = useState('');
+  const [editStockValue, setEditStockValue] = useState('');
+
+  const handleEditStock = (stock) => {
+    setEditingStock(stock);
+    setEditStockName(stock.name);
+    setEditStockValue(stock.currentPrice || '');
+    setShowEditStockModal(true);
+  };
+
+  const handleUpdateStock = async () => {
+    if (!editStockName || !editStockValue) return;
+
+    const parsePrice = (p) => {
+      if (!p) return 0;
+      if (typeof p === 'number') return p;
+      const str = p.toString().trim();
+      if (str.includes(',')) return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+      return parseFloat(str) || 0;
+    };
+
+    const oldPriceStr = editingStock.currentPrice || '0';
+    const oldPrice = parsePrice(oldPriceStr);
+    const newPrice = parsePrice(editStockValue);
+    
+    let dailyChange = 0;
+    if (oldPrice > 0) {
+      dailyChange = ((newPrice - oldPrice) / oldPrice) * 100;
+    }
+
+    await updateDoc(doc(db, `users/${user.uid}/stocks`, editingStock.id), {
+      name: editStockName.toUpperCase(),
+      currentPrice: editStockValue,
+      previousPrice: oldPriceStr,
+      dailyChange: dailyChange,
+      updatedAt: new Date()
+    });
+    setShowEditStockModal(false);
+  };
 
   const parseNum = (val) => {
     if (val === undefined || val === null || val === '') return 0;
@@ -991,7 +1034,8 @@ const FinanceTransactionsPage = () => {
           avgPrice: 0,
           institutionBreakdown: {},
           updatedAt: sInfo.updatedAt,
-          createdAt: sInfo.createdAt
+          createdAt: sInfo.createdAt,
+          dailyChange: sInfo.dailyChange
         };
       }
       
@@ -1037,6 +1081,9 @@ const FinanceTransactionsPage = () => {
         const netProfit = grossProfit - potentialTax;
         const profitPercentage = item.totalCost > 0 ? (netProfit / item.totalCost) * 100 : 0;
 
+        const dailyChangePerc = parseFloat(item.dailyChange) || 0;
+        const dailyGain = (item.quantity * item.currentPrice) * (dailyChangePerc / (100 + dailyChangePerc));
+
         return {
           ...item,
           avgPrice,
@@ -1045,7 +1092,9 @@ const FinanceTransactionsPage = () => {
           totalTaxDeduction: potentialTax,
           totalProfit: netProfit,
           profitPercentage: profitPercentage,
-          holdingDurationDays: duration
+          holdingDurationDays: duration,
+          dailyGain,
+          dailyChangePerc
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -1789,7 +1838,7 @@ const FinanceTransactionsPage = () => {
                           )}
                         </td>
                         <td className="text-muted">{inst.name}</td>
-                        <td className="fw-bold text-primary">
+                        <td className="fw-bold text-primary cursor-pointer hover-text-primary-dark" onClick={() => handleEditStock(stock)}>
                           <div>{stock.name}</div>
                           {(stock.updatedAt || stock.createdAt) && (
                             <div className="text-muted" style={{ fontSize: '9px', opacity: 0.6, fontWeight: 400 }}>
@@ -1895,7 +1944,7 @@ const FinanceTransactionsPage = () => {
                   <tr className="text-muted x-small fw-bold text-uppercase border-bottom">
                     <th className="px-4 py-3" style={{ whiteSpace: 'nowrap' }}>Hisse</th>
                     <th className="text-end" style={{ whiteSpace: 'nowrap' }}>Adet</th>
-                    <th className="text-end" style={{ whiteSpace: 'nowrap' }}>Ort. Maliyet</th>
+                    <th className="text-end" style={{ whiteSpace: 'nowrap' }}>Günlük Kazanç</th>
                     <th className="text-end" style={{ whiteSpace: 'nowrap' }}>Güncel Fiyat</th>
                     <th className="text-end" style={{ whiteSpace: 'nowrap' }}>Toplam Değer</th>
                     <th className="text-end" style={{ whiteSpace: 'nowrap' }}>Brüt Kazanç</th>
@@ -1911,7 +1960,7 @@ const FinanceTransactionsPage = () => {
                         <div className="d-flex align-items-center gap-2">
                           <TrendingUp size={14} className="text-primary opacity-50" />
                           <div>
-                            <span className="fw-bold text-primary">{item.name}</span>
+                            <span className="fw-bold text-primary cursor-pointer hover-text-primary-dark" onClick={() => handleEditStock(item)}>{item.name}</span>
                             {(item.updatedAt || item.createdAt) && (
                               <div className="text-muted" style={{ fontSize: '9px', opacity: 0.6, fontWeight: 400 }}>
                                 {formatDate(item.updatedAt || item.createdAt)}
@@ -1930,7 +1979,14 @@ const FinanceTransactionsPage = () => {
                           ))}
                         </div>
                       </td>
-                      <td className="text-end">{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 4 }).format(item.avgPrice)} TL</td>
+                      <td className="text-end">
+                        <div className={`fw-bold ${item.dailyGain >= 0 ? 'text-success' : 'text-danger'}`}>
+                          {item.dailyGain > 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.dailyGain)}₺
+                        </div>
+                        <div className={`x-small opacity-75 ${item.dailyChangePerc >= 0 ? 'text-success' : 'text-danger'}`}>
+                          (%{item.dailyChangePerc.toFixed(2)})
+                        </div>
+                      </td>
                       <td className="text-end text-muted">{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(item.currentPrice)} TL</td>
                       <td className="text-end fw-bold">{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(item.quantity * item.currentPrice)} TL</td>
                       <td className="text-end">
@@ -1973,7 +2029,7 @@ const FinanceTransactionsPage = () => {
                           <TrendingUp size={14} className="text-primary" />
                         </div>
                         <div className="d-flex flex-column">
-                          <span className="fw-bold fs-16 text-primary">{item.name}</span>
+                          <span className="fw-bold fs-16 text-primary cursor-pointer hover-text-primary-dark" onClick={() => handleEditStock(item)}>{item.name}</span>
                           {(item.updatedAt || item.createdAt) && (
                             <div className="text-muted" style={{ fontSize: '9px', opacity: 0.6, fontWeight: 400 }}>
                               {formatDate(item.updatedAt || item.createdAt)}
@@ -1996,9 +2052,12 @@ const FinanceTransactionsPage = () => {
                     </div>
                     <div className="mt-2 d-flex justify-content-between align-items-end">
                       <div>
-                        <div className="text-muted x-small fw-bold opacity-50 text-uppercase mb-1">Ort. Maliyet</div>
-                        <div className="fw-bold fs-15">
-                          {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 8 }).format(item.avgPrice)} TL
+                        <div className="text-muted x-small fw-bold opacity-50 text-uppercase mb-1">Günlük Kazanç</div>
+                        <div className={`fw-bold fs-15 ${item.dailyGain >= 0 ? 'text-success' : 'text-danger'}`}>
+                          {item.dailyGain > 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(item.dailyGain)}₺
+                        </div>
+                        <div className={`x-small fw-bold opacity-75 ${item.dailyChangePerc >= 0 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '10px' }}>
+                          (%{item.dailyChangePerc.toFixed(2)})
                         </div>
                       </div>
                       <div className="text-end">
@@ -2470,8 +2529,78 @@ const FinanceTransactionsPage = () => {
       )}
 
       <Modal show={showTransactionModal} onHide={() => setShowTransactionModal(false)} size="lg" className="notion-modal"><Modal.Body className="p-5"><Form onSubmit={handleAddTransaction}><h2 className="fw-bold mb-4">Yeni İşlem</h2><Row className="g-3"><Col md={6}><Form.Label className="small fw-bold text-muted">Kurum</Form.Label><Form.Select value={formInstitutionId} onChange={e => setFormInstitutionId(e.target.value)} required><option value="">Seçiniz...</option>{institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</Form.Select></Col><Col md={6}><Form.Label className="small fw-bold text-muted">Hisse</Form.Label><Form.Select value={formStockId} onChange={e => setFormStockId(e.target.value)} required><option value="">Seçiniz...</option>{stocks.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Form.Select></Col><Col md={4}><Form.Label className="small fw-bold text-muted">Tür</Form.Label><Form.Select value={type} onChange={e => setType(e.target.value)}><option value="ALIŞ">ALIŞ</option><option value="SATIŞ">SATIŞ</option></Form.Select></Col><Col md={4}><Form.Label className="small fw-bold text-muted">Adet</Form.Label><Form.Control value={quantity} onChange={e => setQuantity(e.target.value.replace(/[^0-9,]/g, ''))} required /></Col><Col md={4}><Form.Label className="small fw-bold text-muted">Fiyat</Form.Label><Form.Control value={price} onChange={e => setPrice(e.target.value.replace(/[^0-9,]/g, ''))} required /></Col><Col md={6}><Form.Label className="small fw-bold text-muted">Tarih</Form.Label><Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} required /></Col><Col md={6}><Form.Label className="small fw-bold text-muted">Stopaj (%)</Form.Label><Form.Control value={taxRate} onChange={e => setTaxRate(e.target.value.replace(/[^0-9,]/g, ''))} /></Col></Row><Button variant="primary" type="submit" className="w-100 rounded-pill mt-4 py-2 fw-bold">Kaydet</Button></Form></Modal.Body></Modal>
-      <Modal show={showInstitutionModal} onHide={() => setShowInstitutionModal(false)}><Modal.Header closeButton><Modal.Title>Kurum Ekle</Modal.Title></Modal.Header><Modal.Body><Form onSubmit={(e) => { e.preventDefault(); addDoc(collection(db, `users/${user.uid}/institutions`), { name: newInstitutionName, logo: newInstitutionLogo, createdAt: serverTimestamp(), deleted: false, order: institutions.length }); setShowInstitutionModal(false); }}><Form.Group className="mb-3"><Form.Label>Kurum Adı</Form.Label><Form.Control value={newInstitutionName} onChange={e => setNewInstitutionName(e.target.value)} required /></Form.Group><Form.Group className="mb-3"><Form.Label>Logo URL</Form.Label><Form.Control value={newInstitutionLogo} onChange={e => setNewInstitutionLogo(e.target.value)} /></Form.Group><Button variant="primary" type="submit" className="w-100 rounded-pill">Ekle</Button></Form></Modal.Body></Modal>
-      <Modal show={showEditModal} onHide={() => setShowEditModal(false)}><Modal.Header closeButton><Modal.Title>Kurumu Düzenle</Modal.Title></Modal.Header><Modal.Body><Form onSubmit={(e) => { e.preventDefault(); updateDoc(doc(db, `users/${user.uid}/institutions`, editingInstitution.id), { name: editInstitutionName, logo: editInstitutionLogo }); setShowEditModal(false); }}><Form.Group className="mb-3"><Form.Label>Kurum Adı</Form.Label><Form.Control value={editInstitutionName} onChange={e => setEditInstitutionName(e.target.value)} required /></Form.Group><Form.Group className="mb-3"><Form.Label>Logo URL</Form.Label><Form.Control value={editInstitutionLogo} onChange={e => setEditInstitutionLogo(e.target.value)} /></Form.Group><Button variant="primary" type="submit" className="w-100 rounded-pill">Güncelle</Button></Form></Modal.Body></Modal>
+      <Modal show={showInstitutionModal} onHide={() => setShowInstitutionModal(false)} centered className="glass-card">
+        <Modal.Header closeButton className="border-0"><Modal.Title className="fw-bold">Kurum Ekle</Modal.Title></Modal.Header>
+        <Modal.Body className="p-4">
+          <Form onSubmit={(e) => { e.preventDefault(); addDoc(collection(db, `users/${user.uid}/institutions`), { name: newInstitutionName, logo: newInstitutionLogo, createdAt: serverTimestamp(), deleted: false, order: institutions.length }); setShowInstitutionModal(false); setNewInstitutionName(''); setNewInstitutionLogo(''); }}>
+            <Form.Group className="mb-3">
+              <Form.Label className="small fw-bold opacity-50">KURUM ADI</Form.Label>
+              <Form.Control className="border-0 bg-light" value={newInstitutionName} onChange={e => setNewInstitutionName(e.target.value)} required />
+            </Form.Group>
+            <Form.Group className="mb-4">
+              <Form.Label className="small fw-bold opacity-50">LOGO</Form.Label>
+              <div className="d-flex align-items-center gap-3">
+                <div className="rounded p-2 shadow-sm border" style={{ width: '48px', height: '48px', backgroundColor: 'var(--card-bg)' }}>
+                  {newInstitutionLogo ? <img src={newInstitutionLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Landmark size={24} className="text-muted" />}
+                </div>
+                <Form.Control className="border-0 bg-light" type="file" size="sm" accept="image/*" onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setNewInstitutionLogo(reader.result);
+                    reader.readAsDataURL(file);
+                  }
+                }} />
+              </div>
+            </Form.Group>
+            <Button variant="primary" type="submit" className="w-100 rounded-pill py-2 fw-bold">Ekle</Button>
+          </Form>
+        </Modal.Body>
+      </Modal>
+      <Modal show={showEditModal} onHide={() => setShowEditModal(false)} centered className="glass-card">
+        <Modal.Header closeButton className="border-0"><Modal.Title className="fw-bold">Kurumu Düzenle</Modal.Title></Modal.Header>
+        <Modal.Body className="p-4">
+          <Form onSubmit={(e) => { e.preventDefault(); updateDoc(doc(db, `users/${user.uid}/institutions`, editingInstitution.id), { name: editInstitutionName, logo: editInstitutionLogo }); setShowEditModal(false); }}>
+            <Form.Group className="mb-3">
+              <Form.Label className="small fw-bold opacity-50">KURUM ADI</Form.Label>
+              <Form.Control className="border-0 bg-light" value={editInstitutionName} onChange={e => setEditInstitutionName(e.target.value)} required />
+            </Form.Group>
+            <Form.Group className="mb-4">
+              <Form.Label className="small fw-bold opacity-50">LOGO</Form.Label>
+              <div className="d-flex align-items-center gap-3">
+                <div className="rounded p-2 shadow-sm border" style={{ width: '48px', height: '48px', backgroundColor: 'var(--card-bg)' }}>
+                  {editInstitutionLogo ? <img src={editInstitutionLogo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <Landmark size={24} className="text-muted" />}
+                </div>
+                <Form.Control className="border-0 bg-light" type="file" size="sm" accept="image/*" onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setEditInstitutionLogo(reader.result);
+                    reader.readAsDataURL(file);
+                  }
+                }} />
+              </div>
+            </Form.Group>
+            <Button variant="primary" type="submit" className="w-100 rounded-pill py-2 fw-bold">Güncelle</Button>
+          </Form>
+        </Modal.Body>
+      </Modal>
+
+      {/* Stock Edit Modal */}
+      <Modal show={showEditStockModal} onHide={() => setShowEditStockModal(false)} centered className="glass-card">
+        <Modal.Header closeButton className="border-0"><Modal.Title className="fw-bold">Hisse Düzenle</Modal.Title></Modal.Header>
+        <Modal.Body className="p-4">
+          <Form.Group className="mb-3">
+            <Form.Label className="small fw-bold opacity-50">HİSSE KODU</Form.Label>
+            <Form.Control className="border-0 bg-light" value={editStockName} onChange={(e) => setEditStockName(e.target.value)} />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label className="small fw-bold opacity-50">GÜNCEL FİYAT</Form.Label>
+            <Form.Control className="border-0 bg-light" value={editStockValue} onChange={(e) => setEditStockValue(e.target.value.replace(/[^0-9,.]/g, ''))} />
+          </Form.Group>
+          <Button variant="success" className="w-100 rounded-pill mt-3 py-2 fw-bold" onClick={handleUpdateStock}>Değişiklikleri Kaydet</Button>
+        </Modal.Body>
+      </Modal>
       <ImportModal show={showImportModal} onHide={() => setShowImportModal(false)} onImport={handleBulkImport} />
     </div>
   );

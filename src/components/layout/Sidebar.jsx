@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import {
   ChevronLeft,
   ChevronRight,
@@ -13,13 +14,17 @@ import {
   Wallet,
   Settings,
   RefreshCw,
-  Menu
+  Menu,
+  Sun,
+  Moon,
+  Monitor
 } from 'lucide-react';
 import logo from '../../assets/logo.svg';
 import logoIcon from '../../assets/logo-icon.svg';
 
 const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
   const { user, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -47,7 +52,6 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
   const menuItems = [
     { name: 'Anasayfa', path: '/', icon: LayoutDashboard },
     { name: 'Banka İşlemleri', path: '/bank-transactions', icon: Wallet },
-    { name: 'Finans', path: '/finance-setup', icon: Settings },
     { name: 'Finans İşlemleri', path: '/finance', icon: PieChart },
     { name: 'Son Silinenler', path: '/trash', icon: Trash2 },
   ];
@@ -103,9 +107,9 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
       </div>
 
       {/* User Info & Logout */}
-      <div className="p-3 border-top bg-white bg-opacity-25">
+      <div className="p-3 border-top bg-theme-light">
         <div className="d-flex align-items-center gap-2 mb-3 overflow-hidden">
-          <div className="bg-white rounded-circle p-1 shadow-sm">
+          <div className="rounded-circle p-1 shadow-sm" style={{ backgroundColor: 'var(--card-bg)' }}>
             {user?.photoURL ? (
               <img src={user.photoURL} alt="Avatar" width="32" className="rounded-circle" />
             ) : (
@@ -118,6 +122,37 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
               <div className="text-truncate text-muted smaller" style={{ fontSize: '11px' }}>{user?.email}</div>
             </div>
           )}
+        </div>
+
+        {/* Theme Switcher */}
+        <div className={`d-flex gap-1 mb-3 ${isCollapsed ? 'flex-column' : 'bg-light p-1 rounded-3'}`}>
+          <button
+            onClick={() => setTheme('light')}
+            className={`btn btn-sm d-flex align-items-center justify-content-center border-0 ${theme === 'light' ? 'bg-theme-card shadow-sm text-primary' : 'text-muted'}`}
+            style={{ flex: 1, padding: '6px' }}
+            title="Açık Tema"
+          >
+            <Sun size={16} />
+            {!isCollapsed && <span className="ms-2 fw-medium" style={{ fontSize: '12px' }}>Açık</span>}
+          </button>
+          <button
+            onClick={() => setTheme('dark')}
+            className={`btn btn-sm d-flex align-items-center justify-content-center border-0 ${theme === 'dark' ? 'bg-theme-card shadow-sm text-primary' : 'text-muted'}`}
+            style={{ flex: 1, padding: '6px' }}
+            title="Koyu Tema"
+          >
+            <Moon size={16} />
+            {!isCollapsed && <span className="ms-2 fw-medium" style={{ fontSize: '12px' }}>Koyu</span>}
+          </button>
+          <button
+            onClick={() => setTheme('system')}
+            className={`btn btn-sm d-flex align-items-center justify-content-center border-0 ${theme === 'system' ? 'bg-theme-card shadow-sm text-primary' : 'text-muted'}`}
+            style={{ flex: 1, padding: '6px' }}
+            title="Sistem Teması"
+          >
+            <Monitor size={16} />
+            {!isCollapsed && <span className="ms-2 fw-medium" style={{ fontSize: '12px' }}>Sistem</span>}
+          </button>
         </div>
         <div className="d-flex gap-1">
           <button

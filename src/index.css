@@ -10,6 +10,21 @@
   --primary-color: #3e64ff;
   --bg-gradient: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   --font-family: 'Outfit', sans-serif;
+  --text-main: #333;
+  --text-muted: #666;
+  --card-bg: rgba(255, 255, 255, 0.4);
+  --sidebar-bg: rgba(255, 255, 255, 0.4);
+}
+
+[data-theme="dark"] {
+  --glass-bg: rgba(25, 25, 35, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+  --bg-gradient: linear-gradient(135deg, #0f1115 0%, #1a1d23 100%);
+  --text-main: #e0e0e0;
+  --text-muted: #a0a0a0;
+  --card-bg: rgba(30, 30, 40, 0.6);
+  --sidebar-bg: rgba(20, 20, 30, 0.6);
 }
 
 body {
@@ -18,7 +33,7 @@ body {
   background: var(--bg-gradient);
   background-attachment: fixed;
   min-height: 100vh;
-  color: #333;
+  color: var(--text-main);
 }
 
 .glass-card {
@@ -31,7 +46,7 @@ body {
 }
 
 .glass-sidebar {
-  background: rgba(255, 255, 255, 0.4);
+  background: var(--sidebar-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--glass-border);
@@ -214,6 +229,15 @@ body {
   padding: 12px 10px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   font-size: 14px;
+}
+
+[data-theme="dark"] .notion-table td,
+[data-theme="dark"] .notion-table th {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .notion-table th {
+  color: var(--text-muted);
 }
 
 .notion-table tr:hover {
@@ -439,4 +463,262 @@ body {
   .mobile-backdrop {
     display: none !important;
   }
+}
+
+/* Dark Mode Overrides */
+[data-theme="dark"] {
+  color: var(--text-main);
+}
+
+[data-theme="dark"] .text-dark,
+[data-theme="dark"] .text-main,
+[data-theme="dark"] h1,
+[data-theme="dark"] h2,
+[data-theme="dark"] h3,
+[data-theme="dark"] h4,
+[data-theme="dark"] h5,
+[data-theme="dark"] h6,
+[data-theme="dark"] .fw-bold:not(.text-primary):not(.text-success):not(.text-danger):not(.text-warning) {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .text-muted,
+[data-theme="dark"] .smaller,
+[data-theme="dark"] .x-small {
+  color: var(--text-muted) !important;
+}
+
+[data-theme="dark"] .bg-white {
+  background-color: var(--card-bg) !important;
+}
+
+[data-theme="dark"] .bg-white.bg-opacity-25,
+[data-theme="dark"] .bg-white.bg-opacity-40 {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme="dark"] .bg-white,
+[data-theme="dark"] .bg-white-fade {
+  background-color: var(--card-bg) !important;
+}
+
+[data-theme="dark"] .bg-light {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme="dark"] .notion-table,
+[data-theme="dark"] .table,
+[data-theme="dark"] table {
+  background-color: var(--card-bg) !important;
+  color: var(--text-main) !important;
+}
+
+[data-theme="dark"] .notion-table td,
+[data-theme="dark"] .notion-table th,
+[data-theme="dark"] .notion-table tr,
+[data-theme="dark"] .table td,
+[data-theme="dark"] .table th,
+[data-theme="dark"] .table tr {
+  background-color: transparent !important;
+  color: var(--text-main) !important;
+}
+
+[data-theme="dark"] .notion-table tr:hover,
+[data-theme="dark"] .table tr:hover {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+[data-theme="dark"] .glass-card.bg-white {
+  background: var(--card-bg) !important;
+}
+
+[data-theme="dark"] .btn-outline-secondary {
+  color: var(--text-muted);
+  border-color: var(--glass-border);
+}
+
+[data-theme="dark"] .btn-outline-secondary:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+[data-theme="dark"] .hover-bg-light:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .sidebar-toggle-btn {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] .bg-primary.bg-opacity-10 {
+  background-color: rgba(62, 100, 255, 0.2) !important;
+}
+
+[data-theme="dark"] .bg-success.bg-opacity-10 {
+  background-color: rgba(40, 167, 69, 0.2) !important;
+}
+
+[data-theme="dark"] .bg-warning.bg-opacity-10 {
+  background-color: rgba(255, 193, 7, 0.2) !important;
+}
+
+@media (max-width: 991px) {
+  [data-theme="dark"] .glass-sidebar {
+    background: #1a1d23 !important;
+  }
+}
+
+/* Bank Transactions Page Specifics */
+[data-theme="dark"] .notion-table {
+  color: var(--text-main) !important;
+}
+
+[data-theme="dark"] .notion-table thead,
+[data-theme="dark"] .notion-table thead tr {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+[data-theme="dark"] .notion-table tfoot,
+[data-theme="dark"] .bg-light,
+[data-theme="dark"] .bg-theme-light {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme="dark"] .hover-bg-light:hover {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="dark"] .border-light {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .text-dark {
+    color: var(--text-main) !important;
+}
+
+[data-theme="dark"] .alert-info {
+    background-color: rgba(0, 111, 238, 0.1) !important;
+    color: #4dabf7 !important;
+    border: 1px solid rgba(0, 111, 238, 0.2) !important;
+}
+
+[data-theme="dark"] .bg-light-primary {
+    background-color: rgba(0, 111, 238, 0.15) !important;
+    color: #4dabf7 !important;
+}
+
+[data-theme="dark"] .modal-content {
+    background-color: var(--card-bg) !important;
+    color: var(--text-main) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .modal-header,
+[data-theme="dark"] .modal-footer {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .notion-title-input::placeholder {
+    color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Specific component fixes */
+[data-theme="dark"] .glass-card {
+    background: rgba(255, 255, 255, 0.03) !important;
+    backdrop-filter: blur(20px);
+    border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .section-title {
+    color: var(--text-main) !important;
+}
+
+[data-theme="dark"] .notion-option-item:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme="dark"] .notion-option-item {
+  color: var(--text-main) !important;
+}
+
+[data-theme="dark"] .dropdown-menu {
+  background-color: #1e2128 !important;
+  color: var(--text-main) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-theme="dark"] .dropdown-item {
+  color: var(--text-main) !important;
+}
+
+[data-theme="dark"] .dropdown-item:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  color: var(--text-main) !important;
+  border-color: var(--glass-border) !important;
+}
+
+[data-theme="dark"] .form-control:focus,
+[data-theme="dark"] .form-select:focus {
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  border-color: var(--primary-color) !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] .card {
+  background-color: var(--card-bg) !important;
+  border-color: var(--glass-border) !important;
+}
+
+[data-theme="dark"] .notion-title-input {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .btn-light {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border-color: var(--glass-border) !important;
+  color: var(--text-muted) !important;
+}
+
+[data-theme="dark"] .btn-light:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] .dropdown-item:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] .notion-option-item:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="dark"] .notion-option-item {
+  color: var(--text-main) !important;
+}
+
+[data-theme="dark"] .bg-light-primary {
+  background-color: rgba(0, 111, 238, 0.15) !important;
+  color: #006fee !important;
+}
+
+[data-theme="dark"] .bg-theme-card {
+  background-color: var(--card-bg) !important;
+}
+
+[data-theme="dark"] .bg-theme-light {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Specific fix for color picker boxes in dark mode */
+[data-theme="dark"] .dropdown-menu div[style*="background-color"] {
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
