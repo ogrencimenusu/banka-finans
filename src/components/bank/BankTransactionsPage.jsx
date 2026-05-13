@@ -839,7 +839,14 @@ const BankTransactionsPage = () => {
         if (!allGroupsMap[key]) allGroupsMap[key] = key;
       });
       const allGroupIds = Object.keys(allGroupsMap);
-      const currentOrder = settings.order || allGroupIds;
+      let currentOrder = settings.order ? [...settings.order] : [...allGroupIds];
+      
+      // Ensure all current group IDs are in the order array
+      allGroupIds.forEach(id => {
+        if (!currentOrder.includes(id)) {
+          currentOrder.push(id);
+        }
+      });
       
       const oldIndex = currentOrder.indexOf(active.id);
       const newIndex = currentOrder.indexOf(over.id);
@@ -1115,8 +1122,6 @@ const BankTransactionsPage = () => {
 
   const applyFilters = (data, filters) => {
     return data.filter(t => {
-      const bank = getBankInfo(t.bankId);
-      if (bank.visible === false) return false;
       if (selectedBankId !== 'all' && t.bankId !== selectedBankId) return false;
 
       const activeFilters = Array.isArray(filters) ? filters : [];
@@ -1349,14 +1354,33 @@ const BankTransactionsPage = () => {
     setShowTransactionModal(false);
   };
 
+  const getValuesFromFilters = (filters) => {
+    const values = { bankId: '', type: '', quickActions: [] };
+    if (!Array.isArray(filters)) return values;
+
+    filters.forEach(f => {
+      if (f.operator === 'is' || f.operator === 'contains') {
+        const ids = (f.value || '').split(',').filter(v => v);
+        if (ids.length === 1) {
+          if (f.propId === 'bankId') values.bankId = ids[0];
+          if (f.propId === 'type') values.type = ids[0];
+          if (f.propId === 'quickActions') values.quickActions = [ids[0]];
+        }
+      }
+    });
+    return values;
+  };
+
   const handleQuickNewTransaction = async () => {
     if (!user) return;
     const today = new Date().toISOString().split('T')[0];
+    const filterValues = getValuesFromFilters(config.filters);
+
     await addDoc(collection(db, `users/${user.uid}/bankTransactions`), {
-      bankId: '',
+      bankId: filterValues.bankId,
       title: '',
-      quickActions: [],
-      type: '',
+      quickActions: filterValues.quickActions,
+      type: filterValues.type,
       amount: '',
       receiptUrl: '',
       date: today,
@@ -1368,12 +1392,13 @@ const BankTransactionsPage = () => {
   const handleQuickNewInGroup = async (group) => {
     if (!user) return;
     const today = new Date().toISOString().split('T')[0];
+    const filterValues = getValuesFromFilters(config.filters);
 
     const newDoc = {
-      bankId: '',
+      bankId: filterValues.bankId,
       title: '',
-      quickActions: [],
-      type: '',
+      quickActions: filterValues.quickActions,
+      type: filterValues.type,
       amount: '',
       receiptUrl: '',
       date: today,

@@ -983,8 +983,6 @@ const FinanceTransactionsPage = () => {
 
   const filteredTransactions = useMemo(() => {
     let result = processedTransactions.filter(t => {
-      const inst = getInstitutionInfo(t.institutionId);
-      if (inst.visible === false) return false;
       if (selectedInstitutionId !== 'all' && t.institutionId !== selectedInstitutionId) return false;
       return true;
     });
@@ -2346,8 +2344,7 @@ const FinanceTransactionsPage = () => {
       )}
 
       <Card className="bg-white border shadow-sm rounded-3" style={{ overflow: 'visible', zIndex: 15 }}>
-        <div className="table-responsive" style={{ overflow: 'visible' }}>
-          <Table hover className="notion-table mb-0" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+        <Table responsive hover className="notion-table mb-0" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
           <thead className="sticky-top bg-white" style={{ zIndex: 5, top: 0 }}>
             {config.filters?.length > 0 && (
               <tr className="bg-light" style={{ position: 'relative', zIndex: 10 }}>
@@ -2552,7 +2549,6 @@ const FinanceTransactionsPage = () => {
             </tfoot>
           )}
         </Table>
-        </div>
       </Card>
 
       {limitCount < filteredTransactions.length && (

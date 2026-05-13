@@ -747,7 +747,7 @@ body {
 
 /* Fix dropdown clipping in responsive tables */
 .table-responsive:has(.notion-table) {
-  overflow: visible !important;
+  overflow-x: auto !important;
 }
 
 @media (max-width: 991px) {
