@@ -125,6 +125,77 @@ const getTagStyleByColor = (colorName) => {
   };
 };
 
+// Visible date input that allows both manual typing and auto-opens calendar
+const DateCellInput = ({ value, onSave, onCancel }) => {
+  const ref = React.useRef(null);
+  const [draft, setDraft] = React.useState(value || '');
+
+  React.useEffect(() => {
+    if (ref.current) {
+      const timer = setTimeout(() => {
+        try { ref.current.showPicker(); } catch (e) { }
+      }, 10);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  return (
+    <Form.Control
+      ref={ref}
+      type="date"
+      value={draft}
+      className="border-0 bg-transparent p-0 cell-date-input fs-14"
+      style={{ boxShadow: 'none' }}
+      onChange={e => {
+        const val = e.target.value;
+        setDraft(val);
+        if (val) {
+          onSave(val);
+        }
+      }}
+      onBlur={() => onSave(draft)}
+      onKeyDown={e => {
+        if (e.key === 'Enter') onSave(draft);
+        if (e.key === 'Escape') onCancel();
+      }}
+    />
+  );
+};
+
+const BulkDateInput = ({ value, onSave, onClear }) => {
+  const ref = React.useRef(null);
+  const [draft, setDraft] = React.useState(value || '');
+
+  React.useEffect(() => {
+    setDraft(value || '');
+  }, [value]);
+
+  return (
+    <div className="d-flex align-items-center gap-2">
+      <Form.Control
+        ref={ref}
+        type="date"
+        value={draft}
+        size="sm"
+        className="fs-12 border-0 bg-light rounded-pill px-3"
+        style={{ width: '130px' }}
+        onChange={e => {
+          const val = e.target.value;
+          setDraft(val);
+          if (val) onSave(val);
+        }}
+      />
+      {draft && (
+        <X 
+          size={14} 
+          className="text-muted cursor-pointer hover-text-danger" 
+          onClick={() => { setDraft(''); onClear(); }}
+        />
+      )}
+    </div>
+  );
+};
+
 const PROPERTIES = [
   { id: 'date', label: 'Tarih', icon: <Calendar size={14} /> },
   { id: 'institutionId', label: 'Aracı Kurum', icon: <Landmark size={14} /> },

@@ -8,6 +8,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 
 import MainLayout from './components/layout/MainLayout';
 import TrashPage from './components/pages/TrashPage';
+import NotesPage from './components/pages/NotesPage';
 import { LayoutDashboard, Wallet, PieChart, Settings, ArrowRight, Landmark } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db } from './firebase';
@@ -448,6 +449,7 @@ function App() {
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/bank-transactions" element={<BankTransactionsPage />} />
                     <Route path="/finance" element={<FinanceTransactionsPage />} />
+                    <Route path="/notes" element={<NotesPage />} />
                     <Route path="/trash" element={<TrashPage />} />
                   </Routes>
                 </MainLayout>

@@ -2527,8 +2527,8 @@ const BankTransactionsPage = () => {
         <h1 className="fw-bold mb-4 d-none d-md-block">Banka</h1>
 
         {/* Gallery/Table Switcher Header */}
-        <div className="d-none d-md-flex align-items-center justify-content-between mb-4" style={{ position: 'relative', zIndex: '1100 !important' }}>
-          <div className="d-none d-md-flex align-items-center gap-1 mobile-scroll-x">
+        <div className="d-none d-md-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between mb-4 gap-3" style={{ position: 'relative', zIndex: '1100 !important' }}>
+          <div className="d-flex align-items-center gap-1 mobile-scroll-x">
             <Button
               variant="light"
               size="sm"
@@ -2555,7 +2555,7 @@ const BankTransactionsPage = () => {
             </Button>
           </div>
 
-          <div className="d-none d-md-flex align-items-center gap-3 w-100 w-md-auto justify-content-between justify-content-md-end">
+          <div className="d-flex align-items-center gap-3 w-md-auto ms-md-auto justify-content-end">
             <div className="d-flex align-items-center gap-3 text-muted">
               <Dropdown align="end" className="d-inline">
                 <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret" style={{ cursor: 'pointer' }}>

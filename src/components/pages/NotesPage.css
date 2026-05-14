@@ -1,0 +1,1192 @@
+.notes-container {
+  padding-bottom: 20px;
+}
+
+.notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  gap: 20px;
+  transition: all 0.3s ease;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.current-title {
+  font-size: 24px;
+  margin: 0;
+  min-width: 180px;
+}
+
+.nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 4px;
+  border-radius: 12px;
+}
+
+.nav-btn {
+  background: transparent;
+  border: none;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.nav-btn:hover {
+  background: white;
+  color: #000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.no-caret::after {
+  display: none !important;
+}
+
+
+.today-btn {
+  width: auto;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.view-toggle {
+  display: flex;
+  padding: 4px;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
+  border: none;
+}
+
+.toggle-btn {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.toggle-btn.active {
+  background: #3e64ff;
+  color: white;
+  box-shadow: 0 4px 12px rgba(62, 100, 255, 0.3);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
+  width: 240px;
+  border: 1px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.search-box:focus-within {
+  background: white;
+  border-color: #3e64ff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.search-box input {
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  width: 100%;
+  outline: none;
+}
+
+/* Search Dropdown */
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  min-width: 320px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  padding: 8px;
+  overflow: hidden;
+}
+
+.search-dropdown-header {
+  font-size: 10px;
+  font-weight: 800;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.search-results-list {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.search-result-item:hover {
+  background: rgba(62, 100, 255, 0.08);
+  transform: translateX(4px);
+}
+
+.search-result-item:hover .result-title {
+  color: #3e64ff;
+}
+
+.result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.result-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.2s ease;
+}
+
+.result-date {
+  font-size: 11px;
+  color: #888;
+}
+
+.mobile-search-results .search-result-item:hover {
+  transform: none;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* Calendar Grid */
+.calendar-grid {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+}
+
+.calendar-header-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  width: 100%;
+}
+
+.calendar-header-cell {
+  padding: 12px 4px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-days-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  width: 100%;
+}
+
+.calendar-day-cell {
+  min-height: 110px;
+  padding: 6px;
+  border-right: 1px solid rgba(0, 0, 0, 0.03);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03);
+  transition: background 0.2s ease;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.calendar-day-cell:nth-child(7n) {
+  border-right: none;
+}
+
+.calendar-day-cell:hover {
+  background: rgba(0, 0, 0, 0.01);
+}
+
+.calendar-day-cell.other-month {
+  background: rgba(0, 0, 0, 0.015);
+  opacity: 0.4;
+}
+
+.calendar-day-cell.today {
+  background: rgba(62, 100, 255, 0.03);
+}
+
+.day-number {
+  font-size: 12px;
+  font-weight: 600;
+  color: #999;
+  margin-bottom: 4px;
+}
+
+.calendar-day-cell.today .day-number {
+  color: #3e64ff;
+  font-weight: 800;
+}
+
+.day-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.day-note-preview {
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.04);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+
+.note-text-snippet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.day-note-preview.bank-item {
+  background: rgba(255, 77, 77, 0.08);
+  color: #b30000;
+  border-left: 2px solid #ff4d4d;
+}
+
+.day-note-preview.finance-item {
+  background: rgba(40, 167, 69, 0.08);
+  color: #155724;
+  border-left: 2px solid #28a745;
+}
+
+.day-note-preview.holiday-item {
+  background: rgba(255, 193, 7, 0.12);
+  color: #856404;
+  border-left: 2px solid #ffc107;
+  font-style: italic;
+}
+
+.day-note-preview.stack-item {
+  font-weight: 700;
+  background: white;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.day-note-preview img {
+  flex-shrink: 0;
+}
+
+/* Filter Bar Styles */
+.filter-bar {
+  padding: 24px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.filter-section {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+}
+
+.filter-section.has-divider {
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
+  padding-left: 24px;
+}
+
+[data-theme="dark"] .filter-section.has-divider {
+  border-left-color: rgba(255, 255, 255, 0.1);
+}
+
+.filter-group {
+  flex: 0 0 auto;
+}
+
+.filter-group label {
+  font-size: 10px;
+  font-weight: 800;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.unified-filter-input {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border-radius: 12px;
+  padding: 4px;
+  transition: all 0.3s ease;
+  min-width: 200px;
+}
+
+.unified-filter-input:focus-within {
+  background: white !important;
+  border-color: #3e64ff !important;
+  box-shadow: 0 0 0 4px rgba(62, 100, 255, 0.1);
+}
+
+.filter-op-toggle {
+  background: rgba(0, 0, 0, 0.03) !important;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.filter-op-toggle:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+  color: #222;
+}
+
+.unified-filter-input input {
+  border: none;
+  background: transparent;
+  padding: 6px 10px;
+  font-size: 13px;
+  width: 100%;
+  outline: none;
+  color: #333;
+}
+
+.custom-filter-dropdown {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #444;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 140px;
+  height: 42px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.custom-filter-dropdown:hover {
+  background: white !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.glass-card.dropdown-menu {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-radius: 16px !important;
+  padding: 8px !important;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1) !important;
+  margin-top: 8px !important;
+  max-height: 400px !important;
+  overflow-y: auto !important;
+}
+
+.settings-dropdown-menu {
+  min-width: 240px;
+}
+
+
+/* Modal and Inputs */
+.notes-modal-header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 24px 24px 0 0;
+}
+
+.modal-title-date {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.save-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  transition: all 0.3s ease;
+}
+
+.save-status-pill.saved {
+  color: #28a745;
+  background: rgba(40, 167, 69, 0.1);
+}
+
+.notion-modal .modal-content {
+  border-radius: 24px !important;
+  border: 1px solid rgba(255, 255, 255, 0.8) !important;
+  overflow: hidden;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.15) !important;
+}
+
+.notion-title-input {
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 12px !important;
+  padding: 14px 18px !important;
+  background: rgba(0, 0, 0, 0.02) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  color: #222 !important;
+  font-size: 1.25rem !important;
+}
+
+.notion-text-input {
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 12px !important;
+  padding: 18px !important;
+  background: rgba(0, 0, 0, 0.02) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  min-height: 180px !important;
+  line-height: 1.6 !important;
+  color: #444 !important;
+  outline: none !important;
+}
+
+.notion-text-input:focus {
+  background: white !important;
+  border-color: #3e64ff !important;
+  box-shadow: 0 8px 24px rgba(62, 100, 255, 0.1) !important;
+  transform: translateY(-1px);
+}
+
+.uppercase-tracking {
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  color: #999 !important;
+}
+
+.tag-suggestions-menu {
+  background: rgba(255, 255, 255, 0.98) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1) !important;
+}
+
+.suggestion-item:hover {
+  background: rgba(62, 100, 255, 0.08) !important;
+  color: #3e64ff !important;
+}
+
+/* Rich Text Editor Styles */
+.notion-text-input blockquote {
+  border-left: 4px solid #3e64ff !important;
+  padding: 12px 20px !important;
+  margin: 12px 0 !important;
+  background: rgba(62, 100, 255, 0.04) !important;
+  border-radius: 0 12px 12px 0 !important;
+  color: #555 !important;
+  font-style: italic !important;
+}
+
+.notion-text-input u {
+  text-decoration: underline !important;
+}
+
+.notion-text-input strike {
+  text-decoration: line-through !important;
+}
+
+.notion-text-input b,
+.notion-text-input strong {
+  font-weight: 800 !important;
+}
+
+.notion-text-input:empty:before {
+  content: attr(data-placeholder);
+  color: #aaa;
+  font-style: normal;
+  pointer-events: none;
+}
+
+/* Responsiveness */
+@media (max-width: 1200px) {
+  .notes-header {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .header-center {
+    order: 3;
+    width: 100%;
+    margin-top: 10px;
+  }
+}
+
+@media (max-width: 991px) {
+  .notes-container {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .notes-header {
+    flex-direction: column !important;
+    padding: 10px 14px !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    margin-bottom: 12px;
+  }
+
+  .header-left {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+
+  .current-title {
+    font-size: 17px !important;
+    min-width: unset !important;
+    flex: 1;
+    margin: 0 !important;
+    letter-spacing: -0.5px;
+  }
+
+  .nav-controls {
+    flex-shrink: 0;
+    gap: 4px !important;
+    padding: 2px !important;
+  }
+
+  .nav-btn {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .nav-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .today-btn {
+    padding: 0 8px !important;
+    font-size: 12px !important;
+  }
+
+  .header-center {
+    display: flex !important;
+    justify-content: center !important;
+    width: 100% !important;
+    order: 3 !important;
+    margin: 0 !important;
+  }
+
+  .view-toggle {
+    padding: 2px !important;
+    gap: 2px !important;
+    width: 100% !important;
+    max-width: 300px;
+  }
+
+  .toggle-btn {
+    padding: 5px 10px !important;
+    font-size: 12px !important;
+    flex: 1 !important;
+  }
+
+  .header-right {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    gap: 8px !important;
+    order: 2 !important;
+  }
+
+  .search-box {
+    flex: 1 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    padding: 4px 10px !important;
+    height: 34px !important;
+  }
+
+  .search-box input {
+    font-size: 13px !important;
+  }
+
+  .search-box svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+
+  .filter-bar {
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+
+  .filter-row {
+    flex-direction: column;
+    gap: 8px !important;
+  }
+
+  .filter-section {
+    width: 100%;
+    flex-direction: column;
+    gap: 8px !important;
+    border-left: none !important;
+    padding-left: 0 !important;
+    margin-top: 4px;
+    align-items: stretch;
+  }
+
+  .filter-group label {
+    margin-bottom: 4px !important;
+    font-size: 9px !important;
+  }
+
+  .unified-filter-input {
+    min-width: unset;
+    height: 34px !important;
+  }
+
+  .custom-filter-dropdown {
+    width: 100%;
+    height: 34px !important;
+    padding: 0 12px !important;
+  }
+
+  /* Week view adjustment */
+  .week-view .calendar-header-cell {
+    padding: 6px 2px;
+  }
+
+  .week-day-number {
+    font-size: 15px !important;
+  }
+
+  /* Modal Mobile Optimization */
+  .notion-modal .modal-dialog {
+    margin: 8px !important;
+    max-width: none !important;
+  }
+
+  .notion-modal .modal-content {
+    border-radius: 20px !important;
+  }
+
+  .notion-modal .modal-header {
+    padding: 12px 16px !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  .notion-modal .modal-title {
+    font-size: 13px !important;
+    width: 100% !important;
+  }
+
+  .notion-modal .modal-header>div:last-child {
+    width: 100% !important;
+    justify-content: flex-end !important;
+  }
+
+  .save-indicator-text {
+    display: none;
+    /* Hide long text like "Otomatik Kayıt Aktif" */
+  }
+
+  .save-indicator-icon-only {
+    padding: 4px 8px !important;
+  }
+
+  .notion-modal .modal-body {
+    padding: 16px !important;
+  }
+
+  .notion-title-input {
+    font-size: 18px !important;
+    padding: 10px 0 !important;
+  }
+
+  .notion-text-input {
+    min-height: 140px !important;
+    font-size: 14px !important;
+  }
+
+  .format-toolbar {
+    padding: 2px !important;
+    scale: 0.9;
+    transform-origin: right;
+  }
+
+  .notion-modal label.uppercase-tracking {
+    font-size: 9px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .tags-input-container {
+    padding: 8px !important;
+  }
+
+  .tag-badge {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+  }
+
+  /* Mobile Dropdown Optimization */
+  .glass-card.dropdown-menu {
+    min-width: unset !important;
+    padding: 4px !important;
+  }
+
+  .settings-dropdown-menu {
+    min-width: 200px !important;
+  }
+
+  .glass-card.dropdown-menu .dropdown-item {
+    padding: 8px 12px !important;
+    font-size: 13px !important;
+    margin-bottom: 2px !important;
+  }
+
+
+  .glass-card.dropdown-menu .dropdown-header {
+    font-size: 9px !important;
+    padding: 4px 10px !important;
+  }
+
+  .glass-card.dropdown-menu svg {
+    width: 14px !important;
+    height: 14px !important;
+  }
+}
+
+
+@media (max-width: 768px) {
+  .notes-container {
+    padding: 0 !important;
+  }
+
+  .notes-header {
+    border-radius: 0 0 16px 16px !important;
+    margin-bottom: 12px;
+  }
+
+  .calendar-grid {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    border-radius: 0 !important;
+  }
+
+  .calendar-header-row {
+    background: transparent !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+  }
+
+  .calendar-header-cell {
+    color: #333 !important;
+    font-size: 10px !important;
+    padding: 10px 0 !important;
+    font-weight: 600 !important;
+  }
+
+  .calendar-day-cell {
+    min-height: 80px !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.03) !important;
+    padding: 4px !important;
+    background: white !important;
+    box-sizing: border-box !important;
+  }
+
+  .calendar-day-cell.other-month {
+    background: #fafafa !important;
+    opacity: 0.3 !important;
+  }
+
+  .day-number {
+    font-size: 16px !important;
+    color: #111 !important;
+    margin-bottom: 2px !important;
+    text-align: center;
+    width: 100%;
+  }
+
+  .calendar-day-cell.today .day-number {
+    background: #ff4d4d;
+    color: white !important;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    margin: 0 auto 2px auto !important;
+  }
+
+  .day-content {
+    gap: 2px !important;
+    align-items: center;
+  }
+
+  .calendar-days-grid {
+    grid-template-columns: repeat(7, 1fr) !important;
+    display: grid !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .calendar-header-row {
+    grid-template-columns: repeat(7, 1fr) !important;
+    display: grid !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-bottom: 1px solid rgba(0,0,0,0.05) !important;
+  }
+
+  .calendar-day-cell {
+    position: relative !important;
+    min-height: 80px !important;
+    border: none !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.03) !important;
+    padding: 4px !important;
+    background: white !important;
+    box-sizing: border-box !important;
+  }
+
+  .week-number-cell {
+    position: absolute !important;
+    left: 2px !important;
+    top: 2px !important;
+    font-size: 8px !important;
+    color: #bbb !important;
+    z-index: 5;
+    background: rgba(255,255,255,0.8);
+    padding: 0 2px;
+    border-radius: 4px;
+    pointer-events: none;
+  }
+
+  .main-content.collapsed {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-bottom: 0 !important;
+    padding-top: 55px !important;
+  }
+
+  .day-note-preview {
+    font-size: 9px !important;
+    padding: 1px 6px !important;
+    border-radius: 10px !important;
+    border: none !important;
+    max-width: 100%;
+    text-align: center;
+    justify-content: center;
+    min-height: 14px;
+  }
+
+  .note-text-snippet {
+    display: block !important;
+    font-size: 8px !important;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .day-note-preview::before {
+    /* If it's a pill, we can just show the background */
+  }
+
+  /* Show only icons/colors on mobile to save space */
+  .day-note-preview img {
+    width: 12px !important;
+    height: 12px !important;
+  }
+
+  .mobile-month-title {
+    width: 100% !important;
+    display: block !important;
+  }
+
+  .mobile-month-sticky-header {
+    border-bottom: 1px solid rgba(0,0,0,0.03);
+    margin-top: -1px;
+    background: white !important;
+  }
+
+  .notes-content {
+    overflow-y: auto !important;
+    height: calc(100dvh - 56px) !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .calendar-grid {
+    width: 100% !important;
+    display: block !important;
+    clear: both;
+  }
+}
+
+
+
+/* Dark Mode Support */
+[data-theme="dark"] .notes-header {
+  background: rgba(25, 25, 35, 0.8);
+}
+
+[data-theme="dark"] .nav-controls,
+[data-theme="dark"] .view-toggle,
+[data-theme="dark"] .search-box {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .nav-btn,
+[data-theme="dark"] .toggle-btn {
+  color: #aaa;
+}
+
+[data-theme="dark"] .nav-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+[data-theme="dark"] .calendar-grid {
+  background: #1e1e26;
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .calendar-header-row {
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .calendar-day-cell {
+  border-right-color: rgba(255, 255, 255, 0.03);
+  border-bottom-color: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="dark"] .calendar-day-cell.other-month {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .day-note-preview {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .day-note-preview.holiday-item {
+  background: rgba(255, 193, 7, 0.1);
+  color: #ffc107;
+  border-left-color: #ffc107;
+}
+
+[data-theme="dark"] .week-note-card.holiday-card {
+  background: rgba(255, 193, 7, 0.05) !important;
+  border-left-color: #ffc107 !important;
+}
+
+[data-theme="dark"] .filter-bar {
+  background: rgba(25, 25, 35, 0.8);
+}
+
+[data-theme="dark"] .unified-filter-input,
+[data-theme="dark"] .custom-filter-dropdown {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+  color: #eee;
+}
+
+[data-theme="dark"] .unified-filter-input input {
+  color: #fff;
+}
+
+[data-theme="dark"] .filter-op-toggle {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #aaa;
+}
+
+[data-theme="dark"] .day-note-preview.stack-item {
+  background: #2a2a35;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .notes-modal-header-container {
+  background: rgba(30, 30, 40, 0.9);
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .save-status-pill {
+  background: rgba(255, 255, 255, 0.05);
+  color: #aaa;
+}
+
+[data-theme="dark"] .save-status-pill.saved {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+}
+
+[data-theme="dark"] .notion-text-input {
+  background: rgba(0, 0, 0, 0.2) !important;
+  color: #eee !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+[data-theme="dark"] .notion-text-input:focus {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-color: #3e64ff !important;
+}
+
+[data-theme="dark"] .notion-text-input blockquote {
+  background: rgba(62, 100, 255, 0.1) !important;
+  color: #ccc !important;
+}
+
+.holiday-card {
+  border-left: 4px solid #ffc107 !important;
+  background: rgba(255, 193, 7, 0.05) !important;
+}
+
+.holiday-card .text-dark {
+  color: #856404 !important;
+}
+
+[data-theme="dark"] .holiday-card .text-dark {
+  color: #ffc107 !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.3s ease-out;
+}

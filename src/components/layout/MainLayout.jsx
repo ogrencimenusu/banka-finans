@@ -43,22 +43,22 @@ const MainLayout = ({ children }) => {
 
   return (
     <div className="d-flex">
-      {/* Mobile Sticky Header - only visible when sidebar is collapsed on mobile */}
-      {isCollapsed && (
-        <div 
-          className="position-fixed w-100 d-lg-none bg-white bg-opacity-75" 
-          style={{ 
-            top: 0, 
-            left: 0, 
-            zIndex: 10000, 
-            height: '56px', 
-            display: 'flex', 
-            alignItems: 'center', 
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)',
-            borderBottom: '1px solid rgba(0,0,0,0.05)'
-          }}
-        >
+      {/* Mobile Sticky Header - always visible on mobile */}
+      <div 
+        className="position-fixed w-100 d-lg-none bg-white bg-opacity-75" 
+        style={{ 
+          top: 0, 
+          left: 0, 
+          zIndex: 10000, 
+          height: '56px', 
+          display: 'flex', 
+          alignItems: 'center', 
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          borderBottom: '1px solid rgba(0,0,0,0.05)'
+        }}
+      >
+        {isCollapsed && (
           <button
             className="btn btn-link text-dark d-flex align-items-center"
             style={{ padding: '0 16px' }}
@@ -66,8 +66,10 @@ const MainLayout = ({ children }) => {
           >
             <Menu size={24} />
           </button>
-        </div>
-      )}
+        )}
+        <div id="mobile-header-actions" className="ms-auto d-flex align-items-center gap-3 pe-3"></div>
+      </div>
+
 
       {!isCollapsed && window.innerWidth < 992 && (
         <div 
