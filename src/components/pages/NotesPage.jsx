@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../context/DataContext';
 import { db } from '../../firebase';
 import { 
   collection, 
   onSnapshot, 
   addDoc, 
   updateDoc, 
+  setDoc,
   deleteDoc, 
   doc, 
   query, 
@@ -64,40 +67,7 @@ const TR_MONTHS = [
 
 const TR_DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
-const RELIGIOUS_HOLIDAYS = [
-  // 2024
-  { date: '2024-04-10', localName: 'Ramazan Bayramı 1. Gün' },
-  { date: '2024-04-11', localName: 'Ramazan Bayramı 2. Gün' },
-  { date: '2024-04-12', localName: 'Ramazan Bayramı 3. Gün' },
-  { date: '2024-06-16', localName: 'Kurban Bayramı 1. Gün' },
-  { date: '2024-06-17', localName: 'Kurban Bayramı 2. Gün' },
-  { date: '2024-06-18', localName: 'Kurban Bayramı 3. Gün' },
-  { date: '2024-06-19', localName: 'Kurban Bayramı 4. Gün' },
-  // 2025
-  { date: '2025-03-30', localName: 'Ramazan Bayramı 1. Gün' },
-  { date: '2025-03-31', localName: 'Ramazan Bayramı 2. Gün' },
-  { date: '2025-04-01', localName: 'Ramazan Bayramı 3. Gün' },
-  { date: '2025-06-06', localName: 'Kurban Bayramı 1. Gün' },
-  { date: '2025-06-07', localName: 'Kurban Bayramı 2. Gün' },
-  { date: '2025-06-08', localName: 'Kurban Bayramı 3. Gün' },
-  { date: '2025-06-09', localName: 'Kurban Bayramı 4. Gün' },
-  // 2026
-  { date: '2026-03-20', localName: 'Ramazan Bayramı 1. Gün' },
-  { date: '2026-03-21', localName: 'Ramazan Bayramı 2. Gün' },
-  { date: '2026-03-22', localName: 'Ramazan Bayramı 3. Gün' },
-  { date: '2026-05-27', localName: 'Kurban Bayramı 1. Gün' },
-  { date: '2026-05-28', localName: 'Kurban Bayramı 2. Gün' },
-  { date: '2026-05-29', localName: 'Kurban Bayramı 3. Gün' },
-  { date: '2026-05-30', localName: 'Kurban Bayramı 4. Gün' },
-  // 2027
-  { date: '2027-03-09', localName: 'Ramazan Bayramı 1. Gün' },
-  { date: '2027-03-10', localName: 'Ramazan Bayramı 2. Gün' },
-  { date: '2027-03-11', localName: 'Ramazan Bayramı 3. Gün' },
-  { date: '2027-05-16', localName: 'Kurban Bayramı 1. Gün' },
-  { date: '2027-05-17', localName: 'Kurban Bayramı 2. Gün' },
-  { date: '2027-05-18', localName: 'Kurban Bayramı 3. Gün' },
-  { date: '2027-05-19', localName: 'Kurban Bayramı 4. Gün' }
-];
+
 
 const FILTER_OPERATORS = [
   { label: 'İçeriyor', value: 'contains' },
@@ -155,6 +125,8 @@ const parseNum = (val) => {
 
 const NotesPage = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState('month'); // 'week', 'month', 'year'
   const [currentDate, setCurrentDate] = useState(new Date());
   const [notes, setNotes] = useState([]);
@@ -280,50 +252,49 @@ const NotesPage = () => {
   useEffect(() => {
     localStorage.setItem('notes_filters', JSON.stringify(filters));
   }, [filters]);
-  const [visibilityConfig, setVisibilityConfig] = useState(() => {
-    const saved = localStorage.getItem('notes_visibility');
-    return saved ? JSON.parse(saved) : { notes: true, bank: true, finance: true, holidays: true };
-  });
+  const { 
+    notes: globalNotes,
+    bankTransactions: globalBankTrans,
+    financeTransactions: globalFinTrans,
+    banks: globalBanks,
+    institutions: globalInst,
+    stocks: globalStocks,
+    quickActionTags: globalQA,
+    typeTags: globalTT,
+    noteTags: globalNoteTagsContext,
+    notesConfig,
+    holidays: globalHolidays
+  } = useData();
+
+  const [visibilityConfig, setVisibilityConfig] = useState({ notes: true, bank: true, finance: true, holidays: true });
 
   useEffect(() => {
-    localStorage.setItem('notes_visibility', JSON.stringify(visibilityConfig));
-  }, [visibilityConfig]);
-
-  // Fetch Turkish Public Holidays
-  useEffect(() => {
-    const fetchHolidays = async () => {
-      try {
-        const year = currentDate.getFullYear();
-        // Fetch current, previous and next year to ensure smooth transitions
-        const yearsToFetch = [year - 1, year, year + 1];
-        const promises = yearsToFetch.map(y => 
-          fetch(`https://date.nager.at/api/v3/PublicHolidays/${y}/TR`).then(r => r.ok ? r.json() : [])
-        );
-        const results = await Promise.all(promises);
-        const apiHolidays = results.flat();
-        
-        // Merge API holidays with our hardcoded religious holidays
-        const merged = [...apiHolidays, ...RELIGIOUS_HOLIDAYS].map(h => ({
-          id: `holiday-${h.date}-${h.localName}`,
-          date: h.date,
-          title: h.localName,
-          itemType: 'holiday',
-          isGlobal: h.global ?? true
-        }));
-
-        // Remove duplicates if any (by date and name)
-        const uniqueHolidays = Array.from(new Map(merged.map(h => [`${h.date}-${h.title}`, h])).values());
-        
-        setHolidays(uniqueHolidays);
-      } catch (error) {
-        console.error("Error fetching holidays:", error);
-      }
-    };
-
-    if (visibilityConfig.holidays) {
-      fetchHolidays();
+    if (notesConfig?.visibility) {
+      setVisibilityConfig(notesConfig.visibility);
     }
-  }, [currentDate.getFullYear(), visibilityConfig.holidays]);
+  }, [notesConfig]);
+
+  useEffect(() => {
+    if (globalHolidays) {
+      setHolidays(globalHolidays);
+    }
+  }, [globalHolidays]);
+
+  const updateVisibilityConfig = async (newConfig) => {
+    const next = { ...visibilityConfig, ...newConfig };
+    setVisibilityConfig(next);
+    if (user) {
+      await updateDoc(doc(db, `users/${user.uid}/config`, 'notesSettings'), {
+        visibility: next
+      }).catch(async (err) => {
+        // If doc doesn't exist, create it
+        if (err.code === 'not-found') {
+          await setDoc(doc(db, `users/${user.uid}/config`, 'notesSettings'), { visibility: next });
+        }
+      });
+    }
+  };
+
 
   // Sync contentEditable with noteText
   useEffect(() => {
@@ -335,14 +306,26 @@ const NotesPage = () => {
     }
   }, [showModal, editingNote]);
 
-  const [listMode, setListMode] = useState(() => {
-    const saved = localStorage.getItem('notes_list_mode');
-    return saved || 'list';
-  });
+  const [listMode, setListMode] = useState('list');
 
   useEffect(() => {
-    localStorage.setItem('notes_list_mode', listMode);
-  }, [listMode]);
+    if (notesConfig?.listMode) {
+      setListMode(notesConfig.listMode);
+    }
+  }, [notesConfig]);
+
+  const updateListMode = async (newMode) => {
+    setListMode(newMode);
+    if (user) {
+      await updateDoc(doc(db, `users/${user.uid}/config`, 'notesSettings'), {
+        listMode: newMode
+      }).catch(async (err) => {
+        if (err.code === 'not-found') {
+          await setDoc(doc(db, `users/${user.uid}/config`, 'notesSettings'), { listMode: newMode });
+        }
+      });
+    }
+  };
 
   const [expandedStacks, setExpandedStacks] = useState({});
 
@@ -472,62 +455,27 @@ const NotesPage = () => {
     return finalBalances;
   }, [processedFinanceTransactions]);
 
-  // Firebase listener
   useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, `users/${user.uid}/notes`), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const notesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setNotes(notesData);
-    });
-    
-    // Bank Transactions listener
-    const qBank = query(collection(db, `users/${user.uid}/bankTransactions`), orderBy('date', 'desc'));
-    const unsubBank = onSnapshot(qBank, (snapshot) => {
-      setBankTransactions(snapshot.docs.map(doc => ({ id: doc.id, type: 'bank', ...doc.data() })).filter(t => t.deleted !== true));
-    });
+    if (location.state?.openNoteId && notes.length > 0) {
+      const noteToOpen = notes.find(n => n.id === location.state.openNoteId);
+      if (noteToOpen) {
+        handleEditNote(noteToOpen);
+        // Clear state to prevent re-opening
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    }
+  }, [location.state, notes]);
 
-    // Finance Transactions listener
-    const qFinance = query(collection(db, `users/${user.uid}/financeTransactions`), orderBy('date', 'desc'));
-    const unsubFinance = onSnapshot(qFinance, (snapshot) => {
-      setFinanceTransactions(snapshot.docs.map(doc => ({ id: doc.id, type: 'finance', ...doc.data() })).filter(t => t.deleted !== true));
-    });
+  useEffect(() => { setNotes(globalNotes); }, [globalNotes]);
+  useEffect(() => { setBankTransactions(globalBankTrans.filter(t => t.deleted !== true).map(t => ({ ...t, type: 'bank' }))); }, [globalBankTrans]);
+  useEffect(() => { setFinanceTransactions(globalFinTrans.filter(t => t.deleted !== true).map(t => ({ ...t, type: 'finance' }))); }, [globalFinTrans]);
+  useEffect(() => { setBanks(globalBanks); }, [globalBanks]);
+  useEffect(() => { setInstitutions(globalInst); }, [globalInst]);
+  useEffect(() => { setStocks(globalStocks); }, [globalStocks]);
+  useEffect(() => { setQuickActionTags(globalQA); }, [globalQA]);
+  useEffect(() => { setTypeTags(globalTT); }, [globalTT]);
+  useEffect(() => { setGlobalNoteTags(globalNoteTagsContext || []); }, [globalNoteTagsContext]);
 
-    // Banks & Institutions (for naming)
-    const unsubBanks = onSnapshot(collection(db, `users/${user.uid}/banks`), (snapshot) => {
-      setBanks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    const unsubInst = onSnapshot(collection(db, `users/${user.uid}/institutions`), (snapshot) => {
-      setInstitutions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    const unsubStocks = onSnapshot(collection(db, `users/${user.uid}/stocks`), (snapshot) => {
-      setStocks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    const unsubQA = onSnapshot(collection(db, `users/${user.uid}/quickActions`), (snapshot) => {
-      setQuickActionTags(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    const unsubTT = onSnapshot(collection(db, `users/${user.uid}/transactionTypes`), (snapshot) => {
-      setTypeTags(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    const unsubNoteTags = onSnapshot(collection(db, `users/${user.uid}/noteTags`), (snapshot) => {
-      setGlobalNoteTags(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    return () => {
-      unsubscribe();
-      unsubBank();
-      unsubFinance();
-      unsubBanks();
-      unsubInst();
-      unsubStocks();
-      unsubQA();
-      unsubTT();
-      unsubNoteTags();
-    };
-  }, [user]);
 
   // All unique tags from all notes for suggestions
   const allTags = useMemo(() => {
@@ -1467,7 +1415,7 @@ const NotesPage = () => {
       <div className="dropdown-divider opacity-50 my-2"></div>
       <div className="dropdown-header fs-10 text-uppercase opacity-50 fw-bold px-3 mb-1">Listelenecek İşlemler</div>
       
-      <div className="dropdown-item d-flex align-items-center justify-content-between py-2 mb-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setVisibilityConfig(v => ({ ...v, notes: !v.notes })); }}>
+      <div className="dropdown-item d-flex align-items-center justify-content-between py-2 mb-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); updateVisibilityConfig({ notes: !visibilityConfig.notes }); }}>
         <div className="d-flex align-items-center gap-2">
           <Type size={16} className="text-muted" /> 
           <span className={visibilityConfig.notes ? 'text-dark' : 'text-muted'}>Notlar</span>
@@ -1475,7 +1423,7 @@ const NotesPage = () => {
         {visibilityConfig.notes ? <Eye size={16} className="text-primary" /> : <EyeOff size={16} className="text-muted opacity-50" />}
       </div>
 
-      <div className="dropdown-item d-flex align-items-center justify-content-between py-2 mb-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setVisibilityConfig(v => ({ ...v, bank: !v.bank })); }}>
+      <div className="dropdown-item d-flex align-items-center justify-content-between py-2 mb-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); updateVisibilityConfig({ bank: !visibilityConfig.bank }); }}>
         <div className="d-flex align-items-center gap-2">
           <Landmark size={16} className="text-muted" /> 
           <span className={visibilityConfig.bank ? 'text-dark' : 'text-muted'}>Banka İşlemleri</span>
@@ -1483,7 +1431,7 @@ const NotesPage = () => {
         {visibilityConfig.bank ? <Eye size={16} className="text-danger" /> : <EyeOff size={16} className="text-muted opacity-50" />}
       </div>
 
-      <div className="dropdown-item d-flex align-items-center justify-content-between py-2 mb-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setVisibilityConfig(v => ({ ...v, finance: !v.finance })); }}>
+      <div className="dropdown-item d-flex align-items-center justify-content-between py-2 mb-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); updateVisibilityConfig({ finance: !visibilityConfig.finance }); }}>
         <div className="d-flex align-items-center gap-2">
           <TrendingUp size={16} className="text-muted" /> 
           <span className={visibilityConfig.finance ? 'text-dark' : 'text-muted'}>Finans İşlemleri</span>
@@ -1491,7 +1439,7 @@ const NotesPage = () => {
         {visibilityConfig.finance ? <Eye size={16} className="text-success" /> : <EyeOff size={16} className="text-muted opacity-50" />}
       </div>
 
-      <div className="dropdown-item d-flex align-items-center justify-content-between py-2 mb-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); setVisibilityConfig(v => ({ ...v, holidays: !v.holidays })); }}>
+      <div className="dropdown-item d-flex align-items-center justify-content-between py-2 mb-1 cursor-pointer" onClick={(e) => { e.stopPropagation(); updateVisibilityConfig({ holidays: !visibilityConfig.holidays }); }}>
         <div className="d-flex align-items-center gap-2">
           <Flag size={16} className="text-muted" /> 
           <span className={visibilityConfig.holidays ? 'text-dark' : 'text-muted'}>Resmi Tatiller (TR)</span>
@@ -1502,7 +1450,7 @@ const NotesPage = () => {
       <div className="dropdown-divider opacity-50 my-2"></div>
       <div className="dropdown-header fs-10 text-uppercase opacity-50 fw-bold px-3 mb-1">Listeleme Görünümü</div>
 
-      <Dropdown.Item className="rounded d-flex align-items-center justify-content-between py-2 mb-1" onClick={(e) => { e.stopPropagation(); setListMode('list'); }}>
+      <Dropdown.Item className="rounded d-flex align-items-center justify-content-between py-2 mb-1" onClick={(e) => { e.stopPropagation(); updateListMode('list'); }}>
         <div className="d-flex align-items-center gap-2">
           <ListIcon size={16} className="text-muted" /> 
           <span className={listMode === 'list' ? 'text-dark fw-bold' : 'text-muted'}>Liste</span>
@@ -1510,7 +1458,7 @@ const NotesPage = () => {
         {listMode === 'list' && <div className="bg-primary rounded-circle" style={{ width: '6px', height: '6px' }}></div>}
       </Dropdown.Item>
 
-      <Dropdown.Item className="rounded d-flex align-items-center justify-content-between py-2" onClick={(e) => { e.stopPropagation(); setListMode('stack'); }}>
+      <Dropdown.Item className="rounded d-flex align-items-center justify-content-between py-2" onClick={(e) => { e.stopPropagation(); updateListMode('stack'); }}>
         <div className="d-flex align-items-center gap-2">
           <Layers size={16} className="text-muted" /> 
           <span className={listMode === 'stack' ? 'text-dark fw-bold' : 'text-muted'}>Stack (Grupla)</span>

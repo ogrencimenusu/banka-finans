@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../context/DataContext';
 import {
   collection,
   addDoc,
@@ -1049,68 +1050,47 @@ const BankTransactionsPage = () => {
   const [typeSearch, setTypeSearch] = useState('');
   const [bankSearch, setBankSearch] = useState('');
 
+  const { 
+    banks: globalBanks, 
+    bankTransactions: globalTransactions,
+    bankConfig,
+    quickActionTags: globalQATags,
+    typeTags: globalTypeTags,
+    bankBulkHistory,
+    bankGroupSettings,
+    bankGroupConfigs: globalGroupConfigs
+  } = useData();
+
+  // Sync from Global Context
   useEffect(() => {
-    if (!user) return;
+    setBanks(globalBanks.filter(b => b.deleted !== true).sort((a, b) => (a.order ?? 999) - (b.order ?? 999)));
+  }, [globalBanks]);
 
-    // Banks
-    const unsubBanks = onSnapshot(collection(db, `users/${user.uid}/banks`), (snap) => {
-      const bItems = snap.docs.map(d => ({ id: d.id, ...d.data(), source: 'banks' }));
-      setBanks(bItems.filter(b => b.deleted !== true).sort((a, b) => (a.order ?? 999) - (b.order ?? 999)));
-    });
+  useEffect(() => {
+    const activeTrans = globalTransactions.filter(t => t.deleted !== true);
+    setTransactions(activeTrans);
+    setTotalCount(activeTrans.length);
+    setHasMore(false);
+  }, [globalTransactions]);
 
-    // All Transactions (for accurate balances, sorting and filtering)
-    const baseColl = collection(db, `users/${user.uid}/bankTransactions`);
-    const transQuery = query(baseColl, orderBy('createdAt', 'desc'));
-
-    const unsubTrans = onSnapshot(transQuery, (snap) => {
-      const trans = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const activeTrans = trans.filter(t => t.deleted !== true);
-      setTransactions(activeTrans);
-      setTotalCount(activeTrans.length);
-      setHasMore(false); // We have everything
-    });
-
-
-
-    // Config
-    const unsubConfig = onSnapshot(doc(db, `users/${user.uid}/config`, 'bankSettings'), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data.filters && !Array.isArray(data.filters)) data.filters = [];
-        if (data.propertyOrder && !Array.isArray(data.propertyOrder)) {
-          delete data.propertyOrder;
-        } else if (Array.isArray(data.propertyOrder)) {
-          data.propertyOrder = data.propertyOrder.filter(id => PROPERTIES.some(p => p.id === id));
-        }
-        setConfig(prev => ({ ...prev, ...data }));
+  useEffect(() => {
+    if (bankConfig) {
+      const data = { ...bankConfig };
+      if (data.filters && !Array.isArray(data.filters)) data.filters = [];
+      if (data.propertyOrder && !Array.isArray(data.propertyOrder)) {
+        delete data.propertyOrder;
+      } else if (Array.isArray(data.propertyOrder)) {
+        data.propertyOrder = data.propertyOrder.filter(id => PROPERTIES.some(p => p.id === id));
       }
-    });
+      setConfig(prev => ({ ...prev, ...data }));
+    }
+  }, [bankConfig]);
 
-    // QuickAction Tags collection
-    const unsubQA = onSnapshot(
-      query(collection(db, `users/${user.uid}/quickActions`), orderBy('order', 'asc')),
-      (snap) => setQuickActionTags(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    );
-
-    // TransactionType Tags collection
-    const unsubTT = onSnapshot(query(collection(db, `users/${user.uid}/transactionTypes`), orderBy("order", "asc")), (snap) => {
-      setTypeTags(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    const unsubHistory = onSnapshot(query(collection(db, `users/${user.uid}/bulkHistory`), orderBy("timestamp", "desc"), limit(10)), (snap) => {
-      setBulkHistory(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-
-    const unsubGroupSettings = onSnapshot(doc(db, `users/${user.uid}/groupSettings`, 'bankGroups'), (snap) => {
-      if (snap.exists()) setGroupSettings(snap.data());
-    });
-
-    const unsubGroupConfigs = onSnapshot(doc(db, `users/${user.uid}/config`, 'bankGroupConfigs'), (snap) => {
-      if (snap.exists()) setGroupConfigs(snap.data());
-    });
-
-    return () => { unsubBanks(); unsubTrans(); unsubConfig(); unsubQA(); unsubTT(); unsubHistory(); unsubGroupSettings(); unsubGroupConfigs(); };
-  }, [user]);
+  useEffect(() => { setQuickActionTags(globalQATags); }, [globalQATags]);
+  useEffect(() => { setTypeTags(globalTypeTags); }, [globalTypeTags]);
+  useEffect(() => { setBulkHistory(bankBulkHistory); }, [bankBulkHistory]);
+  useEffect(() => { setGroupSettings(bankGroupSettings); }, [bankGroupSettings]);
+  useEffect(() => { setGroupConfigs(globalGroupConfigs); }, [globalGroupConfigs]);
 
   useEffect(() => {
     if (config.groupBy && groupSettings[config.groupBy]?.collapsedGroups) {
@@ -1119,6 +1099,7 @@ const BankTransactionsPage = () => {
       setCollapsedGroups({});
     }
   }, [config.groupBy, groupSettings]);
+
 
   const applyFilters = (data, filters) => {
     return data.filter(t => {

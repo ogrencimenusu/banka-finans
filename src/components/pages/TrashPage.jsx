@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../context/DataContext';
 import { 
   collection, 
   onSnapshot, 
@@ -30,36 +31,22 @@ const TrashPage = () => {
   const { user } = useAuth();
   const [bankItems, setBankItems] = useState([]);
   const [financeItems, setFinanceItems] = useState([]);
-  const [banks, setBanks] = useState([]);
-  const [institutions, setInstitutions] = useState([]);
-  const [stocks, setStocks] = useState([]);
-  const [quickActions, setQuickActions] = useState([]);
-  const [transactionTypes, setTransactionTypes] = useState([]);
 
   const [bankLimit, setBankLimit] = useState(10);
   const [bankInfinite, setBankInfinite] = useState(false);
   const [financeLimit, setFinanceLimit] = useState(10);
   const [financeInfinite, setFinanceInfinite] = useState(false);
 
+  const { 
+    banks, 
+    institutions, 
+    stocks, 
+    quickActionTags: quickActions, 
+    typeTags: transactionTypes 
+  } = useData();
+
   useEffect(() => {
     if (!user) return;
-
-    // Fetch lookup data
-    const unsubBanks = onSnapshot(collection(db, `users/${user.uid}/banks`), (snap) => {
-      setBanks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    const unsubInst = onSnapshot(collection(db, `users/${user.uid}/institutions`), (snap) => {
-      setInstitutions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    const unsubStocks = onSnapshot(collection(db, `users/${user.uid}/stocks`), (snap) => {
-      setStocks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    const unsubQA = onSnapshot(collection(db, `users/${user.uid}/quickActions`), (snap) => {
-      setQuickActions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    const unsubTT = onSnapshot(collection(db, `users/${user.uid}/transactionTypes`), (snap) => {
-      setTransactionTypes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
 
     // Fetch deleted bank transactions
     const qTrans = query(collection(db, `users/${user.uid}/bankTransactions`), where('deleted', '==', true));
@@ -86,15 +73,11 @@ const TrashPage = () => {
     });
 
     return () => {
-      unsubBanks();
-      unsubInst();
-      unsubStocks();
-      unsubQA();
-      unsubTT();
       unsubTrans();
       unsubFin();
     };
   }, [user]);
+
 
   const getBankInfo = (id) => banks.find(b => b.id === id) || {};
   const getInstitutionInfo = (id) => institutions.find(i => i.id === id) || {};

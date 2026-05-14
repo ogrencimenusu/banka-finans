@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../context/DataContext';
 import {
   collection,
   addDoc,
@@ -806,15 +807,34 @@ const FinanceTransactionsPage = () => {
     return <div className="text-end x-small text-muted fw-bold"><span className="opacity-50">{prefix}</span> {value}</div>;
   };
 
+  const { 
+    institutions: globalInstitutions, 
+    stocks: globalStocks, 
+    financeTransactions: globalTransactions,
+    financeConfig,
+    financeBulkHistory
+  } = useData();
+
   useEffect(() => {
-    if (!user) return;
-    const unsubInst = onSnapshot(collection(db, `users/${user.uid}/institutions`), (snap) => { setInstitutions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(i => i.deleted !== true).sort((a, b) => (a.order ?? 999) - (b.order ?? 999))); });
-    const unsubStocks = onSnapshot(collection(db, `users/${user.uid}/stocks`), (snap) => { setStocks(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.deleted !== true)); });
-    const unsubTrans = onSnapshot(query(collection(db, `users/${user.uid}/financeTransactions`), orderBy('date', 'desc'), orderBy('createdAt', 'desc')), (snap) => { const trans = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.deleted !== true); setTransactions(trans); });
-    const unsubConfig = onSnapshot(doc(db, `users/${user.uid}/config`, 'financeSettings'), (snap) => { if (snap.exists()) setConfig(prev => ({ ...prev, ...snap.data() })); });
-    const unsubHistory = onSnapshot(query(collection(db, `users/${user.uid}/bulkHistory_finance`), orderBy('timestamp', 'desc'), limit(10)), (snap) => { setBulkHistory(snap.docs.map(d => ({ id: d.id, ...d.data() }))); });
-    return () => { unsubInst(); unsubStocks(); unsubTrans(); unsubConfig(); unsubHistory(); };
-  }, [user]);
+    setInstitutions(globalInstitutions.filter(i => i.deleted !== true).sort((a, b) => (a.order ?? 999) - (b.order ?? 999)));
+  }, [globalInstitutions]);
+
+  useEffect(() => {
+    setStocks(globalStocks.filter(s => s.deleted !== true));
+  }, [globalStocks]);
+
+  useEffect(() => {
+    setTransactions(globalTransactions.filter(t => t.deleted !== true));
+  }, [globalTransactions]);
+
+  useEffect(() => {
+    if (financeConfig) setConfig(prev => ({ ...prev, ...financeConfig }));
+  }, [financeConfig]);
+
+  useEffect(() => {
+    setBulkHistory(financeBulkHistory);
+  }, [financeBulkHistory]);
+
 
   const processedTransactions = useMemo(() => {
 

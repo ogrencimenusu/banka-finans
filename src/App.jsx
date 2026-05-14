@@ -9,70 +9,52 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import MainLayout from './components/layout/MainLayout';
 import TrashPage from './components/pages/TrashPage';
 import NotesPage from './components/pages/NotesPage';
-import { LayoutDashboard, Wallet, PieChart, Settings, ArrowRight, Landmark } from 'lucide-react';
+import { LayoutDashboard, Wallet, PieChart, Settings, ArrowRight, Landmark, Calendar, Clock, StickyNote, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db } from './firebase';
 import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
 
+import { DataProvider, useData } from './context/DataContext';
+
 const Dashboard = () => {
   const { user } = useAuth();
+  const { 
+    banks: globalBanks, 
+    bankTransactions: globalTransactions,
+    institutions: globalInstitutions,
+    stocks: globalStocks,
+    financeTransactions: globalFinanceTransactions,
+    notes: globalNotes,
+    holidays: globalHolidays
+  } = useData();
   
-  // Bank States
-  const [banks, setBanks] = React.useState([]);
-  const [transactions, setTransactions] = React.useState([]);
-  const [bankBalancesRaw, setBankBalancesRaw] = React.useState([]);
+  // Local derived states for UI
+  const banks = React.useMemo(() => {
+    return globalBanks
+      .filter(b => b.deleted !== true && b.visible !== false && b.visible !== 'false')
+      .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  }, [globalBanks]);
 
-  // Finance States
-  const [institutions, setInstitutions] = React.useState([]);
-  const [stocks, setStocks] = React.useState([]);
-  const [financeTransactions, setFinanceTransactions] = React.useState([]);
+  const transactions = React.useMemo(() => {
+    return globalTransactions.filter(t => t.deleted !== true);
+  }, [globalTransactions]);
 
-  React.useEffect(() => {
-    if (!user) return;
-    
-    // Banks listener
-    const unsubBanks = onSnapshot(collection(db, `users/${user.uid}/banks`), (snap) => {
-      const bItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const filtered = bItems
-        .filter(b => b.deleted !== true && b.visible !== false && b.visible !== 'false')
-        .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
-      setBanks(filtered);
-      setBankBalancesRaw(filtered);
-    });
+  const institutions = React.useMemo(() => {
+    return globalInstitutions
+      .filter(i => i.deleted !== true && i.visible !== false && i.visible !== 'false')
+      .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  }, [globalInstitutions]);
 
-    // Bank Transactions listener
-    const unsubTrans = onSnapshot(collection(db, `users/${user.uid}/bankTransactions`), (snap) => {
-      setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.deleted !== true));
-    });
-
-    // Institutions listener
-    const unsubInst = onSnapshot(collection(db, `users/${user.uid}/institutions`), (snap) => {
-      setInstitutions(snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(i => i.deleted !== true && i.visible !== false && i.visible !== 'false')
-        .sort((a, b) => (a.order ?? 999) - (b.order ?? 999))
-      );
-    });
-
-    // Stocks listener
-    const unsubStocks = onSnapshot(collection(db, `users/${user.uid}/stocks`), (snap) => {
-      setStocks(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(s => s.deleted !== true));
-    });
-
-    // Finance Transactions listener
-    const unsubFinTrans = onSnapshot(query(collection(db, `users/${user.uid}/financeTransactions`), orderBy('date', 'asc')), (snap) => {
-      setFinanceTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.deleted !== true));
-    });
-
-    return () => { unsubBanks(); unsubTrans(); unsubInst(); unsubStocks(); unsubFinTrans(); };
-  }, [user]);
+  const stocks = globalStocks.filter(s => s.deleted !== true);
+  const financeTransactions = globalFinanceTransactions.filter(t => t.deleted !== true);
 
   const formatCurrency = (num) => {
+
     if (isNaN(num)) return '0,00';
     return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
   };
 
-  const bankBalances = bankBalancesRaw.map(bank => {
+  const bankBalances = banks.map(bank => {
     const bankTransactions = transactions.filter(t => t.bankId === bank.id);
     const balance = bankTransactions.reduce((sum, t) => {
       // Don't include credit card transactions (ID: Eyv0oZlOuCPWJbmRkv0h) in bank totals
@@ -189,59 +171,119 @@ const Dashboard = () => {
   const totalFinanceValue = Object.values(institutionStats).reduce((sum, s) => sum + s.totalInvestment + s.unrealizedNet, 0);
   const totalFinanceProfit = Object.values(institutionStats).reduce((sum, s) => sum + s.totalProfit, 0);
   
-  const cards = [
-    {
-      title: 'Banka Özet',
-      description: 'Banka hesap hareketlerinizi ve bakiyelerinizi yönetin.',
-      path: '/bank-transactions',
-      icon: <Wallet size={32} className="text-primary" />,
-      color: 'primary'
-    },
-    {
-      title: 'Finans Özet',
-      description: 'Yatırım ve portföy hareketlerinizi takip edin.',
-      path: '/finance',
-      icon: <PieChart size={32} className="text-success" />,
-      color: 'success'
-    }
+  // Date-based notes and holidays
+  const formatDate = (date) => {
+    const d = new Date(date);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const todayStr = formatDate(new Date());
+  const tomorrowStr = formatDate(new Date(Date.now() + 86400000));
+
+  const todayItems = [
+    ...(globalNotes?.filter(n => n.date === todayStr) || []).map(n => ({ ...n, type: 'note' })),
+    ...(globalHolidays?.filter(h => h.date === todayStr) || []).map(h => ({ ...h, type: 'holiday' }))
+  ];
+
+  const tomorrowItems = [
+    ...(globalNotes?.filter(n => n.date === tomorrowStr) || []).map(n => ({ ...n, type: 'note' })),
+    ...(globalHolidays?.filter(h => h.date === tomorrowStr) || []).map(h => ({ ...h, type: 'holiday' }))
   ];
 
   return (
-    <div className="container py-5">
-      {/* Navigation Cards */}
-      <div className="row g-4 justify-content-center">
-        {cards.map((card, index) => (
-          <div key={index} className="col-12 col-md-6">
-            <Link to={card.path} className="text-decoration-none h-100 d-block">
-              <div className="glass-card p-4 h-100 dashboard-nav-card transition-all position-relative overflow-hidden border-0 shadow-hover">
-                <div className={`icon-box rounded-4 bg-${card.color} bg-opacity-10 p-3 d-inline-flex mb-4 transition-all`}>
-                  {card.icon}
-                </div>
-                <h3 className="fw-bold mb-2 h4">{card.title}</h3>
-                <p className="text-muted mb-4 small">{card.description}</p>
-                <div className="d-flex align-items-center text-primary fw-bold gap-2 mt-auto">
-                  <span>İncele</span>
-                  <ArrowRight size={18} className="arrow-icon transition-all" />
-                </div>
-                <div className={`position-absolute rounded-circle bg-${card.color} opacity-5`} 
-                  style={{ width: '150px', height: '150px', right: '-50px', bottom: '-50px' }} 
-                />
+    <div className="container pt-3 pb-5">
+
+      {/* Notes & Upcoming Section */}
+      <div>
+        <div className="d-flex align-items-center justify-content-between mb-4">
+          <h2 className="fw-bold h3 mb-0 d-flex align-items-center gap-2">
+            <StickyNote size={24} className="text-warning" />
+            Günün Notları
+          </h2>
+          <Link to="/notes" className="btn btn-sm btn-light rounded-pill px-3 border shadow-sm small fw-bold text-muted d-flex align-items-center gap-1">
+            Tüm Notlar <ChevronRight size={14} />
+          </Link>
+        </div>
+        
+        <div className="row g-4">
+          {/* Today */}
+          <div className="col-12 col-md-6">
+            <div className="glass-card p-4 h-100 border-0 shadow-sm" style={{ background: 'rgba(255, 255, 255, 0.5)' }}>
+              <div className="d-flex align-items-center gap-2 mb-3 text-dark">
+                <Calendar size={18} className="text-primary" />
+                <span className="fw-bold">Bugün</span>
+                <span className="text-muted small">({new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })})</span>
               </div>
-            </Link>
+              {todayItems.length > 0 ? (
+                <div className="d-flex flex-column gap-2">
+                  {todayItems.map((item, idx) => (
+                    <Link 
+                      key={idx} 
+                      to={item.type === 'note' ? "/notes" : "#"} 
+                      state={item.type === 'note' ? { openNoteId: item.id } : null}
+                      className={`text-decoration-none transition-all ${item.type === 'note' ? 'hover-translate-x' : 'cursor-default'}`}
+                      onClick={(e) => item.type === 'holiday' && e.preventDefault()}
+                    >
+                      <div className={`p-3 rounded-3 border-start border-4 ${item.type === 'holiday' ? 'bg-danger bg-opacity-5 border-danger' : 'bg-white bg-opacity-60 border-primary'} shadow-sm h-100`}>
+                        <div className="fw-bold small mb-1 text-dark">{item.title}</div>
+                        {item.text && <div className="text-muted x-small text-truncate-2" dangerouslySetInnerHTML={{ __html: item.text }} />}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-muted small italic py-2">Bugün için bir not bulunmuyor.</div>
+              )}
+            </div>
           </div>
-        ))}
+
+          {/* Tomorrow */}
+          <div className="col-12 col-md-6">
+            <div className="glass-card p-4 h-100 border-0 shadow-sm" style={{ background: 'rgba(255, 255, 255, 0.5)' }}>
+              <div className="d-flex align-items-center gap-2 mb-3 text-dark">
+                <Clock size={18} className="text-success" />
+                <span className="fw-bold">Yarın</span>
+                <span className="text-muted small">({new Date(Date.now() + 86400000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })})</span>
+              </div>
+              {tomorrowItems.length > 0 ? (
+                <div className="d-flex flex-column gap-2">
+                  {tomorrowItems.map((item, idx) => (
+                    <Link 
+                      key={idx} 
+                      to={item.type === 'note' ? "/notes" : "#"} 
+                      state={item.type === 'note' ? { openNoteId: item.id } : null}
+                      className={`text-decoration-none transition-all ${item.type === 'note' ? 'hover-translate-x' : 'cursor-default'}`}
+                      onClick={(e) => item.type === 'holiday' && e.preventDefault()}
+                    >
+                      <div className={`p-3 rounded-3 border-start border-4 ${item.type === 'holiday' ? 'bg-danger bg-opacity-5 border-danger' : 'bg-white bg-opacity-60 border-success'} shadow-sm h-100`}>
+                        <div className="fw-bold small mb-1 text-dark">{item.title}</div>
+                        {item.text && <div className="text-muted x-small text-truncate-2" dangerouslySetInnerHTML={{ __html: item.text }} />}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-muted small italic py-2">Yarın için bir not bulunmuyor.</div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Bank Summary */}
-      <div className="mt-5 pt-4 animate-fade-in" style={{ animationDelay: '0.4s' }}>
-        <div className="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between mb-4 gap-3">
-          <h2 className="fw-bold h3 mb-0 d-flex align-items-center gap-2">
-            <Landmark size={24} className="text-primary" />
-            Hesap Özetleri
-          </h2>
-          <div className="bg-primary bg-opacity-10 text-primary px-4 py-2 rounded-pill fw-bold" style={{ fontSize: '14px' }}>
-            Toplam: {formatCurrency(totalBalance)} ₺
+      <div className="mt-5 pt-4">
+        <div className="d-flex align-items-start justify-content-between mb-4 gap-2">
+          <div className="d-flex flex-column gap-1">
+            <h2 className="fw-bold h4 mb-0 d-flex align-items-center gap-2">
+              <Landmark size={20} className="text-primary" />
+              Hesap Özetleri
+            </h2>
+            <div className="bg-primary bg-opacity-10 text-primary px-3 py-1 rounded-pill fw-bold" style={{ fontSize: '11px', width: 'fit-content' }}>
+              Toplam: {formatCurrency(totalBalance)} ₺
+            </div>
           </div>
+          <Link to="/bank-transactions" className="btn btn-primary btn-sm rounded-pill px-3 fw-bold d-flex align-items-center gap-1 mt-1">
+            İncele <ArrowRight size={14} />
+          </Link>
         </div>
 
         <div className="row g-3">
@@ -281,15 +323,20 @@ const Dashboard = () => {
       </div>
 
       {/* Finance Summary */}
-      <div className="mt-5 pt-4 animate-fade-in" style={{ animationDelay: '0.6s' }}>
-        <div className="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between mb-4 gap-3">
-          <h2 className="fw-bold h3 mb-0 d-flex align-items-center gap-2">
-            <PieChart size={24} className="text-success" />
-            Finans Özetleri
-          </h2>
-          <div className="bg-success bg-opacity-10 text-success px-4 py-2 rounded-pill fw-bold" style={{ fontSize: '14px' }}>
-            Portföy: {formatCurrency(totalFinanceValue)} ₺
+      <div className="mt-5 pt-4">
+        <div className="d-flex align-items-start justify-content-between mb-4 gap-2">
+          <div className="d-flex flex-column gap-1">
+            <h2 className="fw-bold h4 mb-0 d-flex align-items-center gap-2">
+              <PieChart size={20} className="text-success" />
+              Finans Özetleri
+            </h2>
+            <div className="bg-success bg-opacity-10 text-success px-3 py-1 rounded-pill fw-bold" style={{ fontSize: '11px', width: 'fit-content' }}>
+              Portföy: {formatCurrency(totalFinanceValue)} ₺
+            </div>
           </div>
+          <Link to="/finance" className="btn btn-success btn-sm rounded-pill px-3 fw-bold d-flex align-items-center gap-1 mt-1">
+            İncele <ArrowRight size={14} />
+          </Link>
         </div>
 
         <div className="row g-3">
@@ -408,8 +455,20 @@ const Dashboard = () => {
         .hover-translate-y {
           transition: all 0.3s ease !important;
         }
+        .hover-translate-x:hover {
+          transform: translateX(5px);
+        }
+        .cursor-default {
+          cursor: default !important;
+        }
         .x-small {
           font-size: 11px !important;
+        }
+        .text-truncate-2 {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
         }
         .fs-15 {
           font-size: 15px !important;
@@ -437,27 +496,29 @@ const ProtectedRoute = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/*"
-            element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <Routes>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/bank-transactions" element={<BankTransactionsPage />} />
-                    <Route path="/finance" element={<FinanceTransactionsPage />} />
-                    <Route path="/notes" element={<NotesPage />} />
-                    <Route path="/trash" element={<TrashPage />} />
-                  </Routes>
-                </MainLayout>
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </Router>
+      <DataProvider>
+        <Router>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <MainLayout>
+                    <Routes>
+                      <Route path="/" element={<Dashboard />} />
+                      <Route path="/bank-transactions" element={<BankTransactionsPage />} />
+                      <Route path="/finance" element={<FinanceTransactionsPage />} />
+                      <Route path="/notes" element={<NotesPage />} />
+                      <Route path="/trash" element={<TrashPage />} />
+                    </Routes>
+                  </MainLayout>
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </Router>
+      </DataProvider>
     </AuthProvider>
   );
 }
