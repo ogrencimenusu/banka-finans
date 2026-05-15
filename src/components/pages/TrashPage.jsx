@@ -29,9 +29,12 @@ const COLORS = [
 
 const TrashPage = () => {
   const { user } = useAuth();
+  const [noteItems, setNoteItems] = useState([]);
   const [bankItems, setBankItems] = useState([]);
   const [financeItems, setFinanceItems] = useState([]);
 
+  const [noteLimit, setNoteLimit] = useState(10);
+  const [noteInfinite, setNoteInfinite] = useState(false);
   const [bankLimit, setBankLimit] = useState(10);
   const [bankInfinite, setBankInfinite] = useState(false);
   const [financeLimit, setFinanceLimit] = useState(10);
@@ -42,7 +45,8 @@ const TrashPage = () => {
     institutions, 
     stocks, 
     quickActionTags: quickActions, 
-    typeTags: transactionTypes 
+    typeTags: transactionTypes,
+    noteTags
   } = useData();
 
   useEffect(() => {
@@ -72,9 +76,22 @@ const TrashPage = () => {
       setFinanceItems(finItems);
     });
 
+    // Fetch deleted notes
+    const qNotes = query(collection(db, `users/${user.uid}/notes`), where('deleted', '==', true));
+    const unsubNotes = onSnapshot(qNotes, (snapshot) => {
+      const nItems = snapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        collection: 'notes', 
+        type: 'Not', 
+        ...doc.data() 
+      })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      setNoteItems(nItems);
+    });
+
     return () => {
       unsubTrans();
       unsubFin();
+      unsubNotes();
     };
   }, [user]);
 
@@ -165,6 +182,22 @@ const TrashPage = () => {
     }
   };
 
+  const handleEmptyNoteTrash = async () => {
+    if (noteItems.length === 0) return;
+    if (window.confirm('Not çöp kutusundaki tüm öğeleri kalıcı olarak silmek istediğinize emin misiniz?')) {
+      try {
+        const batch = writeBatch(db);
+        noteItems.forEach(item => {
+          const ref = doc(db, `users/${user.uid}/${item.collection}`, item.id);
+          batch.delete(ref);
+        });
+        await batch.commit();
+      } catch (error) {
+        console.error("Empty note trash error:", error);
+      }
+    }
+  };
+
   const renderLimitControl = (limit, setLimit, setInfinite, isInfinite, totalCount) => (
     <div className="d-flex align-items-center gap-4 mt-2 mobile-scroll-x" style={{ flexWrap: 'nowrap', display: 'flex', width: '100%' }}>
       {limit < totalCount && (
@@ -221,6 +254,61 @@ const TrashPage = () => {
         .notion-table td { padding: 12px 8px; border-bottom: 1px solid rgba(0,0,0,0.03); }
         [data-theme="dark"] .notion-table td { border-bottom-color: rgba(255,255,255,0.02); }
       `}</style>
+
+      {/* Notlar Table */}
+      <div className="bg-white shadow-lg border rounded-4 p-md-4 p-3">
+        <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
+          <h2 className="mb-0 d-flex align-items-center gap-2 fs-20 fw-bold">
+            <Plus className="text-info" size={24} /> Notlar (Silinenler)
+          </h2>
+          {noteItems.length > 0 && (
+            <Button variant="danger" size="sm" onClick={handleEmptyNoteTrash} className="d-flex align-items-center gap-2 rounded-pill px-3 shadow-sm border-0">
+              <Trash2 size={16} /> Not Çöpünü Boşalt
+            </Button>
+          )}
+        </div>
+        <Table responsive hover className="notion-table">
+          <thead>
+            <tr>
+              <th className="ps-0"><Calendar size={14} className="me-2" /> Tarih</th>
+              <th><Type size={14} className="me-2" /> Başlık</th>
+              <th><List size={14} className="me-2" /> Etiketler</th>
+              <th className="text-end">İşlemler</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(noteInfinite ? noteItems : noteItems.slice(0, noteLimit)).map(item => (
+              <tr key={item.id} className="align-middle">
+                <td className="ps-0 text-muted small">{formatDate(item.date)}</td>
+                <td className="fw-medium">{item.title || 'Başlıksız Not'}</td>
+                <td>
+                  <div className="d-flex flex-wrap gap-1">
+                    {Array.isArray(item.tags) ? item.tags.map(tagName => {
+                      const tag = noteTags?.find(t => t.name === tagName);
+                      return <span key={tagName} style={getTagStyle(tag || { name: tagName, color: 'Blue' })}>{tagName}</span>;
+                    }) : '-'}
+                  </div>
+                </td>
+                <td className="text-end">
+                  <Button variant="link" className="text-success p-1 me-2" onClick={() => handleRestore(item)} title="Geri Yükle">
+                    <RotateCcw size={18} />
+                  </Button>
+                  <Button variant="link" className="text-danger p-1" onClick={() => handlePermanentDelete(item)} title="Kalıcı Olarak Sil">
+                    <Trash2 size={18} />
+                  </Button>
+                </td>
+              </tr>
+            ))}
+            {noteItems.length === 0 && (
+              <tr>
+                <td colSpan="4" className="text-center py-5 text-muted">Not çöp kutusu boş.</td>
+              </tr>
+            )}
+          </tbody>
+        </Table>
+        {noteItems.length > 0 && renderLimitControl(noteLimit, setNoteLimit, setNoteInfinite, noteInfinite, noteItems.length)}
+      </div>
+
       {/* Banka İşlemleri Table */}
       <div className="bg-white shadow-lg border rounded-4 p-md-4 p-3">
         <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">

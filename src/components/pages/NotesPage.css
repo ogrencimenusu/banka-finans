@@ -606,6 +606,44 @@
   font-weight: 800 !important;
 }
 
+.notion-text-input h1 {
+  font-size: 1.8rem !important;
+  font-weight: 800 !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 0.5rem !important;
+  color: var(--text-main);
+}
+
+.notion-text-input h2 {
+  font-size: 1.5rem !important;
+  font-weight: 700 !important;
+  margin-top: 1.2rem !important;
+  margin-bottom: 0.4rem !important;
+  color: var(--text-main);
+}
+
+.notion-text-input h3 {
+  font-size: 1.2rem !important;
+  font-weight: 700 !important;
+  margin-top: 1rem !important;
+  margin-bottom: 0.3rem !important;
+  color: var(--text-main);
+}
+
+.notion-text-input p {
+  margin-bottom: 0.8rem !important;
+  line-height: 1.6;
+}
+
+.notion-text-input ul, .notion-text-input ol {
+  padding-left: 1.5rem !important;
+  margin-bottom: 1rem !important;
+}
+
+.notion-text-input li {
+  margin-bottom: 0.4rem !important;
+}
+
 .notion-text-input:empty:before {
   content: attr(data-placeholder);
   color: #aaa;
@@ -1024,6 +1062,11 @@
     background: white !important;
   }
 
+  [data-theme="dark"] .mobile-month-sticky-header {
+    background: #1e1e26 !important;
+    border-bottom-color: rgba(255, 255, 255, 0.05);
+  }
+
   .notes-content {
     overflow-y: auto !important;
     height: calc(100dvh - 56px) !important;
@@ -1034,6 +1077,27 @@
     width: 100% !important;
     display: block !important;
     clear: both;
+  }
+
+  /* Note List View Mobile Optimization */
+
+  .note-list-view-container {
+    padding: 0 !important;
+    margin-left: -16px !important;
+    margin-right: -16px !important;
+    width: calc(100% + 32px) !important;
+  }
+
+  .note-list-view-container .card,
+  .note-list-card {
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .notion-table td, 
+  .notion-table thead th {
+    padding: 10px 8px !important;
   }
 }
 
@@ -1077,6 +1141,14 @@
 
 [data-theme="dark"] .calendar-day-cell.other-month {
   background: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .day-number {
+  color: #aaa;
+}
+
+[data-theme="dark"] .calendar-header-cell {
+  color: #aaa;
 }
 
 [data-theme="dark"] .day-note-preview {
@@ -1163,6 +1235,49 @@
   color: #ffc107 !important;
 }
 
+/* Tag Colors Logic */
+:root {
+  --tag-gray-bg: #f1f1ef;
+  --tag-gray-text: #37352f;
+  --tag-brown-bg: #f4eeee;
+  --tag-brown-text: #44331b;
+  --tag-orange-bg: #fbede7;
+  --tag-orange-text: #d9730d;
+  --tag-yellow-bg: #fff9e3;
+  --tag-yellow-text: #cb912f;
+  --tag-green-bg: #edf3ec;
+  --tag-green-text: #448361;
+  --tag-blue-bg: #e7f3f8;
+  --tag-blue-text: #337ea9;
+  --tag-purple-bg: #f5f0f7;
+  --tag-purple-text: #9065b0;
+  --tag-pink-bg: #f9f0f5;
+  --tag-pink-text: #c14c8a;
+  --tag-red-bg: #fdebec;
+  --tag-red-text: #d44c47;
+}
+
+[data-theme="dark"] {
+  --tag-gray-bg: rgba(255, 255, 255, 0.1);
+  --tag-gray-text: #e0e0e0;
+  --tag-brown-bg: rgba(139, 69, 19, 0.2);
+  --tag-brown-text: #d2b48c;
+  --tag-orange-bg: rgba(255, 165, 0, 0.2);
+  --tag-orange-text: #ff8c00;
+  --tag-yellow-bg: rgba(255, 215, 0, 0.2);
+  --tag-yellow-text: #ffd700;
+  --tag-green-bg: rgba(0, 128, 0, 0.2);
+  --tag-green-text: #90ee90;
+  --tag-blue-bg: rgba(0, 0, 255, 0.2);
+  --tag-blue-text: #87cefa;
+  --tag-purple-bg: rgba(128, 0, 128, 0.2);
+  --tag-purple-text: #dda0dd;
+  --tag-pink-bg: rgba(255, 192, 203, 0.2);
+  --tag-pink-text: #ffc0cb;
+  --tag-red-bg: rgba(255, 0, 0, 0.2);
+  --tag-red-text: #ff6b6b;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -1189,4 +1304,186 @@
 
 .animate-slide-down {
   animation: slideDown 0.3s ease-out;
+}
+
+/* Floating Toolbar Animations */
+@keyframes scaleIn {
+  from { opacity: 0; transform: translate(-50%, -80%) scale(0.95); }
+  to { opacity: 1; transform: translate(-50%, -100%) scale(1); }
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* Note List View Styles */
+.note-list-view-container {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.note-list-card {
+  border-radius: 12px;
+}
+
+.notion-table {
+  background: var(--glass-bg, rgba(255, 255, 255, 0.7));
+  backdrop-filter: blur(10px);
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.notion-table thead th {
+  background: rgba(0, 0, 0, 0.01);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  font-size: 14px;
+  font-weight: 400;
+  color: #37352f;
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+
+.notion-table tbody tr {
+  transition: all 0.15s ease;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.notion-table tbody tr:hover {
+  background: rgba(0, 0, 0, 0.02) !important;
+}
+
+.notion-table td {
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #37352f;
+}
+
+/* Submenu Styles for Dropdowns */
+.dropdown-submenu {
+  position: relative;
+}
+
+.dropdown-submenu .submenu-content {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  display: none;
+  min-width: 200px;
+  margin-left: 5px;
+  z-index: 10006;
+}
+
+.dropdown-submenu:hover .submenu-content {
+  display: block;
+}
+
+[data-theme="dark"] .notion-table thead th {
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+[data-theme="dark"] .notion-table td {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="dark"] .notion-table {
+  background: rgba(30, 30, 30, 0.6);
+}
+
+[data-theme="dark"] .notion-table thead th {
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+[data-theme="dark"] .notion-table tbody tr {
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .notion-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.custom-checkbox-sm .form-check-input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  border: 1.5px solid rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .custom-checkbox-sm .form-check-input {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.floating-format-toolbar {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15) !important;
+  transition: top 0.1s ease, left 0.1s ease;
+  max-width: 90vw;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.floating-format-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+
+.floating-format-toolbar .btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+.floating-format-toolbar .btn:active {
+  transform: translateY(0);
+}
+
+[data-theme="dark"] .floating-format-toolbar {
+  background: rgba(30, 30, 30, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .floating-format-toolbar .btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .floating-format-toolbar .vr {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.floating-format-toolbar {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15) !important;
+  transition: top 0.1s ease, left 0.1s ease;
+  max-width: 90vw;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.floating-format-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+
+.floating-format-toolbar .btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+.floating-format-toolbar .btn:active {
+  transform: translateY(0);
+}
+
+[data-theme="dark"] .floating-format-toolbar {
+  background: rgba(30, 30, 30, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .floating-format-toolbar .btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .floating-format-toolbar .vr {
+  background-color: rgba(255, 255, 255, 0.2) !important;
 }

@@ -106,7 +106,7 @@ export const DataProvider = ({ children }) => {
     });
 
     const unsubNotesConfig = onSnapshot(doc(db, `users/${user.uid}/config`, 'notesSettings'), (snap) => {
-      if (snap.exists()) setNotesConfig(snap.data());
+      setNotesConfig(snap.exists() ? snap.data() : {});
     });
 
     // Fetch holidays once per user session

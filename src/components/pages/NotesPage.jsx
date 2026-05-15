@@ -55,9 +55,22 @@ import {
   Strikethrough,
   Quote,
   Sparkles,
-  Flag
+  Flag,
+  Heading1,
+  Heading2,
+  Heading3,
+  List,
+  ListOrdered,
+  Pilcrow,
+  Undo,
+  Redo,
+  ArrowUp,
+  ArrowDown,
+  Calendar,
+  WrapText,
+  MoreHorizontal
 } from 'lucide-react';
-import { Modal, Button, Form, Badge, Dropdown, Collapse } from 'react-bootstrap';
+import { Modal, Button, Form, Badge, Dropdown, Collapse, Table, Card } from 'react-bootstrap';
 import './NotesPage.css';
 
 const TR_MONTHS = [
@@ -78,16 +91,32 @@ const FILTER_OPERATORS = [
   { label: 'Bitiyor', value: 'ends_with' },
 ];
 
+const DATE_OPERATORS = [
+  { label: 'Eşittir', value: 'equals' },
+  { label: 'Başlangıç', value: 'after' },
+  { label: 'Bitiş', value: 'before' },
+  { label: 'Arasında', value: 'between' },
+  { label: 'Boş', value: 'is_empty' },
+  { label: 'Dolu', value: 'is_not_empty' },
+];
+
+const DATE_FORMATS = [
+  { id: 'full', label: '01/12/2026', format: 'DD/MM/YYYY' },
+  { id: 'dots', label: '01.12.2026', format: 'DD.MM.YYYY' },
+  { id: 'words', label: '01 Ocak 2026', format: 'DD MMMM YYYY' },
+  { id: 'short', label: '01 Oca 2026', format: 'DD MMM YYYY' },
+];
+
 const COLORS = [
-  { name: 'Gray', bg: '#f1f1ef', text: '#37352f' },
-  { name: 'Brown', bg: '#f4eeee', text: '#44331b' },
-  { name: 'Orange', bg: '#fbede7', text: '#d9730d' },
-  { name: 'Yellow', bg: '#fff9e3', text: '#cb912f' },
-  { name: 'Green', bg: '#edf3ec', text: '#448361' },
-  { name: 'Blue', bg: '#e7f3f8', text: '#337ea9' },
-  { name: 'Purple', bg: '#f5f0f7', text: '#9065b0' },
-  { name: 'Pink', bg: '#f9f0f5', text: '#c14c8a' },
-  { name: 'Red', bg: '#fdebec', text: '#d44c47' },
+  { name: 'Gray', bg: 'var(--tag-gray-bg, #f1f1ef)', text: 'var(--tag-gray-text, #37352f)' },
+  { name: 'Brown', bg: 'var(--tag-brown-bg, #f4eeee)', text: 'var(--tag-brown-text, #44331b)' },
+  { name: 'Orange', bg: 'var(--tag-orange-bg, #fbede7)', text: 'var(--tag-orange-text, #d9730d)' },
+  { name: 'Yellow', bg: 'var(--tag-yellow-bg, #fff9e3)', text: 'var(--tag-yellow-text, #cb912f)' },
+  { name: 'Green', bg: 'var(--tag-green-bg, #edf3ec)', text: 'var(--tag-green-text, #448361)' },
+  { name: 'Blue', bg: 'var(--tag-blue-bg, #e7f3f8)', text: 'var(--tag-blue-text, #337ea9)' },
+  { name: 'Purple', bg: 'var(--tag-purple-bg, #f5f0f7)', text: 'var(--tag-purple-text, #9065b0)' },
+  { name: 'Pink', bg: 'var(--tag-pink-bg, #f9f0f5)', text: 'var(--tag-pink-text, #c14c8a)' },
+  { name: 'Red', bg: 'var(--tag-red-bg, #fdebec)', text: 'var(--tag-red-text, #d44c47)' },
 ];
 
 const getTagStyleByColor = (colorName) => {
@@ -98,12 +127,13 @@ const getTagStyleByColor = (colorName) => {
     padding: '2px 8px',
     borderRadius: '4px',
     fontSize: '12px',
-    fontWeight: '500',
+    fontWeight: '600',
     display: 'inline-flex',
     alignItems: 'center',
     gap: '4px',
     whiteSpace: 'nowrap',
-    border: 'none'
+    border: 'none',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
   };
 };
 
@@ -123,12 +153,58 @@ const parseNum = (val) => {
   return parseFloat(str) || 0;
 };
 
+const NOTE_COLORS = {
+  red: '#ff4d4d',
+  green: '#2ecc71',
+  yellow: '#f1c40f',
+  blue: '#3498db'
+};
+
 const NotesPage = () => {
+  const formatDisplayDate = (dateStr, formatId = 'dots') => {
+    if (!dateStr) return '-';
+    const [y, m, d] = dateStr.split('-');
+    const date = new Date(y, m - 1, d);
+    
+    switch (formatId) {
+      case 'full': return `${d}/${m}/${y}`;
+      case 'dots': return `${d}.${m}.${y}`;
+      case 'words': return `${parseInt(d)} ${TR_MONTHS[date.getMonth()]} ${y}`;
+      case 'short': return `${parseInt(d)} ${TR_MONTHS[date.getMonth()].substring(0, 3)} ${y}`;
+      default: return `${d}.${m}.${y}`;
+    }
+  };
+
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [viewMode, setViewMode] = useState('month'); // 'week', 'month', 'year'
+  const [viewMode, setViewMode] = useState(null); // 'week', 'month', 'year', 'list'
   const [currentDate, setCurrentDate] = useState(new Date());
+  
+  // Note List View Configuration
+  const [noteConfig, setNoteConfig] = useState({
+    propertyOrder: ['date', 'title', 'tags'],
+    propertyLabels: { date: 'Tarih', title: 'Başlık', tags: 'Etiketler' },
+    propertyVisibility: { date: true, title: true, tags: true },
+    sortConfig: { propId: 'date', direction: 'desc' },
+    dateFormat: 'dots',
+    filters: []
+  });
+
+  const NOTE_PROPERTIES = [
+    { id: 'date', label: 'Tarih', icon: <Calendar size={14} /> },
+    { id: 'title', label: 'Başlık', icon: <Type size={14} /> },
+    { id: 'tags', label: 'Etiketler', icon: <TagIcon size={14} /> }
+  ];
+
+  const [selectedNoteIds, setSelectedNoteIds] = useState([]);
+  const [noteEditingCell, setNoteEditingCell] = useState(null);
+  const [noteListLimit, setNoteListLimit] = useState(10);
+  const [isInfiniteNoteScroll, setIsInfiniteNoteScroll] = useState(false);
+  const [stagedNoteChanges, setStagedNoteChanges] = useState({});
+  const [noteActionHistory, setNoteActionHistory] = useState([]);
+  const [isBulkNoteProcessing, setIsBulkNoteProcessing] = useState(false);
+  const [bulkNoteProgress, setBulkNoteProgress] = useState(0);
   const [notes, setNotes] = useState([]);
   const [bankTransactions, setBankTransactions] = useState([]);
   const [financeTransactions, setFinanceTransactions] = useState([]);
@@ -146,14 +222,22 @@ const NotesPage = () => {
   const [noteText, setNoteText] = useState('');
   const [noteTags, setNoteTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
+  const [noteColor, setNoteColor] = useState('blue');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
     italic: false,
     underline: false,
     strikethrough: false,
-    quote: false
+    quote: false,
+    h1: false,
+    h2: false,
+    h3: false,
+    p: false,
+    ul: false,
+    ol: false
   });
+  const [floatingToolbar, setFloatingToolbar] = useState({ show: false, x: 0, y: 0 });
   const [showSimilarNotes, setShowSimilarNotes] = useState(true);
   const [globalNoteTags, setGlobalNoteTags] = useState([]);
   const [showTagManager, setShowTagManager] = useState(false);
@@ -164,10 +248,14 @@ const NotesPage = () => {
   const [highlightedDate, setHighlightedDate] = useState(null);
   const [holidays, setHolidays] = useState([]);
   
+  const [showFarFuture, setShowFarFuture] = useState(false);
+  const [showDateFormatSubmenu, setShowDateFormatSubmenu] = useState(false);
+  
   // Refs
   const contentInputRef = useRef(null);
   const searchInputRef = useRef(null);
   const yearScrollTimeoutRef = useRef(null);
+  const dateInputRef = useRef(null);
 
   const [headerPortalTarget, setHeaderPortalTarget] = useState(null);
   useEffect(() => {
@@ -211,7 +299,8 @@ const NotesPage = () => {
       typeTagId: 'all',
       financeType: 'all',
       stockId: 'all',
-      institutionId: 'all'
+      institutionId: 'all',
+      color: 'all'
     };
   });
 
@@ -228,6 +317,14 @@ const NotesPage = () => {
            f.financeType !== 'all' || 
            f.stockId !== 'all' || 
            f.institutionId !== 'all';
+  });
+
+  // Local state for visibility to allow immediate UI toggling
+  const [visibilityConfig, setVisibilityConfig] = useState({ 
+    notes: true, 
+    bank: false, 
+    finance: false, 
+    holidays: true 
   });
 
   const [showMobileSearch, setShowMobileSearch] = useState(false);
@@ -249,9 +346,6 @@ const NotesPage = () => {
     setShowMobileSearch(false);
   };
 
-  useEffect(() => {
-    localStorage.setItem('notes_filters', JSON.stringify(filters));
-  }, [filters]);
   const { 
     notes: globalNotes,
     bankTransactions: globalBankTrans,
@@ -266,13 +360,52 @@ const NotesPage = () => {
     holidays: globalHolidays
   } = useData();
 
-  const [visibilityConfig, setVisibilityConfig] = useState({ notes: true, bank: true, finance: true, holidays: true });
+  const isFirstLoad = useRef(true);
 
   useEffect(() => {
-    if (notesConfig?.visibility) {
-      setVisibilityConfig(notesConfig.visibility);
+    if (notesConfig && isFirstLoad.current) {
+      if (notesConfig.listConfig) setNoteConfig(notesConfig.listConfig);
+      if (notesConfig.filters) setFilters(notesConfig.filters);
+      if (notesConfig.visibility) setVisibilityConfig(notesConfig.visibility);
+      else if (Object.keys(notesConfig).length === 0) {
+        // Config loaded but empty (first time user), enable all
+        setVisibilityConfig({ notes: true, bank: true, finance: true, holidays: true });
+      }
+      if (notesConfig.listMode) setListMode(notesConfig.listMode);
+      if (notesConfig.viewMode) setViewMode(notesConfig.viewMode);
+      else setViewMode('month');
+      isFirstLoad.current = false;
     }
   }, [notesConfig]);
+
+  useEffect(() => {
+    if (isFirstLoad.current) return;
+    localStorage.setItem('notes_filters', JSON.stringify(filters));
+    
+    const timer = setTimeout(() => {
+      if (user) {
+        setDoc(doc(db, `users/${user.uid}/config`, 'notesSettings'), { 
+          filters: filters 
+        }, { merge: true }).catch(err => console.error("Error updating filters:", err));
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [filters, user]);
+
+  useEffect(() => {
+    if (isFirstLoad.current) return;
+    const timer = setTimeout(() => {
+      if (user) {
+        setDoc(doc(db, `users/${user.uid}/config`, 'notesSettings'), { 
+          listConfig: noteConfig 
+        }, { merge: true }).catch(err => console.error("Error updating noteConfig:", err));
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [noteConfig, user]);
+
+  const updateNoteConfig = (newConfig) => setNoteConfig(newConfig);
+  const updateFilters = (newFilters) => setFilters(newFilters);
 
   useEffect(() => {
     if (globalHolidays) {
@@ -308,11 +441,6 @@ const NotesPage = () => {
 
   const [listMode, setListMode] = useState('list');
 
-  useEffect(() => {
-    if (notesConfig?.listMode) {
-      setListMode(notesConfig.listMode);
-    }
-  }, [notesConfig]);
 
   const updateListMode = async (newMode) => {
     setListMode(newMode);
@@ -322,6 +450,19 @@ const NotesPage = () => {
       }).catch(async (err) => {
         if (err.code === 'not-found') {
           await setDoc(doc(db, `users/${user.uid}/config`, 'notesSettings'), { listMode: newMode });
+        }
+      });
+    }
+  };
+
+  const updateViewMode = async (newMode) => {
+    setViewMode(newMode);
+    if (user) {
+      await updateDoc(doc(db, `users/${user.uid}/config`, 'notesSettings'), {
+        viewMode: newMode
+      }).catch(async (err) => {
+        if (err.code === 'not-found') {
+          await setDoc(doc(db, `users/${user.uid}/config`, 'notesSettings'), { viewMode: newMode });
         }
       });
     }
@@ -467,8 +608,8 @@ const NotesPage = () => {
   }, [location.state, notes]);
 
   useEffect(() => { setNotes(globalNotes); }, [globalNotes]);
-  useEffect(() => { setBankTransactions(globalBankTrans.filter(t => t.deleted !== true).map(t => ({ ...t, type: 'bank' }))); }, [globalBankTrans]);
-  useEffect(() => { setFinanceTransactions(globalFinTrans.filter(t => t.deleted !== true).map(t => ({ ...t, type: 'finance' }))); }, [globalFinTrans]);
+  useEffect(() => { setBankTransactions(globalBankTrans.filter(t => t.deleted !== true)); }, [globalBankTrans]);
+  useEffect(() => { setFinanceTransactions(globalFinTrans.filter(t => t.deleted !== true)); }, [globalFinTrans]);
   useEffect(() => { setBanks(globalBanks); }, [globalBanks]);
   useEffect(() => { setInstitutions(globalInst); }, [globalInst]);
   useEffect(() => { setStocks(globalStocks); }, [globalStocks]);
@@ -487,9 +628,9 @@ const NotesPage = () => {
   }, [notes]);
 
   const filteredSuggestions = useMemo(() => {
-    if (!tagInput.trim()) return [];
+    const input = tagInput.trim().toLowerCase();
     return allTags.filter(tag => 
-      tag.toLowerCase().includes(tagInput.toLowerCase()) && 
+      (!input || tag.toLowerCase().includes(input)) && 
       !noteTags.includes(tag)
     );
   }, [tagInput, allTags, noteTags]);
@@ -556,7 +697,8 @@ const NotesPage = () => {
           const titleMatch = applyFilter(item.title || '', filters.title.op, filters.title.value);
           const textMatch = applyFilter(item.text || '', filters.text.op, filters.text.value);
           const tagMatch = filters.tags.length === 0 || filters.tags.every(t => item.tags?.includes(t));
-          if (!titleMatch || !textMatch || !tagMatch) return false;
+          const colorMatch = filters.color === 'all' || item.color === filters.color;
+          if (!titleMatch || !textMatch || !tagMatch || !colorMatch) return false;
           
           // Hide notes if specific bank/finance filters are active
           if (filters.bankId !== 'all' || filters.quickActionId !== 'all' || filters.typeTagId !== 'all' || filters.financeType !== 'all' || filters.stockId !== 'all' || filters.institutionId !== 'all') return false;
@@ -684,15 +826,23 @@ const NotesPage = () => {
     setNoteText('');
     setNoteTags([]);
     setTagInput('');
+    setNoteColor('blue');
   };
 
   const checkActiveFormats = () => {
+    const formatBlock = document.queryCommandValue('formatBlock');
     setActiveFormats({
       bold: document.queryCommandState('bold'),
       italic: document.queryCommandState('italic'),
       underline: document.queryCommandState('underline'),
       strikethrough: document.queryCommandState('strikeThrough'),
-      quote: document.queryCommandValue('formatBlock') === 'blockquote'
+      quote: formatBlock === 'blockquote',
+      h1: formatBlock === 'h1',
+      h2: formatBlock === 'h2',
+      h3: formatBlock === 'h3',
+      p: formatBlock === 'p' || formatBlock === 'div' || formatBlock === 'default',
+      ul: document.queryCommandState('insertUnorderedList'),
+      ol: document.queryCommandState('insertOrderedList')
     });
   };
 
@@ -716,9 +866,26 @@ const NotesPage = () => {
         document.execCommand('strikeThrough', false, null);
         break;
       case 'quote':
-        // Toggle blockquote
         const isQuote = document.queryCommandValue('formatBlock') === 'blockquote';
         document.execCommand('formatBlock', false, isQuote ? 'p' : 'blockquote');
+        break;
+      case 'h1':
+        document.execCommand('formatBlock', false, activeFormats.h1 ? 'p' : 'h1');
+        break;
+      case 'h2':
+        document.execCommand('formatBlock', false, activeFormats.h2 ? 'p' : 'h2');
+        break;
+      case 'h3':
+        document.execCommand('formatBlock', false, activeFormats.h3 ? 'p' : 'h3');
+        break;
+      case 'p':
+        document.execCommand('formatBlock', false, 'p');
+        break;
+      case 'ul':
+        document.execCommand('insertUnorderedList', false, null);
+        break;
+      case 'ol':
+        document.execCommand('insertOrderedList', false, null);
         break;
       default:
         return;
@@ -727,6 +894,78 @@ const NotesPage = () => {
     checkActiveFormats();
     setNoteText(editor.innerHTML);
   };
+
+  const handleUndo = () => {
+    document.execCommand('undo', false, null);
+    if (contentInputRef.current) {
+      setNoteText(contentInputRef.current.innerHTML);
+    }
+  };
+
+  const handleRedo = () => {
+    document.execCommand('redo', false, null);
+    if (contentInputRef.current) {
+      setNoteText(contentInputRef.current.innerHTML);
+    }
+  };
+
+  const handleTextSelection = () => {
+    // Small timeout to ensure selection is complete
+    requestAnimationFrame(() => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !selection.toString().trim()) {
+        setFloatingToolbar(prev => (prev.show ? { ...prev, show: false } : prev));
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      
+      // Ensure the selection is within our content editor
+      if (contentInputRef.current && !contentInputRef.current.contains(range.commonAncestorContainer)) {
+        setFloatingToolbar(prev => (prev.show ? { ...prev, show: false } : prev));
+        return;
+      }
+
+      // Use absolute positioning relative to document for better mobile stability
+      let x = rect.left + rect.width / 2 + window.scrollX;
+      let y = rect.top + window.scrollY;
+
+      // Vertical offset
+      if (window.innerWidth < 768) {
+        y -= 6; // Closer on mobile
+      } else {
+        y -= 12;
+      }
+
+      // Mobile overflow prevention
+      if (window.innerWidth < 768) {
+        const padding = 10;
+        const estimatedWidth = Math.min(window.innerWidth - 20, 340);
+        const halfWidth = estimatedWidth / 2;
+        
+        if (x - halfWidth < padding) {
+          x = halfWidth + padding;
+        } else if (x + halfWidth > window.innerWidth - padding) {
+          x = window.innerWidth - halfWidth - padding;
+        }
+      }
+
+      setFloatingToolbar({
+        show: true,
+        x: x,
+        y: y
+      });
+    });
+  };
+
+  // Add selectionchange listener for mobile Safari reliability
+  useEffect(() => {
+    if (showModal) {
+      document.addEventListener('selectionchange', handleTextSelection);
+      return () => document.removeEventListener('selectionchange', handleTextSelection);
+    }
+  }, [showModal]);
 
   const handleDayClick = (date) => {
     setSelectedDate(date);
@@ -741,6 +980,7 @@ const NotesPage = () => {
     setNoteTitle(note.title || '');
     setNoteText(note.text || '');
     setNoteTags(note.tags || []);
+    setNoteColor(note.color || 'blue');
     setShowModal(true);
   };
 
@@ -885,7 +1125,9 @@ const NotesPage = () => {
       const isTitleSame = noteTitle === (editingNote.title || '');
       const isTextSame = noteText === (editingNote.text || '');
       const isTagsSame = JSON.stringify(noteTags) === JSON.stringify(editingNote.tags || []);
-      if (isTitleSame && isTextSame && isTagsSame) return;
+      const isDateSame = formatIdDate(selectedDate) === (editingNote.date || '');
+      const isColorSame = noteColor === (editingNote.color || 'blue');
+      if (isTitleSame && isTextSame && isTagsSame && isDateSame && isColorSame) return;
     }
     
     setIsSaving(true);
@@ -894,6 +1136,7 @@ const NotesPage = () => {
       title: noteTitle,
       text: noteText,
       tags: noteTags,
+      color: noteColor,
       date: dateStr,
       updatedAt: serverTimestamp()
     };
@@ -926,7 +1169,7 @@ const NotesPage = () => {
       handleAutoSave();
     }, 1500);
     return () => clearTimeout(timer);
-  }, [noteTitle, noteText, noteTags]);
+  }, [noteTitle, noteText, noteTags, selectedDate, noteColor]);
 
   const handleDeleteNote = async (noteId, e) => {
     if (e) e.stopPropagation();
@@ -934,7 +1177,7 @@ const NotesPage = () => {
     if (!window.confirm("Bu notu silmek istediğinize emin misiniz?")) return;
     
     try {
-      await deleteDoc(doc(db, `users/${user.uid}/notes`, noteId || editingNote?.id));
+      await updateDoc(doc(db, `users/${user.uid}/notes`, noteId || editingNote?.id), { deleted: true });
       if (editingNote) setShowModal(false);
     } catch (error) {
       console.error("Error deleting note:", error);
@@ -955,16 +1198,17 @@ const NotesPage = () => {
   };
 
   const toggleFilterTag = (tag) => {
-    setFilters(prev => ({
-      ...prev,
-      tags: prev.tags.includes(tag) 
-        ? prev.tags.filter(t => t !== tag) 
-        : [...prev.tags, tag]
-    }));
+    const next = {
+      ...filters,
+      tags: filters.tags.includes(tag) 
+        ? filters.tags.filter(t => t !== tag) 
+        : [...filters.tags, tag]
+    };
+    updateFilters(next);
   };
 
   const resetFilters = () => {
-    setFilters({
+    updateFilters({
       title: { value: '', op: 'contains' },
       text: { value: '', op: 'contains' },
       tags: [],
@@ -973,12 +1217,44 @@ const NotesPage = () => {
       typeTagId: 'all',
       financeType: 'all',
       stockId: 'all',
-      institutionId: 'all'
+      institutionId: 'all',
+      color: 'all'
     });
   };
-  const getGroupedItems = (dayItems, dateStr) => {
-    if (listMode === 'list') return dayItems;
+  const handleNoteSort = (propId, direction) => {
+    updateNoteConfig({
+      ...noteConfig,
+      sortConfig: direction === null ? { propId: 'date', direction: 'desc' } : { propId, direction }
+    });
+  };
 
+  const handleUpdateNoteFilter = (propId, operator, value) => {
+    const newFilters = [...(noteConfig.filters || [])];
+    const idx = newFilters.findIndex(f => f.propId === propId);
+    if (idx !== -1) {
+      if (operator === null) newFilters.splice(idx, 1);
+      else newFilters[idx] = { propId, operator, value };
+    } else {
+      if (operator !== null) newFilters.push({ propId, operator, value });
+    }
+    updateNoteConfig({ ...noteConfig, filters: newFilters });
+  };
+
+  const handleUpdateNotePropertyLabel = (id, label) => {
+    updateNoteConfig({
+      ...noteConfig,
+      propertyLabels: { ...noteConfig.propertyLabels, [id]: label }
+    });
+  };
+
+  const handleUpdateNotePropertyVisibility = (id, visible) => {
+    updateNoteConfig({
+      ...noteConfig,
+      propertyVisibility: { ...noteConfig.propertyVisibility, [id]: visible }
+    });
+  };
+
+  const getGroupedItems = (dayItems, dateStr) => {
     const groups = {};
     dayItems.forEach(item => {
       let key = item.id;
@@ -1007,6 +1283,964 @@ const NotesPage = () => {
       }
     });
     return displayItems;
+  };
+
+
+
+
+  const filteredNoteListData = useMemo(() => {
+    let data = [
+      ...(visibilityConfig.notes ? globalNotes.filter(n => !n.deleted).map(n => ({ ...n, itemType: 'note' })) : []),
+      ...(visibilityConfig.bank ? bankTransactions.map(t => ({ ...t, itemType: 'bank' })) : []),
+      ...(visibilityConfig.finance ? processedFinanceTransactions.map(t => ({ ...t, itemType: 'finance' })) : []),
+      ...(visibilityConfig.holidays ? holidays.map(h => ({ ...h, itemType: 'holiday' })) : [])
+    ];
+
+    // Apply Column Filters
+    (noteConfig.filters || []).forEach(f => {
+      // Only filter if value is present or it's a null-check operator
+      if (!f.value && !['is_empty', 'is_not_empty'].includes(f.operator)) return;
+
+      data = data.filter(item => {
+        let val = item[f.propId];
+        
+        // Intelligent field selection for 'title' property across types
+        if (f.propId === 'title') {
+          if (item.itemType === 'finance') val = stocks.find(s => s.id === item.stockId)?.name || '';
+          else val = item.title || item.name || item.description || '';
+        }
+
+        val = (val || '').toString().toLowerCase();
+        const filterVal = (f.value || '').toLowerCase();
+        
+        switch (f.operator) {
+          case 'contains': return val.includes(filterVal);
+          case 'not_contains': return !val.includes(filterVal);
+          case 'equals': return val === filterVal;
+          case 'before': return val <= filterVal;
+          case 'after': return val >= filterVal;
+          case 'between': {
+            const [start, end] = filterVal.split('|');
+            if (!start && !end) return true;
+            if (start && !end) return val >= start;
+            if (!start && end) return val <= end;
+            return val >= start && val <= end;
+          }
+          case 'is_empty': return !val;
+          case 'is_not_empty': return !!val;
+          case 'starts_with': return val.startsWith(filterVal);
+          case 'ends_with': return val.endsWith(filterVal);
+          default: return true;
+        }
+      });
+    });
+    
+    // Apply 1-Month Visibility Filter for Notes (as requested)
+    const todayForFilter = new Date();
+    todayForFilter.setHours(0, 0, 0, 0);
+    const oneMonthTimeForFilter = todayForFilter.getTime() + (30 * 24 * 60 * 60 * 1000);
+    
+    data = data.filter(item => {
+      if (item.itemType !== 'note') return true;
+      const d = new Date(item.date);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime() <= oneMonthTimeForFilter;
+    });
+
+
+    // Apply Global Search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      data = data.filter(item => {
+        const stockName = item.itemType === 'finance' ? (stocks.find(s => s.id === item.stockId)?.name || '') : '';
+        const bankName = item.itemType === 'bank' ? (banks.find(b => b.id === item.bankId)?.name || '') : '';
+        
+        const title = (item.title || item.name || item.description || stockName || bankName || '').toLowerCase();
+        const text = (item.text || item.description || '').toLowerCase();
+        const tags = (item.tags || []).join(' ').toLowerCase();
+
+        return title.includes(q) || text.includes(q) || tags.includes(q);
+      });
+    }
+
+    // Apply Top Panel Color Filter
+    if (filters.color !== 'all') {
+      data = data.filter(item => item.itemType === 'note' && item.color === filters.color);
+    }
+
+    // Apply Sorting
+    data.sort((a, b) => {
+      let valA = a[noteConfig.sortConfig.propId];
+      let valB = b[noteConfig.sortConfig.propId];
+      
+      // Fallback for titles across different types
+      if (noteConfig.sortConfig.propId === 'title') {
+        const getTitle = (item) => {
+          if (item.itemType === 'finance') return stocks.find(s => s.id === item.stockId)?.name || '';
+          return item.title || item.name || item.description || '';
+        };
+        valA = getTitle(a);
+        valB = getTitle(b);
+      }
+
+      valA = (valA || '').toString().toLowerCase();
+      valB = (valB || '').toString().toLowerCase();
+      
+      if (noteConfig.sortConfig.propId === 'date') {
+        return noteConfig.sortConfig.direction === 'asc' 
+          ? new Date(a.date) - new Date(b.date)
+          : new Date(b.date) - new Date(a.date);
+      }
+
+      return noteConfig.sortConfig.direction === 'asc'
+        ? valA.localeCompare(valB)
+        : valB.localeCompare(valA);
+    });
+
+    return data;
+  }, [globalNotes, noteConfig, searchQuery, filters, visibilityConfig, bankTransactions, processedFinanceTransactions, holidays, stocks]);
+
+  const handleBulkNoteSave = async () => {
+    if (selectedNoteIds.length === 0 || Object.keys(stagedNoteChanges).length === 0) return;
+    setIsBulkNoteProcessing(true);
+    setBulkNoteProgress(0);
+
+    const total = selectedNoteIds.length;
+    let successCount = 0;
+    const affectedItems = [];
+    
+    for (let i = 0; i < total; i++) {
+      const noteId = selectedNoteIds[i];
+      const note = globalNotes.find(n => n.id === noteId);
+      if (!note) continue;
+
+      const previousState = {
+        title: note.title || '',
+        date: note.date || '',
+        tags: note.tags || []
+      };
+
+      const updates = {};
+      if (stagedNoteChanges.date) updates.date = stagedNoteChanges.date;
+      if (stagedNoteChanges.tags) updates.tags = stagedNoteChanges.tags;
+      
+      if (stagedNoteChanges.titleUpdate) {
+        const { mode, value } = stagedNoteChanges.titleUpdate;
+        let newTitle = note.title || '';
+        if (mode === 'replace') newTitle = value;
+        else if (mode === 'prefix') newTitle = value + newTitle;
+        else if (mode === 'suffix') newTitle = newTitle + value;
+        updates.title = newTitle;
+      }
+
+      try {
+        await updateDoc(doc(db, `users/${user.uid}/notes`, noteId), updates);
+        successCount++;
+        affectedItems.push({ id: noteId, previousState });
+      } catch (err) {
+        console.error("Bulk update error:", err);
+      }
+      setBulkNoteProgress(Math.round(((i + 1) / total) * 100));
+    }
+
+    const historyItem = {
+      id: Math.random().toString(36).substr(2, 9),
+      timestamp: new Date(),
+      count: successCount,
+      type: 'BULK_UPDATE',
+      changes: { ...stagedNoteChanges },
+      affectedItems
+    };
+
+    setNoteActionHistory(prev => [historyItem, ...prev]);
+
+    setIsBulkNoteProcessing(false);
+    setStagedNoteChanges({});
+    setSelectedNoteIds([]);
+  };
+
+  const handleUndoBulkNoteAction = async (item) => {
+    if (isBulkNoteProcessing || !item.affectedItems) return;
+    setIsBulkNoteProcessing(true);
+    setBulkNoteProgress(0);
+
+    const total = item.affectedItems.length;
+    for (let i = 0; i < total; i++) {
+      const { id, previousState } = item.affectedItems[i];
+      try {
+        await updateDoc(doc(db, `users/${user.uid}/notes`, id), previousState);
+      } catch (err) {
+        console.error("Undo error:", err);
+      }
+      setBulkNoteProgress(Math.round(((i + 1) / total) * 100));
+    }
+
+    setNoteActionHistory(prev => prev.filter(h => h.id !== item.id));
+    setIsBulkNoteProcessing(false);
+  };
+
+  const handleDeleteBulkNoteHistory = (id) => {
+    setNoteActionHistory(prev => prev.filter(h => h.id !== id));
+  };
+
+  const handleClearBulkNoteHistory = () => {
+    if (window.confirm("Tüm işlem geçmişini silmek istediğinize emin misiniz?")) {
+      setNoteActionHistory([]);
+    }
+  };
+
+  const visibleNoteListData = filteredNoteListData;
+
+  const renderListView = () => {
+    const isAllSelected = filteredNoteListData.length > 0 && selectedNoteIds.length === filteredNoteListData.length;
+
+    return (
+      <div className="note-list-view-container p-0">
+        {selectedNoteIds.length > 0 && (
+          <div className="position-sticky mb-2" style={{ zIndex: 1015, top: '10px' }}>
+            <div className="glass-card p-1 d-flex align-items-center flex-wrap gap-1 shadow-lg border-primary border-opacity-25" style={{ minHeight: '48px', height: 'auto', width: 'fit-content', maxWidth: '100%', borderRadius: '12px' }}>
+              <div className="px-3 border-end text-primary fw-bold small d-flex align-items-center gap-2">
+                {selectedNoteIds.length} Seçili
+                <div
+                  className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all cursor-pointer"
+                  style={{ width: '16px', height: '16px' }}
+                  onClick={() => setSelectedNoteIds([])}
+                >
+                  <X size={12} />
+                </div>
+              </div>
+              
+              <div className="d-flex align-items-center gap-1 px-1 mobile-scroll-x">
+                {/* Date Update */}
+                <Dropdown autoClose="outside" className="d-inline">
+                  <Dropdown.Toggle as="button" className={`btn btn-link text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedNoteChanges.date ? 'text-primary' : ''}`} style={{ minWidth: '80px' }}>
+                    <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase' }}>
+                      <CalendarIcon size={10} /> Tarih
+                      {stagedNoteChanges.date && <X size={10} className="ms-1" onClick={(e) => { e.stopPropagation(); setStagedNoteChanges(prev => { const n = {...prev}; delete n.date; return n; }); }} />}
+                    </div>
+                    {stagedNoteChanges.date && <div className="fw-bold" style={{ fontSize: '11px' }}>{new Date(stagedNoteChanges.date).toLocaleDateString('tr-TR')}</div>}
+                  </Dropdown.Toggle>
+                  <Dropdown.Menu className="glass-card border-0 shadow-lg p-2">
+                    <Form.Control type="date" value={stagedNoteChanges.date || ''} onChange={e => setStagedNoteChanges(prev => ({ ...prev, date: e.target.value }))} className="border-0 bg-light fs-14" />
+                  </Dropdown.Menu>
+                </Dropdown>
+
+                {/* Title Update */}
+                <Dropdown autoClose="outside" className="d-inline">
+                  <Dropdown.Toggle as="button" className={`btn btn-link text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedNoteChanges.titleUpdate ? 'text-primary' : ''}`} style={{ minWidth: '80px' }}>
+                    <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase' }}>
+                      <Type size={10} /> Başlık
+                      {stagedNoteChanges.titleUpdate && <X size={10} className="ms-1" onClick={(e) => { e.stopPropagation(); setStagedNoteChanges(prev => { const n = {...prev}; delete n.titleUpdate; return n; }); }} />}
+                    </div>
+                    {stagedNoteChanges.titleUpdate && <div className="fw-bold text-truncate" style={{ fontSize: '11px', maxWidth: '100px' }}>{stagedNoteChanges.titleUpdate.value}</div>}
+                  </Dropdown.Toggle>
+                  <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '220px' }}>
+                    <div className="d-flex gap-1 mb-2">
+                      {['replace', 'prefix', 'suffix'].map(m => (
+                        <Button key={m} size="sm" variant={stagedNoteChanges.titleUpdate?.mode === m ? 'primary' : 'light'} className="x-small flex-grow-1" onClick={() => setStagedNoteChanges(prev => ({ ...prev, titleUpdate: { ...prev.titleUpdate, mode: m } }))}>
+                          {m === 'replace' ? 'Değiştir' : m === 'prefix' ? 'Başına' : 'Sonuna'}
+                        </Button>
+                      ))}
+                    </div>
+                    <Form.Control 
+                      size="sm" 
+                      placeholder="Yeni başlık veya ek..." 
+                      className="border-0 bg-light fs-14" 
+                      value={stagedNoteChanges.titleUpdate?.value || ''} 
+                      onChange={e => setStagedNoteChanges(prev => ({ ...prev, titleUpdate: { mode: prev.titleUpdate?.mode || 'replace', value: e.target.value } }))}
+                    />
+                  </Dropdown.Menu>
+                </Dropdown>
+
+                {/* Tags Update */}
+                <Dropdown autoClose="outside" className="d-inline">
+                  <Dropdown.Toggle as="button" className={`btn btn-link text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer dropdown-no-caret ${stagedNoteChanges.tags ? 'text-primary' : ''}`} style={{ minWidth: '80px' }}>
+                    <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase' }}>
+                      <TagIcon size={10} /> Etiketler
+                      {stagedNoteChanges.tags && <X size={10} className="ms-1" onClick={(e) => { e.stopPropagation(); setStagedNoteChanges(prev => { const n = {...prev}; delete n.tags; return n; }); }} />}
+                    </div>
+                    {stagedNoteChanges.tags && <div className="fw-bold" style={{ fontSize: '11px' }}>{stagedNoteChanges.tags.length} Etiket</div>}
+                  </Dropdown.Toggle>
+                  <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '200px', maxHeight: '250px', overflowY: 'auto' }}>
+                    {globalNoteTags.map(tag => {
+                      const isSelected = stagedNoteChanges.tags?.includes(tag.name);
+                      return (
+                        <div key={tag.name} className="d-flex align-items-center gap-2 p-1 px-2 rounded-1 cursor-pointer hover-bg-light fs-14" onClick={() => {
+                          const current = stagedNoteChanges.tags || [];
+                          const next = current.includes(tag.name) ? current.filter(t => t !== tag.name) : [...current, tag.name];
+                          setStagedNoteChanges(prev => ({ ...prev, tags: next }));
+                        }}>
+                          <span className="px-2 py-0.5 rounded-pill fs-11" style={getTagStyleByColor(tag.color)}>{tag.name}</span>
+                          {isSelected && <Check size={14} className="text-primary ms-auto" />}
+                        </div>
+                      );
+                    })}
+                  </Dropdown.Menu>
+                </Dropdown>
+
+                <div className="border-start ms-1 ps-1 d-flex align-items-center gap-1">
+                  {Object.keys(stagedNoteChanges).length > 0 && (
+                    <Button variant="primary" size="sm" className="rounded-pill px-3 fw-bold d-flex align-items-center gap-2 shadow-sm border-0 position-relative overflow-hidden" disabled={isBulkNoteProcessing} onClick={handleBulkNoteSave} style={{ minWidth: '90px', background: 'linear-gradient(135deg, #006fee 0%, #005bc4 100%)' }}>
+                      <div className="position-absolute top-0 start-0 h-100 transition-all" style={{ width: `${bulkNoteProgress}%`, backgroundColor: 'rgba(255,255,255,0.2)' }} />
+                      <span className="position-relative">{isBulkNoteProcessing ? `%${bulkNoteProgress}` : 'Kaydet'}</span>
+                    </Button>
+                  )}
+                  
+                  <Button variant="link" className="text-danger p-2 hover-bg-light rounded-2" onClick={async () => {
+                    if (window.confirm(`${selectedNoteIds.length} notu silmek istediğinize emin misiniz?`)) {
+                      for (const id of selectedNoteIds) {
+                        await updateDoc(doc(db, `users/${user.uid}/notes`, id), { deleted: true });
+                      }
+                      setSelectedNoteIds([]);
+                    }
+                  }}>
+                    <Trash2 size={18} />
+                  </Button>
+
+                  {/* History */}
+                  <Dropdown autoClose="outside" className="d-inline ms-1">
+                    <Dropdown.Toggle as="div" className="cursor-pointer text-muted hover-text-primary p-1 rounded-circle hover-bg-light transition-all d-flex align-items-center justify-content-center">
+                      <RotateCcw size={18} />
+                    </Dropdown.Toggle>
+                    <Dropdown.Menu align="end" className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '350px' }}>
+                      <div className="d-flex align-items-center justify-content-between px-2 border-bottom pb-1 mb-2">
+                        <div className="x-small fw-bold text-muted">TOPLU İŞLEM GEÇMİŞİ</div>
+                        {noteActionHistory.length > 0 && (
+                          <div
+                            className="x-small text-danger fw-bold cursor-pointer hover-opacity-75 transition-all"
+                            style={{ fontSize: '10px', letterSpacing: '0.02em' }}
+                            onClick={(e) => { e.stopPropagation(); handleClearBulkNoteHistory(); }}
+                          >
+                            TÜMÜNÜ SİL
+                          </div>
+                        )}
+                      </div>
+                      <div className="overflow-auto" style={{ maxHeight: '400px' }}>
+                        {noteActionHistory.length === 0 && <div className="p-3 text-center text-muted opacity-50 small">Geçmiş işlem bulunamadı</div>}
+                        {noteActionHistory.map((h, i) => (
+                          <div key={h.id || i} className="p-2 border-bottom last-border-0 hover-bg-light rounded-2 d-flex align-items-center justify-content-between gap-3 mb-1">
+                            <div className="d-flex flex-column gap-1 overflow-hidden">
+                              <div className="d-flex align-items-center gap-2">
+                                <span className="badge bg-primary bg-opacity-10 text-primary fw-bold" style={{ fontSize: '10px' }}>{h.count} Not</span>
+                                <span className="text-muted" style={{ fontSize: '11px' }}>
+                                  {h.timestamp?.toLocaleString('tr-TR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <div className="small fw-medium text-truncate" style={{ maxWidth: '200px' }}>
+                                <span className="me-1">✏️</span>
+                                {h.changes.date && <span className="me-1">Tarih</span>}
+                                {h.changes.tags && <span className="me-1">Etiket</span>}
+                                {h.changes.titleUpdate && <span>Başlık ({h.changes.titleUpdate.mode === 'replace' ? 'Değişim' : 'Ek'})</span>}
+                              </div>
+                            </div>
+                            <div className="d-flex align-items-center gap-2">
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                className="px-2 py-0.5 rounded-pill transition-all shadow-sm border-0"
+                                style={{ fontSize: '11px', fontWeight: 600, height: '24px' }}
+                                disabled={isBulkNoteProcessing}
+                                onClick={() => handleUndoBulkNoteAction(h)}
+                              >
+                                Geri Al
+                              </Button>
+                              <Button
+                                variant="outline-danger"
+                                size="sm"
+                                className="px-2 py-1 x-small fw-bold rounded-pill transition-all d-flex align-items-center justify-content-center"
+                                onClick={() => handleDeleteBulkNoteHistory(h.id)}
+                                style={{ width: '28px', height: '28px' }}
+                              >
+                                <Trash2 size={12} />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Dropdown.Menu>
+                  </Dropdown>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <Card className="note-list-card glass-card border shadow-sm overflow-hidden" style={{ border: 'none' }}>
+          <Table responsive hover className="notion-table mb-0">
+            <thead className="sticky-top bg-white" style={{ zIndex: 1100 }}>
+              {noteConfig.filters?.length > 0 && (
+                <tr className="border-bottom" style={{ position: 'relative', zIndex: 1110 }}>
+                  <th colSpan={100} className="py-2 px-3 border-bottom font-normal">
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
+                      <div className="text-muted x-small fw-bold d-flex align-items-center gap-1 opacity-50 pe-2 border-end">
+                        <Filter size={12} /> FILTERS
+                      </div>
+                      {noteConfig.filters.map(f => {
+                        const p = NOTE_PROPERTIES.find(item => item.id === f.propId);
+                        const label = noteConfig.propertyLabels?.[f.propId] || p?.label;
+                        return (
+                          <div key={f.propId} className="glass-card border rounded-pill px-2 py-1 d-flex align-items-center gap-2 shadow-sm" style={{ fontSize: '11px', fontWeight: 400 }}>
+                            <span className="text-muted">{label}</span>
+                            <Dropdown autoClose="outside">
+                              <Dropdown.Toggle as="span" className="fw-bold cursor-pointer hover-text-primary text-lowercase">
+                                {f.operator.replace(/_/g, ' ')}
+                              </Dropdown.Toggle>
+                              <Dropdown.Menu className="glass-card border-0 shadow-lg p-1" style={{ zIndex: 1200 }}>
+                                {(f.propId === 'date' ? DATE_OPERATORS : FILTER_OPERATORS).map(op => (
+                                  <Dropdown.Item key={op.value} className="small rounded-2" onClick={() => handleUpdateNoteFilter(f.propId, op.value, f.value)}>
+                                    {op.label}
+                                  </Dropdown.Item>
+                                ))}
+                              </Dropdown.Menu>
+                            </Dropdown>
+                            {f.propId === 'date' && f.operator === 'between' ? (
+                              <div className="d-flex align-items-center gap-1">
+                                <Form.Control 
+                                  size="sm"
+                                  type="date"
+                                  className="border-0 bg-transparent p-0 fw-medium"
+                                  style={{ width: '85px', fontSize: '11px' }}
+                                  value={(f.value || '').split('|')[0] || ''}
+                                  onChange={(e) => {
+                                    const parts = (f.value || '').split('|');
+                                    handleUpdateNoteFilter(f.propId, f.operator, `${e.target.value}|${parts[1] || ''}`);
+                                  }}
+                                />
+                                <span className="opacity-50">-</span>
+                                <Form.Control 
+                                  size="sm"
+                                  type="date"
+                                  className="border-0 bg-transparent p-0 fw-medium"
+                                  style={{ width: '85px', fontSize: '11px' }}
+                                  value={(f.value || '').split('|')[1] || ''}
+                                  onChange={(e) => {
+                                    const parts = (f.value || '').split('|');
+                                    handleUpdateNoteFilter(f.propId, f.operator, `${parts[0] || ''}|${e.target.value}`);
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              f.propId === 'date' ? (
+                                <Form.Control 
+                                  size="sm"
+                                  type="date"
+                                  className="border-0 bg-transparent p-0 fw-medium"
+                                  style={{ width: '100px', fontSize: '11px' }}
+                                  value={f.value || ''}
+                                  onChange={(e) => handleUpdateNoteFilter(f.propId, f.operator, e.target.value)}
+                                />
+                              ) : f.propId === 'tags' ? (
+                                <Dropdown autoClose="outside" className="d-inline">
+                                  <Dropdown.Toggle as="div" className="cursor-pointer text-primary d-flex align-items-center gap-1">
+                                    <span className="fw-bold" style={{ fontSize: '11px' }}>{(f.value || '').split(',').filter(v => v).length} Etiket</span>
+                                    <ChevronDown size={10} />
+                                  </Dropdown.Toggle>
+                                  <Dropdown.Menu className="glass-card border-0 shadow-lg p-1 overflow-auto" style={{ maxHeight: '300px', minWidth: '160px', zIndex: 1200 }}>
+                                    {globalNoteTags.map(tag => {
+                                      const isSelected = (f.value || '').split(',').includes(tag.name);
+                                      return (
+                                        <Dropdown.Item
+                                          key={tag.name}
+                                          className="small rounded-2 py-1 mb-1"
+                                          onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            const current = (f.value || '').split(',').filter(v => v);
+                                            const next = current.includes(tag.name) ? current.filter(v => v !== tag.name) : [...current, tag.name];
+                                            handleUpdateNoteFilter(f.propId, f.operator, next.join(',')); 
+                                          }}
+                                        >
+                                          <div className="d-flex align-items-center justify-content-between">
+                                            <span className="px-2 py-0.5 rounded-pill fs-11" style={getTagStyleByColor(tag.color)}>{tag.name}</span>
+                                            {isSelected && <Check size={14} className="text-primary" />}
+                                          </div>
+                                        </Dropdown.Item>
+                                      );
+                                    })}
+                                  </Dropdown.Menu>
+                                </Dropdown>
+                              ) : f.propId === 'color' ? (
+                                <Dropdown>
+                                  <Dropdown.Toggle as="div" className="cursor-pointer d-flex align-items-center gap-1 x-small fw-medium border-0 bg-transparent p-0">
+                                    <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: NOTE_COLORS[f.value] || '#ccc' }}></div>
+                                    <span className="text-muted">{f.value || 'Seç'}</span>
+                                  </Dropdown.Toggle>
+                                  <Dropdown.Menu className="glass-card shadow-sm border-0 p-1" style={{ zIndex: 10006 }}>
+                                    {Object.keys(NOTE_COLORS).map(c => (
+                                      <Dropdown.Item key={c} className="rounded-2 d-flex align-items-center gap-2 py-1 small" onClick={() => handleUpdateNoteFilter('color', 'equals', c)}>
+                                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: NOTE_COLORS[c] }}></div>
+                                        {c.charAt(0).toUpperCase() + c.slice(1)}
+                                      </Dropdown.Item>
+                                    ))}
+                                  </Dropdown.Menu>
+                                </Dropdown>
+                              ) : (
+                                <Form.Control 
+                                  size="sm"
+                                  className="border-0 bg-transparent p-0 fw-medium"
+                                  style={{ width: '80px', fontSize: '11px' }}
+                                  value={f.value || ''}
+                                  onChange={(e) => handleUpdateNoteFilter(f.propId, f.operator, e.target.value)}
+                                />
+                              )
+                            )}
+                            <X size={14} className="text-muted cursor-pointer hover-text-danger" onClick={() => handleUpdateNoteFilter(f.propId, null, null)} />
+                          </div>
+                        );
+                      })}
+                      <Button variant="link" size="sm" className="text-muted p-0 x-small text-decoration-none ms-auto" onClick={() => setNoteConfig(prev => ({ ...prev, filters: [] }))}>Clear all</Button>
+                    </div>
+                  </th>
+                </tr>
+              )}
+              <tr>
+                <th style={{ width: '40px' }} className="ps-3">
+                  <Form.Check 
+                    type="checkbox"
+                    className="notion-checkbox custom-checkbox-sm"
+                    checked={isAllSelected}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedNoteIds(filteredNoteListData.map(n => n.id));
+                      else setSelectedNoteIds([]);
+                    }}
+                  />
+                </th>
+                {NOTE_PROPERTIES.filter(p => noteConfig.propertyVisibility[p.id] !== false).map(p => {
+                  const label = noteConfig.propertyLabels[p.id] || p.label;
+                  return (
+                    <th key={p.id} className="py-2" style={p.id === 'title' ? { width: '40%' } : {}}>
+                      <Dropdown autoClose="outside">
+                        <Dropdown.Toggle as="button" type="button" className="btn btn-link p-0 text-decoration-none border-0 d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded px-2 py-1 flex-grow-1" style={{ marginLeft: '-8px' }}>
+                          <span className="text-muted d-flex align-items-center">{p.icon}</span>
+                          <span className="text-nowrap">{label}</span>
+                          {noteConfig.sortConfig?.propId === p.id && (
+                            <div className="ms-auto d-flex align-items-center gap-1">
+                              <span className="text-primary d-flex align-items-center">
+                                {noteConfig.sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+                              </span>
+                            </div>
+                          )}
+                        </Dropdown.Toggle>
+                        <Dropdown.Menu className="glass-card border-0 shadow-lg p-2" style={{ width: '240px', zIndex: 10005 }}>
+                          <div className="px-1 py-1 mb-2 d-flex flex-column gap-1">
+                            <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2 small" onClick={() => handleUpdateNoteFilter(p.id, p.id === 'date' ? 'equals' : 'contains', '')}>
+                              <Filter size={14} className="text-muted" /> Filter
+                            </Dropdown.Item>
+                          </div>
+                          <div className="dropdown-divider opacity-10"></div>
+                          <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2 small" onClick={() => handleNoteSort(p.id, 'asc')}>
+                            <ArrowUp size={14} className="text-muted" /> Sort ascending
+                          </Dropdown.Item>
+                          <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2 small" onClick={() => handleNoteSort(p.id, 'desc')}>
+                            <ArrowDown size={14} className="text-muted" /> Sort descending
+                          </Dropdown.Item>
+
+                          {p.id === 'date' && (
+                            <>
+                              <div className="dropdown-divider opacity-10"></div>
+                              <div 
+                                className="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer"
+                                onClick={(e) => { e.stopPropagation(); setShowDateFormatSubmenu(!showDateFormatSubmenu); }}
+                              >
+                                <div className="d-flex align-items-center gap-2">
+                                  <Calendar size={14} className="text-muted" /> Date format
+                                </div>
+                                <ChevronDown size={14} className="text-muted opacity-50 transition-all" style={{ transform: showDateFormatSubmenu ? 'rotate(180deg)' : 'none' }} />
+                              </div>
+                              <Collapse in={showDateFormatSubmenu}>
+                                <div className="px-1 py-1">
+                                  <div className="bg-light bg-opacity-50 rounded-3 p-1">
+                                    {DATE_FORMATS.map(fmt => (
+                                      <div 
+                                        key={fmt.id} 
+                                        className="dropdown-item small rounded-2 py-2 d-flex align-items-center justify-content-between cursor-pointer"
+                                        onClick={() => {
+                                          updateNoteConfig({ ...noteConfig, dateFormat: fmt.id });
+                                        }}
+                                      >
+                                        <span>{fmt.label}</span>
+                                        {noteConfig.dateFormat === fmt.id && <Check size={14} className="text-primary" />}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </Collapse>
+                            </>
+                          )}
+
+                          {p.id === 'title' && (
+                            <>
+                              <div className="dropdown-divider opacity-10"></div>
+                              <div className="px-3 py-2 text-muted x-small fw-bold opacity-50 uppercase-tracking">RENK FİLTRESİ</div>
+                              <div className="d-flex align-items-center gap-2 px-3 py-1 mb-2">
+                                {[
+                                  { id: 'blue', color: '#3498db' },
+                                  { id: 'red', color: '#ff4d4d' },
+                                  { id: 'green', color: '#2ecc71' },
+                                  { id: 'yellow', color: '#f1c40f' }
+                                ].map(c => {
+                                  const isActive = noteConfig.filters?.some(f => f.propId === 'color' && f.value === c.id);
+                                  return (
+                                    <div 
+                                      key={c.id}
+                                      onClick={() => handleUpdateNoteFilter('color', 'equals', c.id)}
+                                      className={`color-filter-dot ${isActive ? 'active' : ''}`}
+                                      style={{ 
+                                        width: '18px', 
+                                        height: '18px', 
+                                        borderRadius: '50%', 
+                                        backgroundColor: c.color,
+                                        cursor: 'pointer',
+                                        border: isActive ? '2px solid white' : '1px solid rgba(0,0,0,0.1)',
+                                        boxShadow: isActive ? '0 0 0 1px #3498db' : 'none',
+                                        transition: 'all 0.2s ease'
+                                      }}
+                                      title={c.id.charAt(0).toUpperCase() + c.id.slice(1)}
+                                    />
+                                  );
+                                })}
+                                {noteConfig.filters?.some(f => f.propId === 'color') && (
+                                  <div 
+                                    className="ms-auto p-1 rounded-circle hover-bg-light cursor-pointer d-flex align-items-center justify-content-center"
+                                    onClick={() => handleUpdateNoteFilter('color', null, null)}
+                                    title="Filtreyi Temizle"
+                                  >
+                                    <X size={14} className="text-muted" />
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </Dropdown.Menu>
+                      </Dropdown>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {(() => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const todayTime = today.getTime();
+                
+                const tomorrow = new Date(today);
+                tomorrow.setDate(today.getDate() + 1);
+                const tomorrowTime = tomorrow.getTime();
+
+                const farFutureTime = today.getTime() + (4 * 24 * 60 * 60 * 1000);
+                const oneMonthTime = today.getTime() + (30 * 24 * 60 * 60 * 1000);
+                
+                const rows = [];
+                let yarinDivider = false;
+                let bugunDivider = false;
+                let gecmisDivider = false;
+
+                const farFutureNotes = visibleNoteListData.filter(n => {
+                  const d = new Date(n.date);
+                  d.setHours(0,0,0,0);
+                  const t = d.getTime();
+                  return t > farFutureTime && t <= oneMonthTime;
+                });
+
+                const displayNoteListAll = visibleNoteListData.filter(n => {
+                  const d = new Date(n.date);
+                  d.setHours(0,0,0,0);
+                  return d.getTime() <= farFutureTime;
+                });
+                
+                const displayNoteList = isInfiniteNoteScroll ? displayNoteListAll : displayNoteListAll.slice(0, noteListLimit);
+
+                if (farFutureNotes.length > 0) {
+                  rows.push(
+                    <tr key="divider-far-future" className="bg-light bg-opacity-10 divider-row cursor-pointer" onClick={() => setShowFarFuture(!showFarFuture)}>
+                      <td colSpan={100} className="py-2 px-4 border-y border-secondary border-opacity-10 shadow-inner">
+                        <div className="d-flex align-items-center justify-content-between gap-2">
+                          <div className="d-flex align-items-center gap-2">
+                            <Sparkles size={14} className="text-muted opacity-50" />
+                            <span className="text-muted fw-bold x-small opacity-75" style={{ letterSpacing: '0.05em' }}>
+                              4 GÜN SONRASI ({farFutureNotes.length})
+                            </span>
+                          </div>
+                          <div className="d-flex align-items-center gap-2 text-muted x-small">
+                            {showFarFuture ? 'Gizle' : 'Göster'}
+                            <ChevronDown size={14} style={{ transform: showFarFuture ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+
+                  if (showFarFuture) {
+                    farFutureNotes.forEach(note => {
+                      rows.push(
+                        <tr key={note.id || `far-holiday-${note.date}-${note.name}`} className={`align-middle cursor-pointer opacity-75 ${note.itemType === 'holiday' ? 'bg-warning bg-opacity-5' : ''}`} onClick={() => {
+                          if (note.itemType === 'note') handleEditNote(note);
+                          else if (note.itemType === 'holiday') return;
+                          else handleShowSummary(note);
+                        }}>
+                          <td className="ps-3" onClick={e => e.stopPropagation()}>
+                            {note.itemType === 'note' && (
+                              <Form.Check 
+                                type="checkbox"
+                                className="notion-checkbox custom-checkbox-sm"
+                                checked={selectedNoteIds.includes(note.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) setSelectedNoteIds([...selectedNoteIds, note.id]);
+                                  else setSelectedNoteIds(selectedNoteIds.filter(id => id !== note.id));
+                                }}
+                              />
+                            )}
+                          </td>
+                          {NOTE_PROPERTIES.filter(p => noteConfig.propertyVisibility[p.id] !== false).map(p => (
+                            <td key={p.id}>
+                              {p.id === 'date' && (
+                                <span className="small text-muted">
+                                  {formatDisplayDate(note.date, noteConfig.dateFormat)}
+                                </span>
+                              )}
+                              {p.id === 'title' && (
+                                <div className="d-flex align-items-center gap-2">
+                                  {note.itemType === 'note' && (
+                                    <div className="note-dot me-2" style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: NOTE_COLORS[note.color] || NOTE_COLORS.blue }}></div>
+                                  )}
+                                  {note.itemType === 'holiday' && <Flag size={14} className="text-warning" />}
+                                  {note.itemType === 'bank' && <Landmark size={14} className="text-danger opacity-50" />}
+                                  {note.itemType === 'finance' && <PieChart size={14} className="text-success opacity-50" />}
+                                  <span className="fw-bold text-truncate d-inline-block" style={{ maxWidth: '350px', verticalAlign: 'middle' }}>
+                                    {note.itemType === 'finance' 
+                                      ? (stocks.find(s => s.id === note.stockId)?.name || 'Bilinmeyen Hisse')
+                                      : (note.title || note.name || note.description || 'Başlıksız')}
+                                  </span>
+                                </div>
+                              )}
+                              {p.id === 'tags' && (
+                                <div className="d-flex flex-wrap gap-1">
+                                  {note.itemType === 'holiday' && <span className="badge bg-warning bg-opacity-10 text-warning rounded-pill px-2 py-0.5 fs-11">Resmi Tatil</span>}
+                                  {note.itemType === 'bank' && <span className="badge bg-danger bg-opacity-10 text-danger rounded-pill px-2 py-0.5 fs-11">{banks.find(b => b.id === note.bankId)?.name || 'Banka'}</span>}
+                                  {note.itemType === 'finance' && <span className="badge bg-success bg-opacity-10 text-success rounded-pill px-2 py-0.5 fs-11">{note.type}</span>}
+                                  {note.tags?.map((t, i) => {
+                                    const globalTag = globalNoteTags.find(gt => gt.name === t);
+                                    return (
+                                      <span key={i} style={getTagStyleByColor(globalTag?.color || 'Blue')} className="px-2 py-0.5 rounded-pill fs-11">
+                                        {t}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    });
+                  }
+                }
+                
+                displayNoteList.forEach((note, index) => {
+                  const noteDate = new Date(note.date);
+                  noteDate.setHours(0, 0, 0, 0);
+                  const time = noteDate.getTime();
+                  
+                  // Yaklaşan 4 Gün Divider (Replaces Tomorrow Divider)
+                  if (!yarinDivider && time > todayTime && time <= farFutureTime) {
+                    rows.push(
+                      <tr key="divider-tomorrow" className="bg-light bg-opacity-10 divider-row">
+                        <td colSpan={100} className="py-2 px-4 border-y border-success border-opacity-10 shadow-inner">
+                          <div className="d-flex align-items-center gap-2">
+                            <Calendar size={14} className="text-success opacity-50" />
+                            <span className="text-success fw-bold x-small opacity-75" style={{ letterSpacing: '0.05em' }}>YAKLAŞAN 4 GÜN</span>
+                            <div className="flex-grow-1 border-top border-success border-opacity-10 ms-2"></div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                    yarinDivider = true;
+                  }
+
+                  // Today Divider
+                  if (!bugunDivider && time === todayTime) {
+                    rows.push(
+                      <tr key="divider-today" className="bg-light bg-opacity-10 divider-row">
+                        <td colSpan={100} className="py-2 px-4 border-y border-primary border-opacity-10 shadow-inner">
+                          <div className="d-flex align-items-center gap-2">
+                            <Calendar size={14} className="text-primary opacity-50" />
+                            <span className="text-primary fw-bold x-small opacity-75" style={{ letterSpacing: '0.05em' }}>BUGÜN</span>
+                            <div className="flex-grow-1 border-top border-primary border-opacity-10 ms-2"></div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                    bugunDivider = true;
+                  }
+
+                  // Past Divider
+                  if (!gecmisDivider && time < todayTime) {
+                    rows.push(
+                      <tr key="divider-past" className="bg-light bg-opacity-10 divider-row">
+                        <td colSpan={100} className="py-2 px-4 border-y border-muted border-opacity-10 shadow-inner">
+                          <div className="d-flex align-items-center gap-2">
+                            <Calendar size={14} className="text-muted opacity-50" />
+                            <span className="text-muted fw-bold x-small opacity-75" style={{ letterSpacing: '0.05em' }}>GEÇMİŞ</span>
+                            <div className="flex-grow-1 border-top border-muted border-opacity-10 ms-2"></div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                    gecmisDivider = true;
+                  }
+                  
+                  rows.push(
+                    <tr key={note.id || `holiday-${note.date}-${note.name}`} className={`align-middle cursor-pointer ${note.itemType === 'holiday' ? 'bg-warning bg-opacity-5' : ''}`} onClick={() => {
+                      if (note.itemType === 'note') handleEditNote(note);
+                      else if (note.itemType === 'holiday') return;
+                      else handleShowSummary(note);
+                    }}>
+                      <td className="ps-3" onClick={e => e.stopPropagation()}>
+                        {note.itemType === 'note' && (
+                          <Form.Check 
+                            type="checkbox"
+                            className="notion-checkbox custom-checkbox-sm"
+                            checked={selectedNoteIds.includes(note.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedNoteIds([...selectedNoteIds, note.id]);
+                              else setSelectedNoteIds(selectedNoteIds.filter(id => id !== note.id));
+                            }}
+                          />
+                        )}
+                      </td>
+                      {NOTE_PROPERTIES.filter(p => noteConfig.propertyVisibility[p.id] !== false).map(p => (
+                        <td key={p.id}>
+                          {p.id === 'date' && (
+                            <span className={`small ${time === todayTime ? 'text-primary fw-bold' : time === tomorrowTime ? 'text-success fw-bold' : note.itemType === 'holiday' ? 'text-warning fw-bold' : 'text-muted'}`}>
+                              {formatDisplayDate(note.date, noteConfig.dateFormat)}
+                            </span>
+                          )}
+                          {p.id === 'title' && (
+                            <div className="d-flex align-items-center gap-2">
+                              {note.itemType === 'note' && (
+                                <div className="note-dot me-2" style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: NOTE_COLORS[note.color] || NOTE_COLORS.blue }}></div>
+                              )}
+                              {note.itemType === 'holiday' && <Flag size={14} className="text-warning" />}
+                              {note.itemType === 'bank' && <Landmark size={14} className="text-danger opacity-50" />}
+                              {note.itemType === 'finance' && <PieChart size={14} className="text-success opacity-50" />}
+                              <span className="fw-bold text-truncate d-inline-block" style={{ maxWidth: '350px', verticalAlign: 'middle' }}>
+                                {note.itemType === 'finance' 
+                                  ? (stocks.find(s => s.id === note.stockId)?.name || 'Bilinmeyen Hisse')
+                                  : (note.title || note.name || note.description || 'Başlıksız')}
+                              </span>
+                            </div>
+                          )}
+                          {p.id === 'tags' && (
+                            <div className="d-flex flex-wrap gap-1">
+                              {note.itemType === 'holiday' && <span className="badge bg-warning bg-opacity-10 text-warning rounded-pill px-2 py-0.5 fs-11">Resmi Tatil</span>}
+                              {note.itemType === 'bank' && (
+                                <>
+                                  <span className="badge bg-danger bg-opacity-10 text-danger rounded-pill px-2 py-0.5 fs-11">
+                                    {banks.find(b => b.id === note.bankId)?.name || 'Banka'}
+                                  </span>
+                                  {note.typeTagId && (() => {
+                                    const tTag = typeTags.find(t => t.id === note.typeTagId);
+                                    return tTag ? (
+                                      <span className="px-2 py-0.5 rounded-pill fs-11 ms-1" style={getTagStyleByColor(tTag.color || 'Gray')}>
+                                        {tTag.name}
+                                      </span>
+                                    ) : null;
+                                  })()}
+                                  {note.quickActions && note.quickActions.map((tagId, idx) => {
+                                    const qTag = quickActionTags.find(t => t.id === tagId);
+                                    return qTag ? (
+                                      <span key={idx} className="px-2 py-0.5 rounded-pill fs-11 ms-1" style={getTagStyleByColor(qTag.color || 'Gray')}>
+                                        {qTag.name}
+                                      </span>
+                                    ) : null;
+                                  })}
+                                </>
+                              )}
+                              {note.itemType === 'finance' && (
+                                <>
+                                  <span className="badge bg-success text-white rounded-pill px-2 py-0.5 fs-11">
+                                    {institutions.find(i => i.id === note.institutionId)?.name || 'Kurum'}
+                                  </span>
+                                  {note.type && (
+                                    <span className={`badge ${note.type === 'SATIŞ' ? 'bg-danger' : 'bg-success'} text-white rounded-pill px-2 py-0.5 fs-11 ms-1`}>
+                                      {note.type}
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                              {note.tags?.map((t, i) => {
+                                const globalTag = globalNoteTags.find(gt => gt.name === t);
+                                return (
+                                  <span key={i} style={getTagStyleByColor(globalTag?.color || 'Blue')} className="px-2 py-0.5 rounded-pill fs-11">
+                                    {t}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                });
+                return rows;
+              })()}
+              {filteredNoteListData.length === 0 && (
+                <tr>
+                  <td colSpan={100} className="text-center py-5 text-muted opacity-50">
+                    Not bulunamadı.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot className="border-top bg-light bg-opacity-10 position-sticky bottom-0" style={{ zIndex: 10, backgroundColor: 'var(--card-bg)' }}>
+              <tr>
+                <td colSpan={100} className="py-2 px-4 text-start">
+                  <span className="text-muted x-small fw-bold opacity-50 me-2">SUM</span>
+                  <span className="fw-bold fs-14">{filteredNoteListData.filter(n => n.itemType === 'note').length} Not</span>
+                </td>
+              </tr>
+            </tfoot>
+          </Table>
+        </Card>
+
+        {noteListLimit < filteredNoteListData.length && (
+          <div className="d-flex align-items-center gap-4 mt-2 mobile-scroll-x overflow-auto py-2">
+            <div className="d-flex align-items-center gap-2 py-2 px-3 hover-bg-light cursor-pointer text-muted small rounded-2"
+              style={{ width: 'fit-content', whiteSpace: 'nowrap' }}
+              onClick={() => setNoteListLimit(prev => prev + 100)}>
+              <Plus size={14} className="opacity-50" />
+              <span>Daha fazla göster</span>
+            </div>
+
+            <div className="d-flex align-items-center gap-2 text-muted x-small border-start ps-4">
+              <span className="opacity-50 fw-bold" style={{ whiteSpace: 'nowrap' }}>GÖRÜNÜM LİMİTİ:</span>
+              {[10, 20, 50, 100, 500].map(v => (
+                <span
+                  key={v}
+                  className={`cursor-pointer hover-text-primary px-2 py-1 rounded transition-all ${noteListLimit === v && !isInfiniteNoteScroll ? 'bg-primary bg-opacity-10 text-primary fw-bold' : ''}`}
+                  onClick={() => {
+                    setIsInfiniteNoteScroll(false);
+                    setNoteListLimit(v);
+                  }}
+                >
+                  {v}
+                </span>
+              ))}
+              <span
+                className={`cursor-pointer hover-text-primary px-2 py-1 rounded transition-all ${isInfiniteNoteScroll ? 'bg-primary bg-opacity-10 text-primary fw-bold' : ''}`}
+                onClick={() => {
+                  setIsInfiniteNoteScroll(true);
+                }}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                Hepsini Gör
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Render Views
@@ -1105,7 +2339,9 @@ const NotesPage = () => {
                         ) : item.itemType === 'bank' && banks.find(b => b.id === item.bankId)?.logo ? (
                           <img src={banks.find(b => b.id === item.bankId).logo} alt="" style={{ width: '12px', height: '12px', objectFit: 'contain', marginRight: '4px' }} />
                         ) : (
-                          <div className="note-text-dot"></div>
+                          <div className="note-text-dot" style={{ 
+                            backgroundColor: item.color === 'red' ? '#ff4d4d' : item.color === 'green' ? '#2ecc71' : item.color === 'yellow' ? '#f1c40f' : '#3498db' 
+                          }}></div>
                         )}
                         <span className="note-text-snippet fw-bold">
                           {item.itemType === 'finance' && <span className="item-type-badge me-1">{item.type}</span>}
@@ -1206,7 +2442,7 @@ const NotesPage = () => {
               >
                 <div className="week-col-mobile-header border-bottom mb-2 pb-1">
                   <span className="fw-bold fs-12 text-muted">{TR_DAYS[(date.getDay() + 6) % 7]}</span>
-                  <span className="ms-2 badge bg-light text-dark">{date.getDate()} {TR_MONTHS[date.getMonth()]}</span>
+                  <span className="ms-2 badge bg-secondary bg-opacity-10 text-muted">{date.getDate()} {TR_MONTHS[date.getMonth()]}</span>
                 </div>
                 {displayItems.map(item => {
                   if (item.itemType === 'stack') {
@@ -1218,13 +2454,13 @@ const NotesPage = () => {
                         key={item.stackKey} 
                         className={`week-note-card glass-card mb-2 stack-card ${item.type === 'bank' ? 'bank-card' : 'finance-card'}`} 
                         onClick={(e) => toggleStack(item.stackKey, e)}
-                        style={{ borderLeft: `4px solid ${item.type === 'bank' ? '#dc3545' : '#198754'}`, background: 'rgba(255,255,255,0.8)' }}
+                        style={{ borderLeft: `4px solid ${item.type === 'bank' ? '#dc3545' : '#198754'}`, background: 'var(--glass-bg)' }}
                       >
                         <div className="d-flex align-items-center gap-2">
                           {bank?.logo && <img src={bank.logo} alt="" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />}
-                          <div className="fw-bold fs-14 text-dark">
+                          <div className="fw-bold fs-14">
                             {bank?.name || stock?.name || 'Grup'} 
-                            <span className="ms-2 badge bg-light text-dark border fs-10">+{item.count} İşlem</span>
+                            <span className="ms-2 badge bg-secondary bg-opacity-10 text-muted border fs-10">+{item.count} İşlem</span>
                           </div>
                           <ChevronDown size={14} className="ms-auto opacity-50" />
                         </div>
@@ -1246,7 +2482,7 @@ const NotesPage = () => {
                       }}
                     >
                       <div className="d-flex justify-content-between align-items-start mb-1">
-                        <div className="fw-bold fs-14 text-dark d-flex align-items-center gap-2">
+                        <div className="fw-bold fs-14 d-flex align-items-center gap-2">
                           {item.itemType === 'holiday' && <Flag size={14} className="text-warning" />}
                           {item.itemType === 'finance' && <Badge bg="success" className="me-1 fs-9">{item.type}</Badge>}
                           {item.itemType === 'bank' && banks.find(b => b.id === item.bankId)?.logo && (
@@ -1269,7 +2505,11 @@ const NotesPage = () => {
                           {item.tags?.map((t, idx) => {
                             const globalTag = globalNoteTags.find(gt => gt.name === t);
                             return (
-                              <span key={idx} style={getTagStyleByColor(globalTag?.color || 'Blue')} className="fs-9 py-0.5 px-2 rounded fw-bold shadow-xs border-0 text-uppercase">
+                              <span 
+                                key={idx} 
+                                style={getTagStyleByColor(globalTag?.color || 'Blue')} 
+                                className="tag-badge d-flex align-items-center gap-1 py-1 px-2 border-0 animate-fade-in"
+                              >
                                 {t}
                               </span>
                             );
@@ -1350,7 +2590,7 @@ const NotesPage = () => {
                 return (
                   <div key={m} className="mini-month-v2" onClick={() => {
                     setCurrentDate(new Date(year, m, 1));
-                    setViewMode('month');
+                    updateViewMode('month');
                   }}>
                     <h3 className={`mini-month-title-v2 ${isCurrentMonth ? 'text-danger' : ''}`}>
                       {TR_MONTHS[m].substring(0, 3)}
@@ -1377,7 +2617,7 @@ const NotesPage = () => {
                             onClick={(e) => {
                               e.stopPropagation();
                               setCurrentDate(new Date(year, m, d));
-                              setViewMode('month');
+                              updateViewMode('month');
                               setHighlightedDate(dateStr);
                               setTimeout(() => setHighlightedDate(null), 3000);
                             }}
@@ -1503,9 +2743,10 @@ const NotesPage = () => {
 
         <div className="header-center">
           <div className="view-toggle glass-card">
-            <button className={`toggle-btn ${viewMode === 'week' ? 'active' : ''}`} onClick={() => setViewMode('week')}>Hafta</button>
-            <button className={`toggle-btn ${viewMode === 'month' ? 'active' : ''}`} onClick={() => setViewMode('month')}>Ay</button>
-            <button className={`toggle-btn ${viewMode === 'year' ? 'active' : ''}`} onClick={() => setViewMode('year')}>Yıl</button>
+            <button className={`toggle-btn ${viewMode === 'week' ? 'active' : ''}`} onClick={() => updateViewMode('week')}>Hafta</button>
+            <button className={`toggle-btn ${viewMode === 'month' ? 'active' : ''}`} onClick={() => updateViewMode('month')}>Ay</button>
+            <button className={`toggle-btn ${viewMode === 'year' ? 'active' : ''}`} onClick={() => updateViewMode('year')}>Yıl</button>
+            <button className={`toggle-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => updateViewMode('list')}>Liste</button>
           </div>
         </div>
 
@@ -1612,6 +2853,35 @@ const NotesPage = () => {
                       value={filters.text.value}
                       onChange={(e) => setFilters(f => ({ ...f, text: { ...f.text, value: e.target.value } }))}
                     />
+                  </div>
+                </div>
+
+                <div className="filter-group">
+                  <label>NOT RENKLERİ</label>
+                  <div className="d-flex align-items-center gap-2 pt-1">
+                    <div 
+                      onClick={() => setFilters(f => ({ ...f, color: 'all' }))}
+                      className={`cursor-pointer x-small fw-bold px-2 py-1 rounded-pill transition-all ${filters.color === 'all' ? 'bg-primary text-white shadow-sm' : 'bg-light text-muted opacity-75'}`}
+                    >
+                      Tümü
+                    </div>
+                    {Object.entries(NOTE_COLORS).map(([id, color]) => (
+                      <div 
+                        key={id}
+                        onClick={() => setFilters(f => ({ ...f, color: id }))}
+                        className={`cursor-pointer color-filter-dot transition-all ${filters.color === id ? 'active' : ''}`}
+                        style={{ 
+                          width: '20px', 
+                          height: '20px', 
+                          borderRadius: '50%', 
+                          backgroundColor: color,
+                          border: filters.color === id ? '2px solid white' : '1px solid rgba(0,0,0,0.1)',
+                          boxShadow: filters.color === id ? `0 0 0 2px ${color}` : 'none',
+                          transform: filters.color === id ? 'scale(1.1)' : 'scale(1)'
+                        }}
+                        title={id.charAt(0).toUpperCase() + id.slice(1)}
+                      />
+                    ))}
                   </div>
                 </div>
               </div>
@@ -1807,17 +3077,25 @@ const NotesPage = () => {
               <div className="filter-group flex-grow-1">
                 <label className="mb-2">NOT ETİKETLERİ</label>
                 <div className="filter-tags-scroll">
-                  {allTags.map(tag => (
-                    <Badge 
-                      key={tag} 
-                      bg={filters.tags.includes(tag) ? 'primary' : 'light'} 
-                      className={`cursor-pointer tag-filter-badge ${filters.tags.includes(tag) ? 'text-white' : 'text-dark border'}`}
-                      onClick={() => toggleFilterTag(tag)}
-                    >
-                      {filters.tags.includes(tag) && <Check size={10} className="me-1" />}
-                      {tag}
-                    </Badge>
-                  ))}
+                  {allTags.map(tag => {
+                    const globalTag = globalNoteTags.find(gt => gt.name === tag);
+                    const isSelected = filters.tags.includes(tag);
+                    return (
+                      <span 
+                        key={tag} 
+                        className={`cursor-pointer tag-filter-badge transition-all d-inline-flex align-items-center ${isSelected ? 'opacity-100 shadow-sm fw-bold border-primary' : 'opacity-60'}`}
+                        style={{
+                          ...getTagStyleByColor(globalTag?.color || 'Gray'),
+                          border: isSelected ? '1px solid currentColor' : '1px solid transparent',
+                          transform: isSelected ? 'scale(1.05)' : 'scale(1)'
+                        }}
+                        onClick={() => toggleFilterTag(tag)}
+                      >
+                        {isSelected && <Check size={10} className="me-1" />}
+                        {tag}
+                      </span>
+                    );
+                  })}
                   {allTags.length === 0 && <span className="text-muted fs-12">Etiket bulunamadı</span>}
                 </div>
               </div>
@@ -1872,6 +3150,12 @@ const NotesPage = () => {
       </Collapse>
 
       <div className="notes-content d-flex flex-column">
+        {viewMode === null && (
+          <div className="flex-grow-1 d-flex align-items-center justify-content-center opacity-50">
+            <div className="spinner-border spinner-border-sm me-2" role="status"></div>
+            <span className="small fw-bold">Yükleniyor...</span>
+          </div>
+        )}
         {viewMode === 'month' && (
           <div className="d-lg-none w-100">
             {Array.from({ length: 12 }, (_, i) => {
@@ -1887,20 +3171,42 @@ const NotesPage = () => {
             })}
           </div>
         )}
+        {viewMode === 'list' && renderListView()}
+        {viewMode === 'week' && renderWeekView()}
+        {viewMode === 'year' && renderYearView()}
+        
         <div className="d-none d-lg-block w-100">
           {viewMode === 'month' && renderMonthView()}
         </div>
-        {viewMode === 'week' && renderWeekView()}
-        {viewMode === 'year' && renderYearView()}
       </div>
 
       <Modal show={showModal} onHide={() => setShowModal(false)} centered className="notion-modal mobile-fullscreen-modal" backdropClassName="notion-modal-backdrop">
         <div className="notes-modal-header-container">
           <div className="modal-title-date">
             <CalendarIcon size={16} className="text-primary flex-shrink-0" />
-            <span className="fw-bold fs-15 text-dark text-truncate">
-              {selectedDate && `${selectedDate.getDate()} ${TR_MONTHS[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`}
-            </span>
+            <div className="position-relative d-inline-flex align-items-center">
+              <span 
+                className="fw-bold fs-15 text-dark text-truncate cursor-pointer hover-text-primary transition-all p-1 px-2 rounded hover-bg-light d-flex align-items-center gap-1"
+                onClick={() => dateInputRef.current && dateInputRef.current.showPicker()}
+                style={{ border: '1px solid transparent' }}
+              >
+                {selectedDate && `${selectedDate.getDate()} ${TR_MONTHS[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`}
+                <ChevronDown size={14} className="opacity-50" />
+              </span>
+              <input 
+                type="date"
+                ref={dateInputRef}
+                className="position-absolute opacity-0 pointer-events-none"
+                style={{ left: 0, top: 0, width: '100%', height: '100%', visibility: 'hidden' }}
+                value={selectedDate ? new Date(selectedDate.getTime() - selectedDate.getTimezoneOffset() * 60000).toISOString().split('T')[0] : ''}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    const [y, m, d] = e.target.value.split('-');
+                    setSelectedDate(new Date(y, m - 1, d));
+                  }
+                }}
+              />
+            </div>
           </div>
           
           <div className="modal-header-actions">
@@ -1931,64 +3237,91 @@ const NotesPage = () => {
             <div className="d-flex align-items-center gap-2 mb-2">
               <Type size={14} className="text-muted" />
               <Form.Label className="text-muted small fw-bold mb-0 uppercase-tracking">BAŞLIK</Form.Label>
+              <div className="ms-auto d-flex gap-2">
+                {[
+                  { id: 'blue', color: NOTE_COLORS.blue },
+                  { id: 'red', color: NOTE_COLORS.red },
+                  { id: 'green', color: NOTE_COLORS.green },
+                  { id: 'yellow', color: NOTE_COLORS.yellow }
+                ].map(c => (
+                  <div 
+                    key={c.id}
+                    onClick={() => setNoteColor(c.id)}
+                    className={`color-picker-dot ${noteColor === c.id ? 'active' : ''}`}
+                    style={{ 
+                      width: '14px', 
+                      height: '14px', 
+                      borderRadius: '50%', 
+                      backgroundColor: c.color,
+                      cursor: 'pointer',
+                      border: noteColor === c.id ? '2px solid white' : 'none',
+                      boxShadow: noteColor === c.id ? '0 0 0 1px #ccc' : 'none',
+                      transition: 'all 0.2s ease'
+                    }}
+                    title={c.id.charAt(0).toUpperCase() + c.id.slice(1)}
+                  />
+                ))}
+              </div>
             </div>
-            <div className="position-relative">
-              <Form.Control 
-                type="text"
-                placeholder="Not başlığı girin..."
-                className="notion-title-input border-0 bg-transparent p-0 fs-20 fw-bold w-100"
-                value={noteTitle}
-                onChange={(e) => {
-                  setNoteTitle(e.target.value);
-                  setShowSimilarNotes(true);
-                }}
-                onKeyDown={handleTitleKeyDown}
-                autoFocus
-              />
+            <Dropdown show={similarNotes.length > 0 && showSimilarNotes} onToggle={setShowSimilarNotes} className="w-100">
+              <Dropdown.Toggle as="div" className="w-100 p-0 m-0 border-0 bg-transparent shadow-none dropdown-no-caret">
+                <Form.Control 
+                  type="text"
+                  placeholder="Not başlığı girin..."
+                  className="notion-title-input border-0 bg-transparent p-0 fs-20 fw-bold w-100"
+                  value={noteTitle}
+                  onChange={(e) => {
+                    setNoteTitle(e.target.value);
+                    setShowSimilarNotes(true);
+                  }}
+                  onFocus={() => setShowSimilarNotes(true)}
+                  onKeyDown={handleTitleKeyDown}
+                />
+              </Dropdown.Toggle>
               
-              {similarNotes.length > 0 && showSimilarNotes && (
-                <div className="similar-notes-dropdown glass-card shadow-lg position-absolute w-100 mt-2 z-1000 p-1">
-                  <div className="text-muted x-small fw-bold px-3 py-2 opacity-50 border-bottom mb-1">VAROLAN BAŞLIKLAR</div>
-                  {similarNotes.map(note => (
-                    <div 
-                      key={note.id} 
-                      className="suggestion-item p-2 px-3 rounded cursor-pointer fs-13 d-flex align-items-center gap-2" 
-                      onClick={() => {
-                        setNoteTitle(note.title);
-                        setNoteTags(note.tags || []);
-                        setShowSimilarNotes(false);
-                      }}
-                    >
-                      <Search size={14} className="opacity-50" />
-                      <span className="fw-medium">{note.title}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+              <Dropdown.Menu className="glass-card shadow-lg w-100 border-0 p-1 mt-2 animate-fade-in" style={{ maxHeight: '300px', overflowY: 'auto', zIndex: 1060 }}>
+                <div className="text-muted x-small fw-bold px-3 py-2 opacity-50 border-bottom mb-1">VAROLAN BAŞLIKLAR</div>
+                {similarNotes.map(note => (
+                  <Dropdown.Item 
+                    key={note.id} 
+                    className="suggestion-item p-2 px-3 rounded cursor-pointer fs-13 d-flex align-items-center gap-2 border-0 bg-transparent" 
+                    onClick={() => {
+                      setNoteTitle(note.title);
+                      setNoteTags(note.tags || []);
+                      setNoteColor(note.color || 'blue');
+                      setShowSimilarNotes(false);
+                    }}
+                  >
+                    <Search size={14} className="opacity-50" />
+                    <span className="fw-medium">{note.title}</span>
+                  </Dropdown.Item>
+                ))}
+              </Dropdown.Menu>
+            </Dropdown>
           </Form.Group>
 
           <Form.Group className="mb-4">
-            <div className="d-flex align-items-center justify-content-between mb-2 sticky-content-toolbar bg-white py-2 px-1">
+            <div className="d-flex align-items-center justify-content-between mb-2 bg-transparent py-2 px-1">
               <div className="d-flex align-items-center gap-2">
                 <AlignLeft size={14} className="text-muted" />
                 <Form.Label className="text-muted small fw-bold mb-0 uppercase-tracking">İÇERİK</Form.Label>
               </div>
-              <div className="d-flex align-items-center gap-1 bg-light rounded-pill px-2 py-1 format-toolbar shadow-sm">
-                <button type="button" className={`btn btn-link p-1 border-0 shadow-none ${activeFormats.bold ? 'text-primary bg-white shadow-sm scale-110' : 'text-muted hover-text-dark'}`} onClick={() => applyFormatting('bold')} title="Kalın">
-                  <Bold size={14} />
+              <div className="d-flex align-items-center gap-1">
+                <button 
+                  type="button" 
+                  className="btn btn-link p-1 text-muted hover-text-primary border-0 shadow-none transition-all" 
+                  onClick={handleUndo} 
+                  title="Geri Al"
+                >
+                  <Undo size={14} />
                 </button>
-                <button type="button" className={`btn btn-link p-1 border-0 shadow-none ${activeFormats.italic ? 'text-primary bg-white shadow-sm scale-110' : 'text-muted hover-text-dark'}`} onClick={() => applyFormatting('italic')} title="İtalik">
-                  <Italic size={14} />
-                </button>
-                <button type="button" className={`btn btn-link p-1 border-0 shadow-none ${activeFormats.underline ? 'text-primary bg-white shadow-sm scale-110' : 'text-muted hover-text-dark'}`} onClick={() => applyFormatting('underline')} title="Altı Çizili">
-                  <Underline size={14} />
-                </button>
-                <button type="button" className={`btn btn-link p-1 border-0 shadow-none ${activeFormats.strikethrough ? 'text-primary bg-white shadow-sm scale-110' : 'text-muted hover-text-dark'}`} onClick={() => applyFormatting('strikethrough')} title="Üstü Çizili">
-                  <Strikethrough size={14} />
-                </button>
-                <button type="button" className={`btn btn-link p-1 border-0 shadow-none ${activeFormats.quote ? 'text-primary bg-white shadow-sm scale-110' : 'text-muted hover-text-dark'}`} onClick={() => applyFormatting('quote')} title="Alıntı">
-                  <Quote size={14} />
+                <button 
+                  type="button" 
+                  className="btn btn-link p-1 text-muted hover-text-primary border-0 shadow-none transition-all" 
+                  onClick={handleRedo} 
+                  title="İleri Al"
+                >
+                  <Redo size={14} />
                 </button>
               </div>
             </div>
@@ -1999,8 +3332,22 @@ const NotesPage = () => {
                 setNoteText(e.currentTarget.innerHTML);
                 checkActiveFormats();
               }}
-              onKeyUp={checkActiveFormats}
-              onMouseUp={checkActiveFormats}
+              onKeyUp={() => {
+                checkActiveFormats();
+                handleTextSelection();
+              }}
+              onMouseUp={() => {
+                checkActiveFormats();
+                handleTextSelection();
+              }}
+              onBlur={() => {
+                // Delay hiding to allow clicking toolbar buttons
+                setTimeout(() => {
+                  if (!document.activeElement?.closest('.floating-format-toolbar')) {
+                    setFloatingToolbar(prev => ({ ...prev, show: false }));
+                  }
+                }, 200);
+              }}
               className="notion-text-input border-0 bg-transparent p-0 fs-15"
               style={{ 
                 outline: 'none', 
@@ -2031,39 +3378,125 @@ const NotesPage = () => {
                   </span>
                 );
               })}
-              <div className="flex-grow-1 position-relative">
-                <input 
-                  type="text" 
-                  className="tag-input border-0 bg-transparent w-100"
-                  placeholder="Etiket ekle..."
-                  value={tagInput}
-                  onChange={(e) => {
-                    setTagInput(e.target.value);
-                    setShowTagSuggestions(true);
-                  }}
-                  onKeyDown={(e) => e.key === 'Enter' && addTag()}
-                  onFocus={() => setShowTagSuggestions(true)}
-                  style={{ outline: 'none', fontSize: '14px' }}
-                />
-                {showTagSuggestions && filteredSuggestions.length > 0 && (
-                  <div className="tag-suggestions-menu glass-card shadow-lg position-absolute w-100 bottom-100 mb-2 p-1 z-1000">
+              <Dropdown show={showTagSuggestions} onToggle={setShowTagSuggestions} className="flex-grow-1">
+                <Dropdown.Toggle as="div" className="w-100 p-0 m-0 border-0 bg-transparent shadow-none dropdown-no-caret">
+                  <input 
+                    type="text" 
+                    className="tag-input border-0 bg-transparent w-100"
+                    placeholder="Etiket ekle..."
+                    value={tagInput}
+                    onChange={(e) => {
+                      setTagInput(e.target.value);
+                      setShowTagSuggestions(true);
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && addTag()}
+                    onFocus={() => setShowTagSuggestions(true)}
+                    style={{ outline: 'none', fontSize: '14px' }}
+                  />
+                </Dropdown.Toggle>
+                
+                {filteredSuggestions.length > 0 && (
+                  <Dropdown.Menu 
+                    className="glass-card shadow-lg w-100 border-0 p-1 animate-fade-in" 
+                    style={{ 
+                      maxHeight: '200px', 
+                      overflowY: 'auto',
+                      position: 'absolute',
+                      bottom: '100%',
+                      marginBottom: '8px',
+                      zIndex: 1060
+                    }}
+                  >
+                    <div className="px-2 py-1 text-muted x-small fw-bold opacity-50 border-bottom mb-1">VAROLAN ETİKETLER</div>
                     {filteredSuggestions.map((tagName, idx) => {
                       const globalTag = globalNoteTags.find(gt => gt.name === tagName);
                       return (
-                        <div key={idx} className="suggestion-item p-2 rounded cursor-pointer fs-13" onClick={() => addTag(tagName)}>
-                          <span style={getTagStyleByColor(globalTag?.color || 'Blue')} className="px-2 py-0.5 rounded shadow-xs">
+                        <Dropdown.Item 
+                          key={idx} 
+                          className="suggestion-item p-2 rounded cursor-pointer border-0 bg-transparent" 
+                          onClick={() => addTag(tagName)}
+                        >
+                          <span style={getTagStyleByColor(globalTag?.color || 'Blue')} className="px-2 py-1 rounded shadow-xs fs-13 fw-medium">
                             {tagName}
                           </span>
-                        </div>
+                        </Dropdown.Item>
                       );
                     })}
-                  </div>
+                  </Dropdown.Menu>
                 )}
-              </div>
+              </Dropdown>
             </div>
           </Form.Group>
         </Modal.Body>
       </Modal>
+
+      {/* Floating Formatting Toolbar */}
+      {floatingToolbar.show && createPortal(
+        <div 
+          className="floating-format-toolbar glass-card shadow-lg animate-scale-in"
+          style={{ 
+            position: 'absolute',
+            top: `${floatingToolbar.y}px`,
+            left: `${floatingToolbar.x}px`,
+            transform: 'translate(-50%, -100%)',
+            zIndex: 11000, // Above modal
+            display: 'flex',
+            alignItems: 'center',
+            gap: '2px',
+            borderRadius: '12px',
+            background: 'var(--glass-bg, rgba(255, 255, 255, 0.95))',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid var(--glass-border, rgba(0,0,0,0.1))',
+            padding: '4px',
+            pointerEvents: 'auto'
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {/* Text Styles */}
+          <button type="button" className={`btn btn-link p-2 border-0 shadow-none rounded-pill transition-all ${activeFormats.p ? 'text-primary bg-primary bg-opacity-10' : 'text-muted hover-bg-light'}`} onClick={() => applyFormatting('p')} title="Paragraf">
+            <Pilcrow size={16} />
+          </button>
+          <button type="button" className={`btn btn-link p-2 border-0 shadow-none rounded-pill transition-all ${activeFormats.h1 ? 'text-primary bg-primary bg-opacity-10' : 'text-muted hover-bg-light'}`} onClick={() => applyFormatting('h1')} title="Başlık 1">
+            <Heading1 size={16} />
+          </button>
+          <button type="button" className={`btn btn-link p-2 border-0 shadow-none rounded-pill transition-all ${activeFormats.h2 ? 'text-primary bg-primary bg-opacity-10' : 'text-muted hover-bg-light'}`} onClick={() => applyFormatting('h2')} title="Başlık 2">
+            <Heading2 size={16} />
+          </button>
+          <button type="button" className={`btn btn-link p-2 border-0 shadow-none rounded-pill transition-all ${activeFormats.h3 ? 'text-primary bg-primary bg-opacity-10' : 'text-muted hover-bg-light'}`} onClick={() => applyFormatting('h3')} title="Başlık 3">
+            <Heading3 size={16} />
+          </button>
+          
+          <div className="vr mx-1 my-auto opacity-10" style={{ height: '20px' }} />
+
+          {/* Basic Formatting */}
+          <button type="button" className={`btn btn-link p-2 border-0 shadow-none rounded-pill transition-all ${activeFormats.bold ? 'text-primary bg-primary bg-opacity-10' : 'text-muted hover-bg-light'}`} onClick={() => applyFormatting('bold')} title="Kalın">
+            <Bold size={16} />
+          </button>
+          <button type="button" className={`btn btn-link p-2 border-0 shadow-none rounded-pill transition-all ${activeFormats.italic ? 'text-primary bg-primary bg-opacity-10' : 'text-muted hover-bg-light'}`} onClick={() => applyFormatting('italic')} title="İtalik">
+            <Italic size={16} />
+          </button>
+          <button type="button" className={`btn btn-link p-2 border-0 shadow-none rounded-pill transition-all ${activeFormats.underline ? 'text-primary bg-primary bg-opacity-10' : 'text-muted hover-bg-light'}`} onClick={() => applyFormatting('underline')} title="Altı Çizili">
+            <Underline size={16} />
+          </button>
+          <button type="button" className={`btn btn-link p-2 border-0 shadow-none rounded-pill transition-all ${activeFormats.strikethrough ? 'text-primary bg-primary bg-opacity-10' : 'text-muted hover-bg-light'}`} onClick={() => applyFormatting('strikethrough')} title="Üstü Çizili">
+            <Strikethrough size={16} />
+          </button>
+
+          <div className="vr mx-1 my-auto opacity-10" style={{ height: '20px' }} />
+
+          {/* Lists and Quote */}
+          <button type="button" className={`btn btn-link p-2 border-0 shadow-none rounded-pill transition-all ${activeFormats.ul ? 'text-primary bg-primary bg-opacity-10' : 'text-muted hover-bg-light'}`} onClick={() => applyFormatting('ul')} title="Noktalı Liste">
+            <List size={16} />
+          </button>
+          <button type="button" className={`btn btn-link p-2 border-0 shadow-none rounded-pill transition-all ${activeFormats.ol ? 'text-primary bg-primary bg-opacity-10' : 'text-muted hover-bg-light'}`} onClick={() => applyFormatting('ol')} title="Numaralı Liste">
+            <ListOrdered size={16} />
+          </button>
+          <button type="button" className={`btn btn-link p-2 border-0 shadow-none rounded-pill transition-all ${activeFormats.quote ? 'text-primary bg-primary bg-opacity-10' : 'text-muted hover-bg-light'}`} onClick={() => applyFormatting('quote')} title="Alıntı">
+            <Quote size={16} />
+          </button>
+        </div>,
+        document.body
+      )}
 
       {/* Summary Modal for Transactions */}
       <Modal show={showSummaryModal} onHide={() => setShowSummaryModal(false)} centered className="notion-modal" backdropClassName="notion-modal-backdrop">
@@ -2421,7 +3854,7 @@ const NotesPage = () => {
         .reset-filter-btn { background: transparent; border: none; color: var(--text-muted); font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 5px; padding: 8px 15px; border-radius: 10px; transition: all 0.2s; }
         .reset-filter-btn:hover { background: rgba(0,0,0,0.05); color: var(--text-main); }
 
-        .notes-content { flex-grow: 1; overflow: hidden; display: flex; z-index: 1; }
+        .notes-content { flex-grow: 1; display: flex; z-index: 1; }
         .calendar-grid { width: 100%; display: flex; flex-direction: column; background: var(--glass-bg); backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 20px; height: 100%; }
         .calendar-header-row {
           grid-template-columns: repeat(7, 1fr) !important;
@@ -2446,7 +3879,7 @@ const NotesPage = () => {
           border: none !important;
           border-bottom: 1px solid rgba(0, 0, 0, 0.03) !important;
           padding: 4px !important;
-          background: white !important;
+          background: var(--glass-bg) !important;
           box-sizing: border-box !important;
         }
         [data-theme="dark"] .calendar-day-cell { border-right: 1px solid rgba(255,255,255,0.1); border-bottom: 1px solid rgba(255,255,255,0.1); }
@@ -2526,7 +3959,7 @@ const NotesPage = () => {
         .hover-bg-danger:hover { background-color: #dc3545 !important; color: white !important; }
         .hover-opacity-100:hover { opacity: 1 !important; }
         .uppercase-tracking { text-transform: uppercase; letter-spacing: 0.1em; font-size: 9px !important; opacity: 0.6; }
-        .mobile-month-title h2 { font-size: 32px !important; color: #000; }
+        .mobile-month-title h2 { font-size: 32px !important; color: var(--text-main); }
         .calendar-grid {
           width: 100% !important;
           display: block !important;
@@ -2573,12 +4006,12 @@ const NotesPage = () => {
             justify-content: space-between !important;
             flex-wrap: nowrap !important;
             padding: 12px 16px !important;
-            background: white !important;
+            background: var(--glass-bg) !important;
             position: sticky !important;
             top: 0 !important;
             z-index: 1050 !important;
             width: 100% !important;
-            border-bottom: 1px solid #eee !important;
+            border-bottom: 1px solid var(--glass-border) !important;
           }
 
           .modal-title-date {
@@ -2613,8 +4046,8 @@ const NotesPage = () => {
             border-radius: 20px !important;
             font-size: 11px !important;
             font-weight: 600 !important;
-            background-color: #f8f9fa !important;
-            color: #6c757d !important;
+            background-color: rgba(0,0,0,0.05) !important;
+            color: var(--text-muted) !important;
             height: 32px !important;
             white-space: nowrap !important;
           }
@@ -2649,20 +4082,24 @@ const NotesPage = () => {
           border: 1px solid rgba(255,255,255,0.08) !important;
           box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
         }
-        [data-theme="dark"] .notion-title-input { color: #ffffff !important; }
+        [data-theme="dark"] .notion-title-input, 
         [data-theme="dark"] .notion-text-input { 
-          background: rgba(255,255,255,0.02) !important; 
-          color: #e0e0e0 !important;
-          border: 1px solid rgba(255,255,255,0.05) !important;
+          background: transparent !important; 
+          color: #ffffff !important;
+          border: 1px solid rgba(255,255,255,0.1) !important;
+        }
+        [data-theme="dark"] .notion-title-input::placeholder,
+        [data-theme="dark"] .notion-text-input::placeholder {
+          color: rgba(255,255,255,0.3) !important;
         }
         [data-theme="dark"] .glass-card { 
           background: rgba(30,30,30,0.4) !important; 
           border-color: rgba(255,255,255,0.08) !important; 
         }
         [data-theme="dark"] .format-toolbar { 
-          background: rgba(40,40,40,0.8) !important; 
+          background: transparent !important; 
           border: 1px solid rgba(255,255,255,0.1) !important;
-          backdrop-filter: blur(10px);
+          backdrop-filter: none !important;
         }
         [data-theme="dark"] .format-btn { color: rgba(255,255,255,0.6); }
         [data-theme="dark"] .format-btn:hover { background: rgba(255,255,255,0.05); color: #fff; }
@@ -2670,9 +4107,16 @@ const NotesPage = () => {
         [data-theme="dark"] .uppercase-tracking { color: rgba(255,255,255,0.4) !important; }
         [data-theme="dark"] .btn-light { background: rgba(255,255,255,0.05); border: none; color: #ccc; }
         [data-theme="dark"] .btn-light:hover { background: rgba(255,255,255,0.1); color: #fff; }
-        [data-theme="dark"] .tags-input-container { background: rgba(255,255,255,0.02) !important; border: 1px solid rgba(255,255,255,0.05) !important; }
-        [data-theme="dark"] .tags-input-container input { color: #ffffff !important; }
+        [data-theme="dark"] .tags-input-container { 
+          background: transparent !important; 
+          border: 1px solid rgba(255,255,255,0.1) !important; 
+        }
+        [data-theme="dark"] .tags-input-container input { color: #ffffff !important; background: transparent !important; }
         [data-theme="dark"] .notion-dropdown-menu { background: #1a1a1a !important; border-color: rgba(255,255,255,0.1) !important; }
+        [data-theme="dark"] .sticky-content-toolbar { 
+          background: transparent !important; 
+          border-bottom: 1px solid rgba(255,255,255,0.1) !important;
+        }
 
         /* Year View Dark Mode */
         [data-theme="dark"] .mini-month { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); }
@@ -2704,7 +4148,7 @@ const NotesPage = () => {
             height: calc(100vh - 160px) !important;
             overflow-y: auto !important;
             padding: 12px !important;
-            background: white !important;
+            background: var(--glass-bg) !important;
           }
 
           @media (min-width: 992px) {
@@ -2718,8 +4162,8 @@ const NotesPage = () => {
           .mobile-week-header, .mobile-month-days-header {
             display: flex !important;
             justify-content: flex-start !important;
-            background: #f8f9fa !important;
-            border-bottom: 1px solid #eee !important;
+            background: var(--glass-bg) !important;
+            border-bottom: 1px solid var(--glass-border) !important;
             position: sticky !important;
             top: 0 !important;
             z-index: 20 !important;
@@ -2766,7 +4210,7 @@ const NotesPage = () => {
 
           .year-divider h2 {
             font-family: 'Inter', sans-serif !important;
-            color: #000 !important;
+            color: var(--text-main) !important;
             margin-bottom: 0 !important;
           }
 
@@ -2775,7 +4219,7 @@ const NotesPage = () => {
             grid-template-columns: repeat(3, 1fr) !important;
             gap: 24px !important;
             padding: 20px !important;
-            background: white !important;
+            background: var(--glass-bg) !important;
           }
 
           .mini-month-v2 {
@@ -2787,7 +4231,7 @@ const NotesPage = () => {
             font-size: 24px !important;
             font-weight: 800 !important;
             margin-bottom: 12px !important;
-            color: #000 !important;
+            color: var(--text-main) !important;
           }
 
           .mini-days-grid-v2 {
@@ -2811,7 +4255,7 @@ const NotesPage = () => {
           }
 
           .mini-day-v2.weekend-cell {
-            background-color: #f5f5f5 !important;
+            background-color: rgba(0,0,0,0.02) !important;
             color: #888 !important;
           }
 
@@ -2820,7 +4264,7 @@ const NotesPage = () => {
             font-size: 11px !important;
             text-align: center !important;
             padding: 2px 0 6px 0 !important;
-            color: #333 !important;
+            color: var(--text-main) !important;
             border-radius: 8px !important;
             display: flex !important;
             flex-direction: column !important;
@@ -2842,7 +4286,7 @@ const NotesPage = () => {
             border-radius: 50% !important;
           }
 
-          .note-dot { background-color: #007bff !important; }
+          .note-dot { background-color: #3498db; }
           .bank-dot { background-color: #dc3545 !important; }
           .finance-dot { background-color: #198754 !important; }
           .holiday-dot { background-color: #ffc107 !important; }
@@ -2886,10 +4330,25 @@ const NotesPage = () => {
             }
           }
           
-          .active-day-highlight .week-day-number {
+          [data-theme="dark"] .active-day-highlight .week-day-number {
             color: #007bff !important;
             font-weight: 800 !important;
           }
+
+          /* Dark Mode Overrides for V2 and Mobile components */
+          [data-theme="dark"] .mobile-week-day-col { background: #1a1a1a !important; border-right-color: rgba(255,255,255,0.05) !important; }
+          [data-theme="dark"] .mobile-week-header, 
+          [data-theme="dark"] .mobile-month-days-header { background: #222 !important; border-bottom-color: rgba(255,255,255,0.05) !important; }
+          [data-theme="dark"] .year-view-grid-v2 { background: #121212 !important; }
+          [data-theme="dark"] .mini-month-title-v2 { color: #fff !important; }
+          [data-theme="dark"] .mini-day-v2 { color: #ccc !important; }
+          [data-theme="dark"] .mini-day-v2.weekend-cell { background-color: rgba(255,255,255,0.02) !important; color: #666 !important; }
+          [data-theme="dark"] .year-divider h2 { color: #fff !important; }
+          [data-theme="dark"] .mobile-month-title h2 { color: #fff !important; }
+          [data-theme="dark"] .notes-modal-header-container { background: #1a1a1a !important; border-bottom-color: rgba(255,255,255,0.05) !important; }
+          [data-theme="dark"] .mini-day-name-v2 { color: #555 !important; }
+          [data-theme="dark"] .week-col-mobile-header { color: #eee !important; }
+          [data-theme="dark"] .year-view-scroll-container { background: #121212 !important; }
 
           .highlight-day { background: rgba(255, 77, 77, 0.2) !important; transition: background 0.3s ease; z-index: 10; }
 
@@ -2904,22 +4363,29 @@ const NotesPage = () => {
 
           <div className="d-flex align-items-center bg-light rounded-3 px-1">
             <button 
+              className={`nav-btn p-0 border-0 bg-transparent ${viewMode === 'list' ? 'text-primary' : 'text-muted opacity-50'}`} 
+              onClick={() => updateViewMode('list')}
+              style={{ width: '28px' }}
+            >
+              <ListIcon size={15} />
+            </button>
+            <button 
               className={`nav-btn p-0 border-0 bg-transparent ${viewMode === 'week' ? 'text-primary' : 'text-muted opacity-50'}`} 
-              onClick={() => setViewMode('week')}
+              onClick={() => updateViewMode('week')}
               style={{ width: '28px' }}
             >
               <Columns size={15} />
             </button>
             <button 
               className={`nav-btn p-0 border-0 bg-transparent ${viewMode === 'month' ? 'text-primary' : 'text-muted opacity-50'}`} 
-              onClick={() => setViewMode('month')}
+              onClick={() => updateViewMode('month')}
               style={{ width: '28px' }}
             >
               <CalendarIcon size={15} />
             </button>
             <button 
               className={`nav-btn p-0 border-0 bg-transparent ${viewMode === 'year' ? 'text-primary' : 'text-muted opacity-50'}`} 
-              onClick={() => setViewMode('year')}
+              onClick={() => updateViewMode('year')}
               style={{ width: '28px' }}
             >
               <Layers size={15} />

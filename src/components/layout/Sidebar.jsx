@@ -85,12 +85,12 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
       {/* Toggle Button */}
       <button
         className="btn btn-link text-dark position-absolute sidebar-toggle-btn d-none d-lg-flex"
-        style={{ 
-          right: '12px', 
-          top: '12px', 
-          zIndex: 1001, 
-          background: 'rgba(0,0,0,0.03)', 
-          borderRadius: '8px', 
+        style={{
+          right: '12px',
+          top: '12px',
+          zIndex: 1001,
+          background: 'rgba(0,0,0,0.03)',
+          borderRadius: '8px',
           padding: '6px',
           transition: 'all 0.2s'
         }}
@@ -144,7 +144,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
             <div className="overflow-hidden">
               <div className="fw-bold small d-flex align-items-center justify-content-between w-100">
                 <span className="text-truncate">{user?.displayName}</span>
-                <span className="text-muted smaller opacity-50 fw-normal ms-2" style={{ fontSize: '11px' }}>v1.0.5</span>
+                <span className="text-muted smaller opacity-50 fw-normal ms-2" style={{ fontSize: '11px' }}>v1.0.6</span>
               </div>
               <div className="text-truncate text-muted smaller" style={{ fontSize: '11px' }}>{user?.email}</div>
             </div>
