@@ -207,6 +207,14 @@
   background: rgba(0, 0, 0, 0.02);
 }
 
+.search-result-item.is-past {
+  opacity: 0.55;
+}
+
+.search-result-item.is-past:hover {
+  opacity: 0.85;
+}
+
 /* Calendar Grid */
 .calendar-grid {
   display: flex;
@@ -273,7 +281,7 @@
 }
 
 .calendar-day-cell.today {
-  background: rgba(62, 100, 255, 0.03);
+  background: rgba(62, 100, 255, 0.06);
 }
 
 .day-number {
@@ -294,21 +302,76 @@
   gap: 3px;
   flex: 1;
   min-width: 0;
+  overflow: unset !important;
 }
 
 .day-note-preview {
-  font-size: 10px;
-  padding: 3px 6px;
+  font-size: 9px;
+  padding: 1px !important;
+  height: 25px !important;
   border-radius: 5px;
   background: rgba(0, 0, 0, 0.04);
   white-space: nowrap;
-  overflow: hidden;
+  overflow: visible !important;
   text-overflow: ellipsis;
   display: flex;
   align-items: center;
   gap: 4px;
   width: 100%;
   min-width: 0;
+  position: relative !important;
+}
+
+.day-note-preview .repeat-icon {
+  position: unset !important;
+  z-index: 2;
+}
+
+.day-note-preview .note-text-dot {
+  position: unset !important;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid white;
+  z-index: 2;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.day-note-preview .holiday-flag {
+  position: absolute !important;
+  top: -5px !important;
+  left: -3px !important;
+  z-index: 2;
+  background: white;
+  padding: 1px;
+  border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.1);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+[data-theme="dark"] .day-note-preview .holiday-flag {
+  background: #1e1e26;
+  border-color: rgba(255,255,255,0.15);
+}
+
+.day-note-preview .bank-logo-img {
+  position: absolute !important;
+  top: -3px !important;
+  left: -3px !important;
+  width: 12px !important;
+  height: 12px !important;
+  object-fit: contain;
+  z-index: 2;
+  background: white;
+  padding: 1px;
+  border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.1);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+[data-theme="dark"] .day-note-preview .bank-logo-img {
+  background: #1e1e26;
+  border-color: rgba(255,255,255,0.15);
 }
 
 .note-text-snippet {
@@ -591,6 +654,18 @@
   border-radius: 0 12px 12px 0 !important;
   color: #555 !important;
   font-style: italic !important;
+}
+
+.notion-text-input a {
+  color: #3e64ff !important;
+  text-decoration: underline !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: opacity 0.2s ease !important;
+}
+
+.notion-text-input a:hover {
+  opacity: 0.8 !important;
 }
 
 .notion-text-input u {
@@ -1014,6 +1089,10 @@
     pointer-events: none;
   }
 
+  [data-theme="dark"] .week-number-cell {
+    background: rgb(51 51 51 / 80%) !important;
+  }
+
   .main-content.collapsed {
     padding-left: 0 !important;
     padding-right: 0 !important;
@@ -1022,19 +1101,34 @@
   }
 
   .day-note-preview {
-    font-size: 9px !important;
-    padding: 1px 6px !important;
+    font-size: 8px !important;
+    padding: 1px !important;
+    height: 15px !important;
     border-radius: 10px !important;
     border: none !important;
     max-width: 100%;
     text-align: center;
     justify-content: center;
     min-height: 14px;
+    position: relative !important;
+    overflow: visible !important;
+  }
+
+  .day-note-preview .note-text-dot {
+    position: absolute !important;
+    top: -3px !important;
+    left: -3px !important;
+  }
+
+  .day-note-preview .repeat-icon {
+    position: absolute !important;
+    top: -3px !important;
+    right: -3px !important;
   }
 
   .note-text-snippet {
     display: block !important;
-    font-size: 8px !important;
+    font-size: 7px !important;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1067,10 +1161,23 @@
     border-bottom-color: rgba(255, 255, 255, 0.05);
   }
 
+  [data-theme="dark"] .day-number {
+    color: #adadad !important;
+  }
+
+  [data-theme="dark"] .calendar-day-cell.other-month {
+    background: #19192300 !important;
+  }
+
   .notes-content {
     overflow-y: auto !important;
     height: calc(100dvh - 56px) !important;
     -webkit-overflow-scrolling: touch;
+    padding: 0px 0px !important;
+  }
+
+  .notes-content.is-list-view {
+    padding: 0px 16px !important;
   }
 
   .calendar-grid {
@@ -1131,12 +1238,12 @@
 
 [data-theme="dark"] .calendar-header-row {
   background: rgba(255, 255, 255, 0.02);
-  border-bottom-color: rgba(255, 255, 255, 0.05);
+  border-bottom-color: rgba(255, 255, 255, 0.15);
 }
 
 [data-theme="dark"] .calendar-day-cell {
-  border-right-color: rgba(255, 255, 255, 0.03);
-  border-bottom-color: rgba(255, 255, 255, 0.03);
+  border-right-color: rgba(255, 255, 255, 0.1) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 [data-theme="dark"] .calendar-day-cell.other-month {
@@ -1220,6 +1327,10 @@
 [data-theme="dark"] .notion-text-input blockquote {
   background: rgba(62, 100, 255, 0.1) !important;
   color: #ccc !important;
+}
+
+[data-theme="dark"] .notion-text-input a {
+  color: #748ffc !important;
 }
 
 .holiday-card {
@@ -1486,4 +1597,24 @@
 
 [data-theme="dark"] .floating-format-toolbar .vr {
   background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+@media (max-width: 767px) {
+  .floating-format-toolbar {
+    left: 8px !important;
+    right: 8px !important;
+    width: calc(100% - 16px) !important;
+    max-width: calc(100% - 16px) !important;
+    transform: translateY(-100%) !important;
+    border-radius: 12px !important;
+  }
+
+  .link-preview-popup {
+    left: 8px !important;
+    right: 8px !important;
+    width: calc(100% - 16px) !important;
+    max-width: calc(100% - 16px) !important;
+    transform: none !important;
+    border-radius: 8px !important;
+  }
 }

@@ -1,17 +1,25 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import { Menu } from 'lucide-react';
 
 const MainLayout = ({ children }) => {
   const [isCollapsed, setIsCollapsed] = useState(window.innerWidth < 992);
+  const location = useLocation();
 
   useEffect(() => {
+    let prevWidth = window.innerWidth;
     const handleResize = () => {
-      if (window.innerWidth < 992) {
+      const currentWidth = window.innerWidth;
+      // Breakpoint crossed from desktop to mobile
+      if (prevWidth >= 992 && currentWidth < 992) {
         setIsCollapsed(true);
-      } else {
+      }
+      // Breakpoint crossed from mobile to desktop
+      else if (prevWidth < 992 && currentWidth >= 992) {
         setIsCollapsed(false);
       }
+      prevWidth = currentWidth;
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -32,6 +40,9 @@ const MainLayout = ({ children }) => {
         document.documentElement.style.height = '';
       }
     }
+
+    // Sidebar durumunu global olarak CSS'e bildir (Modal vb. portallar için)
+    document.documentElement.setAttribute('data-sidebar-collapsed', isCollapsed);
     
     return () => {
       document.body.style.overflow = '';
@@ -40,6 +51,20 @@ const MainLayout = ({ children }) => {
       document.documentElement.style.height = '';
     };
   }, [isCollapsed]);
+
+  useEffect(() => {
+    const titles = {
+      '/': 'Dashboard',
+      '/bank-transactions': 'Banka İşlemleri',
+      '/finance': 'Finans İşlemleri',
+      '/notes': 'Notlar',
+      '/trash': 'Çöp Kutusu',
+      '/login': 'Giriş Yap'
+    };
+
+    const currentTitle = titles[location.pathname] || 'Banka-Finans';
+    document.title = `${currentTitle} | Banka-Finans`;
+  }, [location.pathname]);
 
   return (
     <div className="d-flex">
@@ -78,7 +103,7 @@ const MainLayout = ({ children }) => {
         />
       )}
       <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
-      <main className={`main-content ${isCollapsed ? 'collapsed' : ''} flex-grow-1`}>
+      <main className={`main-content ${isCollapsed ? 'collapsed' : ''} ${location.pathname === '/bank-transactions' ? 'bank-page' : ''} ${location.pathname === '/finance' ? 'finance-page' : ''} flex-grow-1`}>
         {children}
       </main>
     </div>

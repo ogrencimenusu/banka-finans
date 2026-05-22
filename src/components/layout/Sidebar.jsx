@@ -19,7 +19,8 @@ import {
   Moon,
   Monitor,
   Calendar,
-  NotebookPen
+  NotebookPen,
+  X
 } from 'lucide-react';
 import logo from '../../assets/logo.svg';
 import logoIcon from '../../assets/logo-icon.svg';
@@ -82,36 +83,38 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
 
   return (
     <div className={`glass-sidebar ${isCollapsed ? 'collapsed' : ''}`} style={{ width: isCollapsed ? '80px' : '260px' }}>
-      {/* Toggle Button */}
-      <button
-        className="btn btn-link text-dark position-absolute sidebar-toggle-btn d-none d-lg-flex"
-        style={{
-          right: '12px',
-          top: '12px',
-          zIndex: 1001,
-          background: 'rgba(0,0,0,0.03)',
-          borderRadius: '8px',
-          padding: '6px',
-          transition: 'all 0.2s'
-        }}
-        onClick={() => setIsCollapsed(!isCollapsed)}
-      >
-        {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-      </button>
-
-      {/* Logo */}
-      <div className="p-4 mb-2">
-        <div className="d-flex align-items-center justify-content-center overflow-hidden">
+      {/* Sidebar Header */}
+      <div className={`sidebar-header d-flex align-items-center ${isCollapsed ? 'justify-content-center p-2' : 'justify-content-between p-3'} position-relative`} style={{ minHeight: '90px' }}>
+        {/* Logo Container */}
+        <div className={`d-flex align-items-center justify-content-center transition-all ${isCollapsed ? 'w-100' : ''}`}>
           {!isCollapsed ? (
-            <img src={logo} alt="Logo" style={{ height: '70px' }} />
+            <div className="logo-glow-wrapper">
+              <img src={logo} alt="Logo" className="sidebar-logo-full" style={{ height: '52px', transition: 'all 0.3s' }} />
+            </div>
           ) : (
-            <img src={logoIcon} alt="Icon" style={{ height: '32px' }} />
+            <div className="logo-glow-wrapper collapsed">
+              <img src={logoIcon} alt="Icon" className="sidebar-logo-collapsed" style={{ height: '32px', transition: 'all 0.3s' }} />
+            </div>
           )}
         </div>
+
+        {/* Premium Toggle / Close Button */}
+        <button
+          className="sidebar-toggle-btn"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          title={isCollapsed ? "Menüyü Genişlet" : "Menüyü Daralt"}
+        >
+          <span className="d-lg-none d-flex align-items-center justify-content-center">
+            <X size={18} />
+          </span>
+          <span className="d-none d-lg-flex align-items-center justify-content-center">
+            {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </span>
+        </button>
       </div>
 
       {/* Menu */}
-      <div className="flex-grow-1 px-3">
+      <div className="flex-grow-1 px-3 py-3 sidebar-menu-container" style={{ overflowY: 'auto', overflowX: 'hidden' }}>
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path;
@@ -119,12 +122,13 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
             <Link
               key={item.path}
               to={item.path}
-              className={`d-flex align-items-center gap-3 p-2 mb-1 text-decoration-none rounded transition-all ${isActive ? 'bg-primary text-white shadow-sm' : 'text-dark hover-bg-light'}`}
+              className={`sidebar-menu-item ${isActive ? 'active' : ''} ${isCollapsed ? 'collapsed' : ''}`}
               title={isCollapsed ? item.name : ''}
-              style={{ transition: 'all 0.2s' }}
             >
-              <Icon size={20} />
-              {!isCollapsed && <span style={{ fontSize: '15px', fontWeight: 500 }}>{item.name}</span>}
+              <div className="menu-icon-wrapper">
+                <Icon size={20} className="menu-icon" />
+              </div>
+              {!isCollapsed && <span className="menu-text">{item.name}</span>}
             </Link>
           );
         })}
@@ -144,7 +148,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
             <div className="overflow-hidden">
               <div className="fw-bold small d-flex align-items-center justify-content-between w-100">
                 <span className="text-truncate">{user?.displayName}</span>
-                <span className="text-muted smaller opacity-50 fw-normal ms-2" style={{ fontSize: '11px' }}>v1.0.6</span>
+                <span className="text-muted smaller opacity-50 fw-normal ms-2" style={{ fontSize: '11px' }}>v1.0.7</span>
               </div>
               <div className="text-truncate text-muted smaller" style={{ fontSize: '11px' }}>{user?.email}</div>
             </div>

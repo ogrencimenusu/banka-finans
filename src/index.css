@@ -60,8 +60,237 @@ body {
   z-index: 2000 !important; /* Daha yüksek z-index */
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: visible !important;
+}
+
+/* --- Premium Sidebar Header & Toggle Button --- */
+.sidebar-header {
+  border-bottom: 1px solid var(--glass-border);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+/* Logo Wrapper with a subtle elegant glassmorphism glow */
+.logo-glow-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  box-shadow: 
+    0 4px 15px rgba(0, 0, 0, 0.02),
+    inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="dark"] .logo-glow-wrapper {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.15),
+    inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
+.logo-glow-wrapper:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 6px 20px rgba(62, 100, 255, 0.08),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+[data-theme="dark"] .logo-glow-wrapper:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    0 6px 20px rgba(62, 100, 255, 0.15),
+    inset 0 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+.logo-glow-wrapper.collapsed {
+  padding: 8px;
+  border-radius: 50%;
+}
+
+/* Premium Sidebar Toggle Button (Hanging on the edge on desktop) */
+.sidebar-toggle-btn {
+  position: absolute;
+  right: -15px; /* Hangs half-way off the right edge */
+  top: 50%;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 50% !important;
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+  color: var(--text-main) !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 2005 !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  padding: 0 !important;
+}
+
+.sidebar-toggle-btn:hover {
+  background: var(--primary-color) !important;
+  color: white !important;
+  border-color: var(--primary-color) !important;
+  transform: translateY(-50%) scale(1.1) !important;
+  box-shadow: 0 4px 15px rgba(62, 100, 255, 0.35) !important;
+}
+
+[data-theme="dark"] .sidebar-toggle-btn:hover {
+  box-shadow: 0 4px 15px rgba(62, 100, 255, 0.6) !important;
+}
+
+.sidebar-toggle-btn:active {
+  transform: translateY(-50%) scale(0.95) !important;
+}
+
+/* --- Premium Sidebar Menu Items --- */
+.sidebar-menu-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  text-decoration: none !important;
+  border-radius: 12px;
+  color: var(--text-muted) !important;
+  font-weight: 500;
+  font-size: 14px;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.sidebar-menu-item .menu-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  color: var(--text-muted);
+}
+
+.sidebar-menu-item .menu-text {
+  transition: transform 0.3s ease, color 0.3s ease;
+  white-space: nowrap;
+}
+
+/* Hover State */
+.sidebar-menu-item:hover {
+  color: var(--text-main) !important;
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.02);
+  transform: translateX(4px);
+}
+
+[data-theme="dark"] .sidebar-menu-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.02);
+}
+
+.sidebar-menu-item:hover .menu-icon-wrapper {
+  color: var(--primary-color);
+  transform: scale(1.1);
+}
+
+/* Active State */
+.sidebar-menu-item.active {
+  color: var(--primary-color) !important;
+  background: rgba(62, 100, 255, 0.06);
+  border-color: rgba(62, 100, 255, 0.1);
+  box-shadow: 
+    0 4px 15px rgba(62, 100, 255, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .sidebar-menu-item.active {
+  color: #60a5fa !important; /* Premium soft light blue for dark mode active text */
+  background: rgba(96, 165, 250, 0.1);
+  border-color: rgba(96, 165, 250, 0.15);
+  box-shadow: 
+    0 4px 20px rgba(96, 165, 250, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-menu-item.active .menu-icon-wrapper {
+  color: var(--primary-color);
+  transform: scale(1.05);
+}
+
+[data-theme="dark"] .sidebar-menu-item.active .menu-icon-wrapper {
+  color: #60a5fa;
+}
+
+/* Left Indicator Line */
+.sidebar-menu-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 25%;
+  height: 50%;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: var(--primary-color);
+  transition: all 0.3s ease;
+}
+
+[data-theme="dark"] .sidebar-menu-item.active::before {
+  background: #60a5fa;
+}
+
+/* Collapsed Sidebar overrides */
+.sidebar-menu-item.collapsed {
+  justify-content: center;
+  padding: 12px;
+  gap: 0;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto;
+}
+
+.sidebar-menu-item.collapsed:hover {
+  transform: scale(1.08);
+}
+
+.sidebar-menu-item.collapsed.active::before {
+  display: none; /* Hide standard left indicator when collapsed */
+}
+
+/* Active indicator ring in collapsed state */
+.sidebar-menu-item.collapsed.active {
+  border-radius: 50%;
+  background: rgba(62, 100, 255, 0.08);
+  border-color: rgba(62, 100, 255, 0.2);
+  box-shadow: 
+    0 4px 15px rgba(62, 100, 255, 0.12),
+    0 0 0 2px rgba(62, 100, 255, 0.15);
+}
+
+[data-theme="dark"] .sidebar-menu-item.collapsed.active {
+  background: rgba(96, 165, 250, 0.15);
+  border-color: rgba(96, 165, 250, 0.3);
+  box-shadow: 
+    0 4px 20px rgba(96, 165, 250, 0.2),
+    0 0 0 2px rgba(96, 165, 250, 0.2);
 }
 
 .main-content {
@@ -408,6 +637,7 @@ body {
     height: 100dvh !important;
     top: 0 !important;
     z-index: 10001 !important;
+    overflow: visible !important;
   }
   
   .glass-sidebar.collapsed {
@@ -415,17 +645,36 @@ body {
     box-shadow: none;
   }
 
-  /* Position the toggle button at the top-right INSIDE the sidebar when open on mobile */
-  .glass-sidebar:not(.collapsed) .sidebar-toggle-btn {
-    right: 15px !important;
-    top: 20px !important;
-    background: transparent !important;
+  /* Mobile Close Button Style override */
+  .sidebar-toggle-btn {
+    position: relative !important;
+    right: 0 !important;
+    top: 0 !important;
+    transform: none !important;
+    width: 36px !important;
+    height: 36px !important;
+    background: rgba(0, 0, 0, 0.03) !important;
+    border: 1px solid rgba(0, 0, 0, 0.05) !important;
     box-shadow: none !important;
   }
 
-  /* When collapsed, hide the toggle button inside the sidebar (MainLayout will show the floating one) */
-  .glass-sidebar.collapsed .sidebar-toggle-btn {
-    display: none !important;
+  [data-theme="dark"] .sidebar-toggle-btn {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .sidebar-toggle-btn:hover {
+    transform: scale(1.05) !important;
+    background: rgba(0, 0, 0, 0.06) !important;
+    color: var(--text-main) !important;
+    border-color: rgba(0, 0, 0, 0.1) !important;
+    box-shadow: none !important;
+  }
+
+  [data-theme="dark"] .sidebar-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #fff !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
   }
 
   .main-content {
@@ -436,6 +685,13 @@ body {
 
   .main-content.collapsed {
     margin-left: 0 !important;
+  }
+
+  .main-content.collapsed.bank-page,
+  .main-content.collapsed.finance-page {
+    padding-left: 15px !important;
+    padding-right: 15px !important;
+    padding-top: 70px !important;
   }
 
   .mobile-backdrop {
@@ -513,14 +769,75 @@ body {
   color: var(--text-main) !important;
 }
 
-[data-theme="dark"] .notion-table td,
+[data-theme="dark"] .notion-table td:not([class*="bg-"]),
 [data-theme="dark"] .notion-table th,
-[data-theme="dark"] .notion-table tr,
-[data-theme="dark"] .table td,
+[data-theme="dark"] .notion-table tr:not([class*="bg-"]),
+[data-theme="dark"] .table td:not([class*="bg-"]),
 [data-theme="dark"] .table th,
-[data-theme="dark"] .table tr {
+[data-theme="dark"] .table tr:not([class*="bg-"]) {
   background-color: transparent !important;
+}
+
+[data-theme="dark"] .notion-table td:not(.text-success):not(.text-danger):not(.text-warning):not(.text-primary),
+[data-theme="dark"] .notion-table th:not(.text-success):not(.text-danger):not(.text-warning):not(.text-primary),
+[data-theme="dark"] .table td:not(.text-success):not(.text-danger):not(.text-warning):not(.text-primary),
+[data-theme="dark"] .table th:not(.text-success):not(.text-danger):not(.text-warning):not(.text-primary) {
   color: var(--text-main) !important;
+}
+
+/* Premium dark mode color system for text and background utilities in tables */
+[data-theme="dark"] .text-success,
+[data-theme="dark"] .table td.text-success,
+[data-theme="dark"] .notion-table td.text-success {
+  color: #4ade80 !important;
+}
+
+[data-theme="dark"] .text-danger,
+[data-theme="dark"] .table td.text-danger,
+[data-theme="dark"] .notion-table td.text-danger {
+  color: #f87171 !important;
+}
+
+[data-theme="dark"] .text-warning,
+[data-theme="dark"] .table td.text-warning,
+[data-theme="dark"] .notion-table td.text-warning {
+  color: #fbbf24 !important;
+}
+
+[data-theme="dark"] .text-primary,
+[data-theme="dark"] .table td.text-primary,
+[data-theme="dark"] .notion-table td.text-primary {
+  color: #60a5fa !important;
+}
+
+[data-theme="dark"] .table td.bg-success,
+[data-theme="dark"] .notion-table td.bg-success {
+  background-color: rgba(74, 222, 128, 0.15) !important;
+}
+
+[data-theme="dark"] .table td.bg-danger,
+[data-theme="dark"] .notion-table td.bg-danger {
+  background-color: rgba(248, 113, 113, 0.15) !important;
+}
+
+[data-theme="dark"] .table td.bg-success.bg-opacity-25,
+[data-theme="dark"] .notion-table td.bg-success.bg-opacity-25 {
+  background-color: rgba(74, 222, 128, 0.25) !important;
+}
+
+[data-theme="dark"] .table td.bg-danger.bg-opacity-25,
+[data-theme="dark"] .notion-table td.bg-danger.bg-opacity-25 {
+  background-color: rgba(248, 113, 113, 0.25) !important;
+}
+
+[data-theme="dark"] .table td.bg-success.bg-opacity-10,
+[data-theme="dark"] .notion-table td.bg-success.bg-opacity-10 {
+  background-color: rgba(74, 222, 128, 0.1) !important;
+}
+
+[data-theme="dark"] .table td.bg-danger.bg-opacity-10,
+[data-theme="dark"] .notion-table td.bg-danger.bg-opacity-10 {
+  background-color: rgba(248, 113, 113, 0.1) !important;
 }
 
 [data-theme="dark"] .notion-table tr:hover,
@@ -546,10 +863,7 @@ body {
   background-color: rgba(255, 255, 255, 0.05);
 }
 
-[data-theme="dark"] .sidebar-toggle-btn {
-  background: rgba(255, 255, 255, 0.05) !important;
-  color: #fff !important;
-}
+/* Premium dark mode toggle styles defined above globally */
 
 [data-theme="dark"] .bg-primary.bg-opacity-10 {
   background-color: rgba(62, 100, 255, 0.2) !important;
@@ -755,3 +1069,101 @@ body {
     overflow-x: auto !important;
   }
 }
+
+/* ==========================================
+   iOS Native PWA Application Enhancements
+   ========================================== */
+
+@media (max-width: 991px) {
+  /* 1. Prevent Auto-Zoom: All inputs, selects, and textareas must be at least 16px on iOS */
+  input, 
+  textarea, 
+  select, 
+  .form-control, 
+  .form-select, 
+  .cell-text-input.form-control, 
+  .cell-date-input.form-control,
+  .search-box input {
+    font-size: 16px !important;
+  }
+
+  /* 2. iOS Safe Area Integrations (Notch, Dynamic Island & Home indicator) */
+  body {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    min-height: 100vh;
+    min-height: 100dvh; /* Dynamic viewport height for Safari */
+  }
+
+  .main-content {
+    /* Adjust fixed top padding to avoid overlaps with the dynamic island/notch */
+    padding-top: calc(75px + env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+/* 3. Remove tap delay (300ms) & remove gray blink background on click */
+a, 
+button, 
+.btn, 
+.card, 
+.notion-option-item, 
+.dropdown-item, 
+.sidebar-toggle-btn, 
+.nav-btn,
+.toggle-btn,
+[role="button"], 
+.cursor-pointer,
+.calendar-day-cell {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* 4. Disable standard web selection highlights on Layout to make it feel like a real app */
+body {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+/* 5. Re-enable selection ONLY in content areas where copy/paste makes sense */
+input, 
+textarea, 
+[contenteditable="true"], 
+.note-content, 
+.selectable-text,
+.cell-text-input,
+.notion-text-input {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+/* 6. Smooth iOS physics scrolling */
+.main-content, 
+.glass-sidebar, 
+.mobile-scroll-x, 
+.table-responsive {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Premium micro-animations and transition styles for charts */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.transition-all {
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}

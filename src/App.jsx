@@ -9,12 +9,64 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import MainLayout from './components/layout/MainLayout';
 import TrashPage from './components/pages/TrashPage';
 import NotesPage from './components/pages/NotesPage';
-import { LayoutDashboard, Wallet, PieChart, Settings, ArrowRight, Landmark, Calendar, Clock, StickyNote, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Wallet, PieChart, Settings, ArrowRight, Landmark, Calendar, Clock, StickyNote, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db } from './firebase';
 import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
 
 import { DataProvider, useData } from './context/DataContext';
+
+const getNoteColorStyles = (color, itemType) => {
+  let col = color || 'blue';
+  
+  if (itemType === 'holiday') {
+    col = 'yellow';
+  } else if (itemType === 'bank') {
+    col = 'red';
+  } else if (itemType === 'finance') {
+    col = 'green';
+  }
+
+  const colorsMap = {
+    red: {
+      lightBg: 'rgba(255, 77, 77, 0.1)',
+      lightText: '#c0392b',
+      lightHoverBg: 'rgba(255, 77, 77, 0.15)',
+      darkBg: 'rgba(231, 76, 60, 0.15)',
+      darkText: '#ff6b6b',
+      darkHoverBg: 'rgba(231, 76, 60, 0.25)',
+      border: '#ff4d4d'
+    },
+    green: {
+      lightBg: 'rgba(46, 204, 113, 0.12)',
+      lightText: '#27ae60',
+      lightHoverBg: 'rgba(46, 204, 113, 0.18)',
+      darkBg: 'rgba(46, 204, 113, 0.15)',
+      darkText: '#2ecc71',
+      darkHoverBg: 'rgba(46, 204, 113, 0.25)',
+      border: '#2ecc71'
+    },
+    yellow: {
+      lightBg: 'rgba(241, 196, 15, 0.15)',
+      lightText: '#b7950b',
+      lightHoverBg: 'rgba(241, 196, 15, 0.22)',
+      darkBg: 'rgba(241, 196, 15, 0.15)',
+      darkText: '#f4d03f',
+      darkHoverBg: 'rgba(241, 196, 15, 0.25)',
+      border: '#f1c40f'
+    },
+    blue: {
+      lightBg: 'rgba(52, 152, 219, 0.1)',
+      lightText: '#2980b9',
+      lightHoverBg: 'rgba(52, 152, 219, 0.15)',
+      darkBg: 'rgba(52, 152, 219, 0.15)',
+      darkText: '#5dade2',
+      darkHoverBg: 'rgba(52, 152, 219, 0.25)',
+      border: '#3498db'
+    }
+  };
+  return colorsMap[col] || colorsMap.blue;
+};
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -25,7 +77,8 @@ const Dashboard = () => {
     stocks: globalStocks,
     financeTransactions: globalFinanceTransactions,
     notes: globalNotes,
-    holidays: globalHolidays
+    holidays: globalHolidays,
+    notesConfig
   } = useData();
   
   // Local derived states for UI
@@ -179,15 +232,61 @@ const Dashboard = () => {
   const todayStr = formatDate(new Date());
   const tomorrowStr = formatDate(new Date(Date.now() + 86400000));
 
-  const todayItems = [
-    ...(globalNotes?.filter(n => n.date === todayStr) || []).map(n => ({ ...n, type: 'note' })),
-    ...(globalHolidays?.filter(h => h.date === todayStr) || []).map(h => ({ ...h, type: 'holiday' }))
-  ];
+  const visibility = React.useMemo(() => {
+    // If config is loading, hide bank and finance by default to prevent flickering
+    if (notesConfig === null) {
+      return { notes: true, bank: false, finance: false, holidays: true };
+    }
+    // Use saved visibility settings if they exist, otherwise default to hidden for bank/finance
+    // to match the user's preference of keeping them hidden unless explicitly enabled.
+    return {
+      notes: notesConfig.visibility?.notes !== false,
+      bank: notesConfig.visibility?.bank === true,
+      finance: notesConfig.visibility?.finance === true,
+      holidays: notesConfig.visibility?.holidays !== false,
+    };
+  }, [notesConfig]);
 
-  const tomorrowItems = [
-    ...(globalNotes?.filter(n => n.date === tomorrowStr) || []).map(n => ({ ...n, type: 'note' })),
-    ...(globalHolidays?.filter(h => h.date === tomorrowStr) || []).map(h => ({ ...h, type: 'holiday' }))
-  ];
+  const getItemsForDate = (dateStr) => {
+    const items = [];
+    
+    if (visibility.notes) {
+      items.push(...(globalNotes?.filter(n => n.date === dateStr && n.deleted !== true) || []).map(n => ({ ...n, itemType: 'note' })));
+    }
+    
+    if (visibility.bank) {
+      items.push(...(globalTransactions?.filter(t => t.date === dateStr && t.deleted !== true) || []).map(t => {
+        const bank = globalBanks.find(b => b.id === t.bankId);
+        return {
+          ...t,
+          itemType: 'bank',
+          title: (bank?.name || 'Banka') + ' İşlemi',
+          text: (t.description || '') + ' (' + formatCurrency(t.amount) + ' TL)'
+        };
+      }));
+    }
+    
+    if (visibility.finance) {
+      items.push(...(globalFinanceTransactions?.filter(t => t.date === dateStr && t.deleted !== true) || []).map(t => {
+        const stock = globalStocks.find(s => s.id === t.stockId);
+        return {
+          ...t,
+          itemType: 'finance',
+          title: (stock?.name || 'Hisse') + ' (' + t.type + ')',
+          text: t.quantity + ' adet @ ' + formatCurrency(t.price) + ' TL'
+        };
+      }));
+    }
+    
+    if (visibility.holidays) {
+      items.push(...(globalHolidays?.filter(h => h.date === dateStr) || []).map(h => ({ ...h, itemType: 'holiday' })));
+    }
+    
+    return items;
+  };
+
+  const todayItems = getItemsForDate(todayStr);
+  const tomorrowItems = getItemsForDate(tomorrowStr);
 
   return (
     <div className="container pt-3 pb-5">
@@ -204,65 +303,86 @@ const Dashboard = () => {
           </Link>
         </div>
         
-        <div className="row g-4">
-          {/* Today */}
-          <div className="col-12 col-md-6">
-            <div className="glass-card p-4 h-100 border-0 shadow-sm" style={{ background: 'rgba(255, 255, 255, 0.5)' }}>
-              <div className="d-flex align-items-center gap-2 mb-3 text-dark">
-                <Calendar size={18} className="text-primary" />
-                <span className="fw-bold">Bugün</span>
-                <span className="text-muted small">({new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })})</span>
-              </div>
+        <div className="daily-notes-widget animate-fade-in">
+          {/* Today Column */}
+          <div className="today-section">
+            <div className="date-header">
+              <div className="day-name-label">{new Date().toLocaleDateString('tr-TR', { weekday: 'long' })}</div>
+              <div className="day-number-large">{new Date().getDate()}</div>
+            </div>
+            <div className="items-list">
               {todayItems.length > 0 ? (
-                <div className="d-flex flex-column gap-2">
-                  {todayItems.map((item, idx) => (
+                todayItems.map((item, idx) => {
+                  const colors = getNoteColorStyles(item.color, item.itemType);
+                  const styleProps = {
+                    '--note-bg': colors.lightBg,
+                    '--note-text': colors.lightText,
+                    '--note-hover-bg': colors.lightHoverBg,
+                    '--note-dark-bg': colors.darkBg,
+                    '--note-dark-text': colors.darkText,
+                    '--note-dark-hover-bg': colors.darkHoverBg,
+                  };
+
+                  return (
                     <Link 
                       key={idx} 
-                      to={item.type === 'note' ? "/notes" : "#"} 
-                      state={item.type === 'note' ? { openNoteId: item.id } : null}
-                      className={`text-decoration-none transition-all ${item.type === 'note' ? 'hover-translate-x' : 'cursor-default'}`}
-                      onClick={(e) => item.type === 'holiday' && e.preventDefault()}
+                      to={item.itemType === 'note' ? "/notes" : item.itemType === 'bank' ? "/bank-transactions" : item.itemType === 'finance' ? "/finance" : "#"} 
+                      state={item.itemType === 'note' ? { openNoteId: item.id } : null}
+                      className="today-item-capsule"
+                      style={styleProps}
+                      onClick={(e) => item.itemType === 'holiday' && e.preventDefault()}
                     >
-                      <div className={`p-3 rounded-3 border-start border-4 ${item.type === 'holiday' ? 'bg-danger bg-opacity-5 border-danger' : 'bg-white bg-opacity-60 border-primary'} shadow-sm h-100`}>
-                        <div className="fw-bold small mb-1 text-dark">{item.title}</div>
-                        {item.text && <div className="text-muted x-small text-truncate-2" dangerouslySetInnerHTML={{ __html: item.text }} />}
-                      </div>
+                      {item.itemType === 'note' && <Calendar size={14} />}
+                      {item.itemType === 'bank' && <Landmark size={14} />}
+                      {item.itemType === 'finance' && (item.type === 'ALIŞ' ? <TrendingDown size={14} /> : <TrendingUp size={14} />)}
+                      {item.itemType === 'holiday' && <Calendar size={14} className="text-warning" />}
+                      <span className="text-truncate" style={{ maxWidth: '200px' }}>{item.title}</span>
                     </Link>
-                  ))}
-                </div>
+                  );
+                })
               ) : (
-                <div className="text-muted small italic py-2">Bugün için bir not bulunmuyor.</div>
+                <div className="text-muted small italic opacity-50">Bugün için bir kayıt bulunmuyor.</div>
               )}
             </div>
           </div>
 
-          {/* Tomorrow */}
-          <div className="col-12 col-md-6">
-            <div className="glass-card p-4 h-100 border-0 shadow-sm" style={{ background: 'rgba(255, 255, 255, 0.5)' }}>
-              <div className="d-flex align-items-center gap-2 mb-3 text-dark">
-                <Clock size={18} className="text-success" />
-                <span className="fw-bold">Yarın</span>
-                <span className="text-muted small">({new Date(Date.now() + 86400000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })})</span>
-              </div>
+          {/* Tomorrow Column */}
+          <div className="tomorrow-section">
+            <div className="tomorrow-label-header">YARIN</div>
+            <div className="items-list">
               {tomorrowItems.length > 0 ? (
-                <div className="d-flex flex-column gap-2">
-                  {tomorrowItems.map((item, idx) => (
+                tomorrowItems.map((item, idx) => {
+                  const plainText = item.text ? item.text.replace(/<[^>]*>?/gm, '') : '';
+                  const timeMatch = plainText.match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+                  const timeRange = timeMatch ? timeMatch[0] : null;
+                  
+                  const colors = getNoteColorStyles(item.color, item.itemType);
+                  const styleProps = {
+                    '--note-bg': colors.lightBg,
+                    '--note-text': colors.lightText,
+                    '--note-hover-bg': colors.lightHoverBg,
+                    '--note-dark-bg': colors.darkBg,
+                    '--note-dark-text': colors.darkText,
+                    '--note-dark-hover-bg': colors.darkHoverBg,
+                    '--note-border': colors.border,
+                  };
+
+                  return (
                     <Link 
                       key={idx} 
-                      to={item.type === 'note' ? "/notes" : "#"} 
-                      state={item.type === 'note' ? { openNoteId: item.id } : null}
-                      className={`text-decoration-none transition-all ${item.type === 'note' ? 'hover-translate-x' : 'cursor-default'}`}
-                      onClick={(e) => item.type === 'holiday' && e.preventDefault()}
+                      to={item.itemType === 'note' ? "/notes" : item.itemType === 'bank' ? "/bank-transactions" : item.itemType === 'finance' ? "/finance" : "#"} 
+                      state={item.itemType === 'note' ? { openNoteId: item.id } : null}
+                      className="tomorrow-item-card"
+                      style={styleProps}
+                      onClick={(e) => item.itemType === 'holiday' && e.preventDefault()}
                     >
-                      <div className={`p-3 rounded-3 border-start border-4 ${item.type === 'holiday' ? 'bg-danger bg-opacity-5 border-danger' : 'bg-white bg-opacity-60 border-success'} shadow-sm h-100`}>
-                        <div className="fw-bold small mb-1 text-dark">{item.title}</div>
-                        {item.text && <div className="text-muted x-small text-truncate-2" dangerouslySetInnerHTML={{ __html: item.text }} />}
-                      </div>
+                      <div className="tomorrow-item-title text-truncate">{item.title}</div>
+                      {timeRange && <div className="tomorrow-item-time">{timeRange}</div>}
                     </Link>
-                  ))}
-                </div>
+                  );
+                })
               ) : (
-                <div className="text-muted small italic py-2">Yarın için bir not bulunmuyor.</div>
+                <div className="text-muted small italic opacity-50">Yarın için bir kayıt bulunmuyor.</div>
               )}
             </div>
           </div>
@@ -478,6 +598,134 @@ const Dashboard = () => {
         }
         .fs-18 {
           font-size: 18px !important;
+        }
+        .daily-notes-widget {
+          background: white;
+          border-radius: 32px;
+          padding: 28px;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.04);
+          display: flex;
+          gap: 40px;
+          border: 1px solid rgba(0,0,0,0.03);
+          margin-bottom: 20px;
+        }
+        @media (max-width: 768px) {
+          .daily-notes-widget {
+            flex-direction: column;
+            gap: 25px;
+            padding: 20px;
+            border-radius: 24px;
+          }
+        }
+        [data-theme="dark"] .daily-notes-widget {
+          background: rgba(255, 255, 255, 0.03);
+          border-color: rgba(255, 255, 255, 0.05);
+        }
+        .today-section { flex: 1; }
+        .tomorrow-section { flex: 1; }
+        .day-name-label {
+          color: #ff5252;
+          font-weight: 800;
+          font-size: 13px;
+          letter-spacing: 0.05em;
+          margin-bottom: 2px;
+          text-transform: uppercase;
+        }
+        .day-number-large {
+          font-size: 48px;
+          font-weight: 700;
+          color: #1a1a1a;
+          line-height: 1;
+          margin-bottom: 15px;
+        }
+        [data-theme="dark"] .day-number-large { color: white; }
+        .tomorrow-label-header {
+          color: #a0a0a0;
+          font-weight: 800;
+          font-size: 13px;
+          letter-spacing: 0.05em;
+          margin-bottom: 25px;
+          text-transform: uppercase;
+        }
+        @media (max-width: 768px) {
+          .tomorrow-label-header { margin-bottom: 15px; }
+        }
+        .items-list {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8px 15px;
+          align-content: start;
+        }
+        @media (max-width: 991px) {
+          .items-list {
+            grid-template-columns: 1fr;
+            gap: 8px;
+          }
+        }
+        .today-item-capsule {
+          background: var(--note-bg, #edf7ed);
+          color: var(--note-text, #2c6e2f);
+          border-radius: 20px;
+          padding: 6px 14px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-weight: 600;
+          font-size: 14px;
+          transition: all 0.2s ease;
+          text-decoration: none !important;
+          width: 100%;
+          min-width: 0;
+        }
+        .today-item-capsule span {
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .today-item-capsule:hover {
+          background: var(--note-hover-bg, #e2f2e2);
+          transform: translateX(4px);
+        }
+        [data-theme="dark"] .today-item-capsule {
+          background: var(--note-dark-bg, rgba(46, 204, 113, 0.1));
+          color: var(--note-dark-text, #58d68d);
+        }
+        [data-theme="dark"] .today-item-capsule:hover {
+          background: var(--note-dark-hover-bg, rgba(46, 204, 113, 0.2));
+        }
+        .tomorrow-item-card {
+          background: var(--note-bg, #fff5f5);
+          border-left: 3px solid var(--note-border, #ff5252);
+          border-radius: 8px;
+          padding: 10px 14px;
+          margin-bottom: 10px;
+          transition: all 0.2s ease;
+          text-decoration: none !important;
+          display: block;
+        }
+        .tomorrow-item-card:hover {
+          background: var(--note-hover-bg, #ffebeb);
+          transform: translateX(4px);
+        }
+        [data-theme="dark"] .tomorrow-item-card {
+          background: var(--note-dark-bg, rgba(255, 82, 82, 0.05));
+          border-left-color: var(--note-border, #ff5252);
+        }
+        [data-theme="dark"] .tomorrow-item-card:hover {
+          background: var(--note-dark-hover-bg, rgba(255, 82, 82, 0.1));
+        }
+        .tomorrow-item-title {
+          color: var(--note-text, #9b1c1c);
+          font-weight: 700;
+          font-size: 14px;
+          line-height: 1.2;
+          margin-bottom: 2px;
+        }
+        [data-theme="dark"] .tomorrow-item-title { color: var(--note-dark-text, #ff8a8a); }
+        .tomorrow-item-time {
+          color: var(--note-border, #ff5252);
+          font-size: 12px;
+          font-weight: 600;
         }
       `}} />
     </div>

@@ -18,7 +18,7 @@ import {
   where,
   serverTimestamp
 } from 'firebase/firestore';
-import { Button, Form, Card, Row, Col, Table, Badge, Dropdown, Modal, Overlay } from 'react-bootstrap';
+import { Button, Form, Card, Row, Col, Table, Badge, Dropdown, Modal, Overlay, Collapse } from 'react-bootstrap';
 import {
   Trash2,
   Plus,
@@ -1049,6 +1049,9 @@ const BankTransactionsPage = () => {
   const [tagSearch, setTagSearch] = useState('');
   const [typeSearch, setTypeSearch] = useState('');
   const [bankSearch, setBankSearch] = useState('');
+  const [showCalculateSubmenu, setShowCalculateSubmenu] = useState(false);
+  const [showDateFormatSubmenu, setShowDateFormatSubmenu] = useState(false);
+  const [showVisibilitySubmenu, setShowVisibilitySubmenu] = useState(false);
 
   const { 
     banks: globalBanks, 
@@ -1548,8 +1551,13 @@ const BankTransactionsPage = () => {
       finalValue = parseFloat(cleanValue) || 0;
     }
     await updateDoc(doc(db, `users/${user.uid}/bankTransactions`, transId), { [propId]: finalValue });
-    setEditingCell(null);
-    setCellDraft(null);
+    setEditingCell(prev => {
+      if (prev && prev.transId === transId && prev.propId === propId) {
+        setCellDraft(null);
+        return null;
+      }
+      return prev;
+    });
   };
 
   const handleDeleteBank = async (id) => {
@@ -2077,12 +2085,12 @@ const BankTransactionsPage = () => {
       maxWidth: propId === 'title' ? '300px' : '200px'
     };
 
-    const startEdit = async (e) => {
+    const startEdit = (e) => {
       e.stopPropagation();
       setEditTarget(e.currentTarget);
       // Auto-save previous cell if exists
       if (editingCell && cellDraft !== null) {
-        await saveCell(editingCell.transId, editingCell.propId, cellDraft);
+        saveCell(editingCell.transId, editingCell.propId, cellDraft);
       }
       setEditingCell({ transId: t.id, propId, tableId });
       setSearchTerm('');
@@ -2689,40 +2697,38 @@ const BankTransactionsPage = () => {
           <div className="d-flex align-items-center gap-3 text-muted  ">
 
             <Dropdown align="end" className="d-inline" autoClose="outside" onToggle={(isOpen) => !isOpen && setSettingsView('main')}>
-              <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret" style={{ cursor: 'pointer' }}>
+              <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret cursor-pointer hover-text-primary transition-all">
                 <SlidersHorizontal size={20} />
               </Dropdown.Toggle>
-              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-0 overflow-hidden" style={{ width: '280px', zIndex: 10001 }}>
-                {settingsView === 'main' ? (
-                  <div className="p-2">
-                    <Dropdown.Item onClick={() => setSettingsView('visibility')} className="rounded-2 d-flex align-items-center justify-content-between py-2">
+              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '300px', zIndex: 10001 }}>
+                <div className="d-flex flex-column gap-1">
+                  <div className="px-3 py-2 mb-1 small fw-bold text-muted opacity-50 fs-10">TABLO AYARLARI</div>
+                  
+                  {/* Property Visibility Section */}
+                  <div className="px-1">
+                    <div 
+                      className="rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer hover-bg-light px-2 transition-all"
+                      onClick={(e) => { e.stopPropagation(); setShowVisibilitySubmenu(!showVisibilitySubmenu); }}
+                    >
                       <div className="d-flex align-items-center gap-2">
-                        <Eye size={18} className="text-muted" />
-                        <span>Property visibility</span>
+                        <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '28px', height: '28px' }}><Eye size={16} className="text-muted" /></div>
+                        <span>Sütun Görünürlüğü</span>
                       </div>
-                      <div className="d-flex align-items-center gap-2 text-muted opacity-50">
-                        <span>{Object.values(config.propertyVisibility || {}).filter(v => v).length}</span>
-                        <ChevronRight size={14} />
+                      <div className="d-flex align-items-center gap-2 text-muted">
+                        <span className="bg-light px-2 rounded-pill fs-11 opacity-50">{Object.values(config.propertyVisibility || {}).filter(v => v !== false).length}</span>
+                        <ChevronDown size={14} className={`transition-all ${showVisibilitySubmenu ? 'rotate-180' : ''}`} />
                       </div>
-                    </Dropdown.Item>
-
-                    <div className="dropdown-divider mx-2 opacity-10"></div>
-
-                    <div className="px-3 py-1 mt-2 mb-1 small fw-bold text-muted opacity-50" style={{ fontSize: '10px' }}>İŞLEM SEÇENEKLERİ</div>
-                    <Dropdown.Item onClick={() => setShowTagModal(true)} className="rounded-2 d-flex align-items-center gap-2">
-                      <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 icon-box-sm"><Settings size={15} /></div> Etiketleri Yönet
-                    </Dropdown.Item>
-                  </div>
-                ) : (
-                  <div className="d-flex flex-column" style={{ maxHeight: '450px' }}>
-                    <div className="p-2 d-flex align-items-center gap-2 border-bottom">
-                      <div className="cursor-pointer p-1 hover-bg-light rounded" onClick={() => setSettingsView('main')}>
-                        <X size={16} />
-                      </div>
-                      <span className="fw-bold flex-grow-1" style={{ fontSize: '14px' }}>Property visibility</span>
                     </div>
-                    <div className="p-2">
-                      <div className="overflow-auto" style={{ maxHeight: '400px' }}>
+                    <Collapse in={showVisibilitySubmenu}>
+                      <div className="px-1 py-1">
+                        <div className="bg-light bg-opacity-50 rounded-3 p-2 d-flex flex-column gap-2 overflow-auto" style={{ maxHeight: '350px' }}>
+                        <div className="d-flex align-items-center justify-content-between mb-1">
+                          <span className="fs-11 fw-bold text-muted opacity-50">SÜTUNLAR</span>
+                          <div className="d-flex gap-2">
+                            <span className="fs-10 text-primary cursor-pointer fw-bold hover-underline" onClick={(e) => { e.stopPropagation(); toggleAllProperties(true); }}>Tümünü Aç</span>
+                            <span className="fs-10 text-primary cursor-pointer fw-bold hover-underline" onClick={(e) => { e.stopPropagation(); toggleAllProperties(false); }}>Kapat</span>
+                          </div>
+                        </div>
                         <DndContext
                           sensors={sensors}
                           collisionDetection={closestCenter}
@@ -2740,33 +2746,37 @@ const BankTransactionsPage = () => {
                             items={Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id)}
                             strategy={verticalListSortingStrategy}
                           >
-                            <div className="d-flex align-items-center justify-content-between px-2 py-1 mb-1">
-                              <span className="x-small fw-bold text-muted opacity-50">Properties</span>
-                              <div className="d-flex gap-2">
-                                <span className="x-small text-primary cursor-pointer fw-medium" onClick={() => toggleAllProperties(true)}>Show all</span>
-                                <span className="x-small text-primary cursor-pointer fw-medium" onClick={() => toggleAllProperties(false)}>Hide all</span>
-                              </div>
+                            <div className="d-flex flex-column gap-1">
+                              {(Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id))
+                                .map(id => {
+                                  const prop = PROPERTIES.find(p => p.id === id);
+                                  if (!prop) return null;
+                                  return (
+                                    <SortablePropertyItem
+                                      key={id}
+                                      prop={prop}
+                                      icon={getPropertyIcon(id, config)}
+                                      isVisible={config.propertyVisibility?.[id] !== false}
+                                      toggleVisibility={(id) => handleUpdatePropertyVisibility(id, !(config.propertyVisibility?.[id] !== false))}
+                                    />
+                                  );
+                                })}
                             </div>
-                            {(Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id))
-                              .map(id => {
-                                const prop = PROPERTIES.find(p => p.id === id);
-                                if (!prop) return null;
-                                return (
-                                  <SortablePropertyItem
-                                    key={id}
-                                    prop={prop}
-                                    icon={getPropertyIcon(id, config)}
-                                    isVisible={config.propertyVisibility?.[id] !== false}
-                                    toggleVisibility={(id) => handleUpdatePropertyVisibility(id, !(config.propertyVisibility?.[id] !== false))}
-                                  />
-                                );
-                              })}
                           </SortableContext>
                         </DndContext>
                       </div>
                     </div>
-                  </div>
-                )}
+                  </Collapse>
+                </div>
+
+                  <div className="dropdown-divider mx-2 opacity-10"></div>
+
+                  <div className="px-3 py-2 mb-1 small fw-bold text-muted opacity-50 fs-10">İŞLEM SEÇENEKLERİ</div>
+                  <Dropdown.Item onClick={() => setShowTagModal(true)} className="rounded-2 d-flex align-items-center gap-2 py-2 small">
+                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '28px', height: '28px' }}><Settings size={16} className="text-muted" /></div> 
+                    <span>Etiketleri Yönet</span>
+                  </Dropdown.Item>
+                </div>
               </Dropdown.Menu>
             </Dropdown>
           </div>
@@ -3262,175 +3272,232 @@ const BankTransactionsPage = () => {
                     const currentIcon = getPropertyIcon(id, config);
                     return (
                       <th key={id} style={id === 'title' ? { width: '25%' } : {}}>
-                        <Dropdown autoClose="outside">
-                          <Dropdown.Toggle as="button" type="button" className="btn btn-link p-0 text-decoration-none border-0 d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded px-2 py-1 flex-grow-1" style={{ marginLeft: '-8px' }}>
+                        <Dropdown autoClose="outside" onToggle={(isOpen) => { if (!isOpen) { setShowCalculateSubmenu(false); setShowDateFormatSubmenu(false); } }}>
+                          <Dropdown.Toggle as="div" className="btn btn-link p-2 text-decoration-none border-0 d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded flex-grow-1" style={{ marginLeft: '-8px' }}>
                             <span className="text-muted d-flex align-items-center">{currentIcon}</span>
-                            <span className="text-nowrap">{label}</span>
-                            {config.sortConfig?.propId === id && (
-                              <div className="ms-auto d-flex align-items-center gap-1">
-                                <span
-                                  className="text-primary   d-flex align-items-center cursor-pointer hover-bg-secondary rounded p-0 justify-content-center"
-                                  style={{ width: '16px', height: '16px' }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSort(id, config.sortConfig.direction === 'asc' ? 'desc' : 'asc');
-                                  }}
-                                >
-                                  {config.sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
-                                </span>
-                                <div
-                                  className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all"
-                                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSort(null, null);
-                                  }}
-                                >
-                                  <X size={10} />
+                            <span className="text-nowrap fw-bold text-dark fs-13">{label}</span>
+                            <div className="ms-auto d-flex align-items-center gap-2">
+                              {config.sortConfig?.propId === id && (
+                                <div className="d-flex align-items-center gap-1">
+                                  <span
+                                    className="text-primary d-flex align-items-center cursor-pointer hover-bg-secondary rounded p-0 justify-content-center"
+                                    style={{ width: '16px', height: '16px' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSort(id, config.sortConfig.direction === 'asc' ? 'desc' : 'asc');
+                                    }}
+                                  >
+                                    {config.sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+                                  </span>
+                                  <div
+                                    className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all"
+                                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSort(null, null);
+                                    }}
+                                  >
+                                    <X size={10} />
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                              <ChevronDown size={14} className="text-muted opacity-50" />
+                            </div>
                           </Dropdown.Toggle>
-                          <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ placement: 'bottom-start', modifiers: [{ name: 'offset', options: { offset: [0, 5] } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '240px', zIndex: 10005 }}>
-                            <div className="px-1 py-1 mb-2 d-flex flex-column gap-1">
+                          <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ placement: 'bottom-start', modifiers: [{ name: 'offset', options: { offset: [0, 5] } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '260px', zIndex: 10005 }}>
+                            <div className="px-1 py-1 d-flex flex-column gap-1">
                               <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2 small" onClick={() => handleUpdateFilter(id, 'contains', '')}>
-                                <Filter size={14} className="text-muted" /> Filter
+                                <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><Filter size={14} className="text-muted" /></div> 
+                                <span>Filter</span>
                               </Dropdown.Item>
-                              <div className="dropdown-divider opacity-10"></div>
-                              <div className="position-relative dropdown-submenu">
-                                <div className="rounded-2 d-flex align-items-center justify-content-between py-2 small px-2 w-100 cursor-pointer hover-bg-light text-start transition-all">
-                                  <div className="d-flex align-items-center gap-2"><Sigma size={14} className="text-muted" /> Hesapla</div>
-                                  <ChevronRight size={14} className="text-muted opacity-50" />
+
+                              <div className="dropdown-divider opacity-10 mx-1"></div>
+
+                              {/* Hesapla Section */}
+                              <div className="px-1 py-1">
+                                <div 
+                                  className="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer"
+                                  onClick={(e) => { e.stopPropagation(); setShowCalculateSubmenu(!showCalculateSubmenu); }}
+                                >
+                                  <div className="d-flex align-items-center gap-2">
+                                    <Sigma size={14} className="text-muted" />
+                                    <span>Hesapla</span>
+                                  </div>
+                                  <ChevronDown size={14} className={`text-muted transition-all ${showCalculateSubmenu ? 'rotate-180' : ''}`} />
                                 </div>
-                                <div className="submenu-content glass-card border shadow-lg p-2">
-                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${!config.columnCalculations?.[id] || config.columnCalculations?.[id] === 'none' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'none' } })}>Hiçbiri</div>
-                                  <div className="dropdown-divider opacity-10"></div>
-                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_all' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_all' } })}>Tümünü Say</div>
-                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_values' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_values' } })}>Değerleri Say</div>
-                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_unique' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_unique' } })}>Benzersizleri Say</div>
-                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_empty' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_empty' } })}>Boş Olanları Say</div>
-                                  <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_not_empty' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_not_empty' } })}>Dolu Olanları Say</div>
-                                  {id === 'amount' && (
-                                    <>
-                                      <div className="dropdown-divider opacity-10"></div>
-                                      <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'sum' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'sum' } })}>Toplam (Sum)</div>
-                                      <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'avg' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'avg' } })}>Ortalama (Avg)</div>
-                                      <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'min' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'min' } })}>En Küçük (Min)</div>
-                                      <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light ${config.columnCalculations?.[id] === 'max' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'max' } })}>En Büyük (Max)</div>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="dropdown-divider opacity-10"></div>
-                              <div className="d-flex align-items-center gap-2">
-                                <Dropdown autoClose="outside" className="d-inline">
-                                  <Dropdown.Toggle as="div" className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 cursor-pointer hover-bg-secondary hover-text-white transition-all" style={{ width: '28px', height: '28px' }}>
-                                    {currentIcon}
-                                  </Dropdown.Toggle>
-                                  <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '180px' }}>
-                                    <div className="x-small fw-bold text-muted mb-2 px-2">CHOOSE ICON</div>
-                                    <div className="d-flex flex-wrap gap-1 justify-content-center">
-                                      {ICON_LIST.map(item => (
-                                        <div
-                                          key={item.name}
-                                          className={`rounded d-flex align-items-center justify-content-center cursor-pointer hover-bg-light p-1 ${config.propertyIcons?.[id] === item.name ? 'bg-primary text-white' : ''}`}
-                                          style={{ width: '30px', height: '30px' }}
-                                          onClick={() => handleUpdatePropertyIcon(id, item.name)}
+                                <Collapse in={showCalculateSubmenu}>
+                                  <div className="px-1 py-1">
+                                    <div className="bg-light bg-opacity-50 rounded-3 p-1 d-flex flex-column gap-1">
+                                      {[
+                                        { label: 'Hiçbiri', value: 'none' },
+                                        { label: 'Tümünü Say', value: 'count_all' },
+                                        { label: 'Değerleri Say', value: 'count_values' },
+                                        { label: 'Benzersizleri Say', value: 'count_unique' },
+                                        { label: 'Boş Olanları Say', value: 'count_empty' },
+                                        { label: 'Dolu Olanları Say', value: 'count_not_empty' },
+                                        ...(id === 'amount' ? [
+                                          { label: 'Toplam (Sum)', value: 'sum' },
+                                          { label: 'Ortalama (Avg)', value: 'avg' },
+                                          { label: 'En Küçük (Min)', value: 'min' },
+                                          { label: 'En Büyük (Max)', value: 'max' }
+                                        ] : [])
+                                      ].map(item => (
+                                        <div 
+                                          key={item.value}
+                                          className={`dropdown-item small rounded-2 py-1.5 d-flex align-items-center justify-content-between cursor-pointer ${(!config.columnCalculations?.[id] && item.value === 'none') || config.columnCalculations?.[id] === item.value ? 'bg-light text-primary fw-bold' : 'text-muted'}`}
+                                          onClick={(e) => { 
+                                            e.stopPropagation(); 
+                                            updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: item.value } }); 
+                                          }}
                                         >
-                                          {item.icon}
+                                          <span>{item.label}</span>
+                                          {((!config.columnCalculations?.[id] && item.value === 'none') || config.columnCalculations?.[id] === item.value) && <Check size={12} className="text-primary" />}
                                         </div>
                                       ))}
                                     </div>
-                                  </Dropdown.Menu>
-                                </Dropdown>
-                                <div className="position-relative flex-grow-1">
-                                  <Form.Control
-                                    size="sm"
-                                    value={label}
-                                    onChange={(e) => handleUpdatePropertyLabel(id, e.target.value)}
-                                    className="border-primary-focus bg-light"
-                                    style={{ fontSize: '14px', paddingRight: '25px' }}
-                                  />
-                                  <div className="position-absolute end-0 top-50 translate-middle-y pe-2 opacity-50">
-                                    <div className="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white" style={{ width: '14px', height: '14px', fontSize: '9px' }}>i</div>
+                                  </div>
+                                </Collapse>
+                              </div>
+
+                              <div className="dropdown-divider opacity-10 mx-1"></div>
+
+                              {/* Icon & Label Update */}
+                              <div className="px-2 py-1">
+                                <div className="d-flex align-items-center gap-2 mb-2">
+                                  <Dropdown autoClose="outside" className="d-inline">
+                                    <Dropdown.Toggle as="div" className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 cursor-pointer hover-bg-secondary hover-text-white transition-all shadow-sm" style={{ width: '32px', height: '32px' }}>
+                                      {currentIcon}
+                                    </Dropdown.Toggle>
+                                    <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '180px' }}>
+                                      <div className="x-small fw-bold text-muted mb-2 px-2">CHOOSE ICON</div>
+                                      <div className="d-flex flex-wrap gap-1 justify-content-center">
+                                        {ICON_LIST.map(item => (
+                                          <div
+                                            key={item.name}
+                                            className={`rounded d-flex align-items-center justify-content-center cursor-pointer hover-bg-light p-1 ${config.propertyIcons?.[id] === item.name ? 'bg-primary text-white shadow-sm' : ''}`}
+                                            style={{ width: '30px', height: '30px' }}
+                                            onClick={() => handleUpdatePropertyIcon(id, item.name)}
+                                          >
+                                            {item.icon}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </Dropdown.Menu>
+                                  </Dropdown>
+                                  <div className="position-relative flex-grow-1">
+                                    <Form.Control
+                                      size="sm"
+                                      value={label}
+                                      onChange={(e) => handleUpdatePropertyLabel(id, e.target.value)}
+                                      className="border-0 bg-light rounded-2"
+                                      style={{ fontSize: '13px', paddingRight: '25px', height: '32px' }}
+                                    />
+                                    <div className="position-absolute end-0 top-50 translate-middle-y pe-2 opacity-30">
+                                      <Edit2 size={12} />
+                                    </div>
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                            <div className="dropdown-divider opacity-10"></div>
-                            <Dropdown.Item
-                              className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${config.sortConfig?.propId === id && config.sortConfig?.direction === 'asc' ? 'bg-light text-primary fw-medium' : ''}`}
-                              onClick={() => handleSort(id, 'asc')}
-                            >
-                              <ArrowUp size={14} /> Sort ascending
-                            </Dropdown.Item>
-                            <Dropdown.Item
-                              className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${config.sortConfig?.propId === id && config.sortConfig?.direction === 'desc' ? 'bg-light text-primary fw-medium' : ''}`}
-                              onClick={() => handleSort(id, 'desc')}
-                            >
-                              <ArrowDown size={14} /> Sort descending
-                            </Dropdown.Item>
-                            <div className="dropdown-divider opacity-10"></div>
-                            <Dropdown.Item
-                              className="rounded-2 d-flex align-items-center justify-content-between py-2 small"
-                              onClick={() => handleToggleWrap(id)}
-                            >
-                              <div className="d-flex align-items-center gap-2">
-                                <WrapText size={14} className="text-muted" /> Wrap content
-                              </div>
-                              {config.propertyWrap?.[id] !== false ? (
-                                <Eye size={14} className="text-primary" />
-                              ) : (
-                                <EyeOff size={14} className="text-muted opacity-50" />
+
+                              <div className="dropdown-divider opacity-10 mx-1"></div>
+
+                              <Dropdown.Item
+                                className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${config.sortConfig?.propId === id && config.sortConfig?.direction === 'asc' ? 'bg-light text-primary fw-bold' : ''}`}
+                                onClick={() => handleSort(id, 'asc')}
+                              >
+                                <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><ArrowUp size={14} className="text-muted" /></div> 
+                                <span>Sort ascending</span>
+                                {config.sortConfig?.propId === id && config.sortConfig?.direction === 'asc' && <Check size={12} className="ms-auto" />}
+                              </Dropdown.Item>
+                              <Dropdown.Item
+                                className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${config.sortConfig?.propId === id && config.sortConfig?.direction === 'desc' ? 'bg-light text-primary fw-bold' : ''}`}
+                                onClick={() => handleSort(id, 'desc')}
+                              >
+                                <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><ArrowDown size={14} className="text-muted" /></div> 
+                                <span>Sort descending</span>
+                                {config.sortConfig?.propId === id && config.sortConfig?.direction === 'desc' && <Check size={12} className="ms-auto" />}
+                              </Dropdown.Item>
+
+                              <div className="dropdown-divider opacity-10 mx-1"></div>
+
+                              <Dropdown.Item
+                                className="rounded-2 d-flex align-items-center justify-content-between py-2 small"
+                                onClick={() => handleToggleWrap(id)}
+                              >
+                                <div className="d-flex align-items-center gap-2">
+                                  <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><WrapText size={14} className="text-muted" /></div> 
+                                  <span>Wrap content</span>
+                                </div>
+                                {config.propertyWrap?.[id] !== false ? (
+                                  <Eye size={14} className="text-primary" />
+                                ) : (
+                                  <EyeOff size={14} className="text-muted opacity-50" />
+                                )}
+                              </Dropdown.Item>
+                              <Dropdown.Item
+                                className="rounded-2 d-flex align-items-center gap-2 py-2 small"
+                                onClick={() => handleUpdatePropertyVisibility(id, false)}
+                              >
+                                <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><EyeOff size={14} className="text-muted" /></div> 
+                                <span>Hide in view</span>
+                              </Dropdown.Item>
+
+                              {['quickActions', 'type', 'bankId'].includes(id) && (
+                                <>
+                                  <div className="dropdown-divider opacity-10 mx-1"></div>
+                                  <Dropdown.Item
+                                    className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${config.groupBy === id ? 'bg-light text-primary fw-bold' : ''}`}
+                                    onClick={() => handleUpdateGroupBy(config.groupBy === id ? null : id)}
+                                  >
+                                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><Layers size={14} className={config.groupBy === id ? 'text-primary' : 'text-muted'} /></div> 
+                                    <span>Gruplandır: {label}</span>
+                                    {config.groupBy === id && <Check size={12} className="ms-auto" />}
+                                  </Dropdown.Item>
+                                </>
                               )}
-                            </Dropdown.Item>
-                            <Dropdown.Item
-                              className="rounded-2 d-flex align-items-center gap-2 py-2 small"
-                              onClick={() => handleUpdatePropertyVisibility(id, false)}
-                            >
-                              <Eye size={14} className="text-muted" /> Hide in view
-                            </Dropdown.Item>
-                            {['quickActions', 'type', 'bankId'].includes(id) && (
-                              <>
-                                <div className="dropdown-divider opacity-10"></div>
-                                <Dropdown.Item
-                                  className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${config.groupBy === id ? 'bg-light text-primary fw-medium' : ''}`}
-                                  onClick={() => handleUpdateGroupBy(config.groupBy === id ? null : id)}
-                                >
-                                  <Layers size={14} className={config.groupBy === id ? 'text-primary' : 'text-muted'} /> Gruplandır: {label}
-                                </Dropdown.Item>
-                              </>
-                            )}
-                            {id === 'date' && (
-                              <>
-                                <div className="dropdown-divider opacity-10"></div>
-                                <Dropdown autoClose="outside" className="w-100">
-                                  <Dropdown.Toggle as="div" className="rounded-2 d-flex align-items-center justify-content-between py-2 small px-3 w-100 cursor-pointer hover-bg-light dropdown-no-caret text-start">
-                                    <div className="d-flex align-items-center gap-2">
-                                      <Calendar size={14} className="text-muted" /> Date format
+
+                              {id === 'date' && (
+                                <>
+                                  <div className="dropdown-divider opacity-10 mx-1"></div>
+                                  <div className="px-1 py-1">
+                                    <div 
+                                      className="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer"
+                                      onClick={(e) => { e.stopPropagation(); setShowDateFormatSubmenu(!showDateFormatSubmenu); }}
+                                    >
+                                      <div className="d-flex align-items-center gap-2">
+                                        <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><Calendar size={14} className="text-muted" /></div>
+                                        <span>Tarih Formatı</span>
+                                      </div>
+                                      <ChevronDown size={14} className={`text-muted transition-all ${showDateFormatSubmenu ? 'rotate-180' : ''}`} />
                                     </div>
-                                    <ChevronDown size={14} className="text-muted opacity-50" />
-                                  </Dropdown.Toggle>
-                                  <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '180px' }}>
-                                    {['DD/MM/YYYY', 'DD.MM.YYYY', 'DD MMMM YYYY', 'DD MMM YYYY'].map(fmt => (
-                                      <Dropdown.Item
-                                        key={fmt}
-                                        className={`rounded-2 d-flex align-items-center justify-content-between py-2 small ${config.dateFormat === fmt || (!config.dateFormat && fmt === 'DD/MM/YYYY') ? 'bg-light text-primary fw-medium' : ''}`}
-                                        onClick={() => handleUpdateDateFormat(fmt)}
-                                      >
-                                        {fmt === 'DD/MM/YYYY' && '01/12/2026'}
-                                        {fmt === 'DD.MM.YYYY' && '01.12.2026'}
-                                        {fmt === 'DD MMMM YYYY' && '01 Ocak 2026'}
-                                        {fmt === 'DD MMM YYYY' && '01 Oca 2026'}
-                                        {(config.dateFormat === fmt || (!config.dateFormat && fmt === 'DD/MM/YYYY')) && <Check size={14} className="text-primary" />}
-                                      </Dropdown.Item>
-                                    ))}
-                                  </Dropdown.Menu>
-                                </Dropdown>
-                              </>
-                            )}
+                                    <Collapse in={showDateFormatSubmenu}>
+                                      <div className="px-1 py-1">
+                                        <div className="bg-light bg-opacity-50 rounded-3 p-1 d-flex flex-column gap-1">
+                                          {[
+                                            { label: '01/12/2026', value: 'DD/MM/YYYY' },
+                                            { label: '01.12.2026', value: 'DD.MM.YYYY' },
+                                            { label: '01 Ocak 2026', value: 'DD MMMM YYYY' },
+                                            { label: '01 Oca 2026', value: 'DD MMM YYYY' }
+                                          ].map(fmt => (
+                                            <div
+                                              key={fmt.value}
+                                              className={`rounded-2 py-1.5 px-2 small cursor-pointer hover-bg-light d-flex align-items-center justify-content-between ${(config.dateFormat === fmt.value || (!config.dateFormat && fmt.value === 'DD/MM/YYYY')) ? 'bg-light text-primary fw-bold' : 'text-muted'}`}
+                                              onClick={(e) => { e.stopPropagation(); handleUpdateDateFormat(fmt.value); }}
+                                            >
+                                              <span>{fmt.label}</span>
+                                              {(config.dateFormat === fmt.value || (!config.dateFormat && fmt.value === 'DD/MM/YYYY')) && <Check size={12} />}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </Collapse>
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           </Dropdown.Menu>
                         </Dropdown>
+
                       </th>
                     );
                   })
@@ -3767,104 +3834,94 @@ const BankTransactionsPage = () => {
                                 const currentIcon = getPropertyIcon(id, config);
                                 const isGroupFiltered = localFilters.some(f => f.propId === id);
                                 const isGroupSorted = localSort?.propId === id;
-
-                                return (
+                                                                  return (
                                   <th key={id} style={id === 'title' ? { width: '25%' } : {}}>
-                                    <Dropdown autoClose="outside">
-                                      <Dropdown.Toggle as="button" type="button" className="btn btn-link p-0 text-decoration-none border-0 d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded px-2 py-1 flex-grow-1" style={{ marginLeft: '-8px' }}>
+                                    <Dropdown autoClose="outside" onToggle={(isOpen) => { if (!isOpen) { setShowCalculateSubmenu(false); setShowDateFormatSubmenu(false); } }}>
+                                      <Dropdown.Toggle as="div" className="btn btn-link p-2 text-decoration-none border-0 d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded flex-grow-1" style={{ marginLeft: '-8px' }}>
                                         <span className={`d-flex align-items-center ${isGroupFiltered ? 'text-primary' : 'text-muted'}`}>{currentIcon}</span>
-                                        <span className={`text-nowrap ${isGroupFiltered ? 'text-primary fw-bold' : ''}`}>{label}</span>
-                                        {isGroupSorted && (
-                                          <div className="ms-auto d-flex align-items-center gap-1">
-                                            <span
-                                              className="text-primary d-flex align-items-center cursor-pointer hover-bg-secondary rounded p-0 justify-content-center"
-                                              style={{ width: '16px', height: '16px' }}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleGroupSort(group.id, id, localSort.direction === 'asc' ? 'desc' : 'asc');
-                                              }}
-                                            >
-                                              {localSort.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
-                                            </span>
-                                            <div
-                                              className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all"
-                                              style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleGroupSort(group.id, null, null);
-                                              }}
-                                            >
-                                              <X size={10} />
+                                        <span className={`text-nowrap fw-bold fs-13 ${isGroupFiltered ? 'text-primary' : 'text-dark'}`}>{label}</span>
+                                        <div className="ms-auto d-flex align-items-center gap-2">
+                                          {isGroupSorted && (
+                                            <div className="d-flex align-items-center gap-1">
+                                              <span
+                                                className="text-primary d-flex align-items-center cursor-pointer hover-bg-secondary rounded p-0 justify-content-center"
+                                                style={{ width: '16px', height: '16px' }}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleGroupSort(group.id, id, localSort.direction === 'asc' ? 'desc' : 'asc');
+                                                }}
+                                              >
+                                                {localSort.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+                                              </span>
+                                              <div
+                                                className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all"
+                                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleGroupSort(group.id, null, null);
+                                                }}
+                                              >
+                                                <X size={10} />
+                                              </div>
                                             </div>
-                                          </div>
-                                        )}
+                                          )}
+                                          <ChevronDown size={14} className="text-muted opacity-50" />
+                                        </div>
                                       </Dropdown.Toggle>
-                                      <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ placement: 'bottom-start', modifiers: [{ name: 'offset', options: { offset: [0, 5] } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '240px', zIndex: 10005 }}>
-                                        <div className="px-1 py-1 mb-2 d-flex flex-column gap-1">
+                                      <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ placement: 'bottom-start', modifiers: [{ name: 'offset', options: { offset: [0, 5] } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '260px', zIndex: 10005 }}>
+                                        <div className="px-1 py-1 d-flex flex-column gap-1">
                                           <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2 small" onClick={() => handleUpdateGroupFilter(group.id, id, 'contains', '')}>
-                                            <Filter size={14} className="text-muted" /> Filter
+                                            <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><Filter size={14} className="text-muted" /></div> 
+                                            <span>Filter</span>
                                           </Dropdown.Item>
-                                          <div className="dropdown-divider opacity-10"></div>
-                                         <div className="position-relative dropdown-submenu">
-                                           <div className="rounded-2 d-flex align-items-center justify-content-between py-2 small px-2 w-100 cursor-pointer hover-bg-light text-start transition-all">
-                                             <div className="d-flex align-items-center gap-2"><Sigma size={14} className="text-muted" /> Hesapla</div>
-                                             <ChevronRight size={14} className="text-muted opacity-50" />
-                                           </div>
-                                           <div className="submenu-content glass-card border shadow-lg p-2">
-                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${!config.columnCalculations?.[id] || config.columnCalculations?.[id] === 'none' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'none' } })}>Hiçbiri</div>
-                                             <div className="dropdown-divider opacity-10"></div>
-                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_all' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_all' } })}>Tümünü Say</div>
-                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_values' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_values' } })}>Değerleri Say</div>
-                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_unique' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_unique' } })}>Benzersizleri Say</div>
-                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_empty' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_empty' } })}>Boş Olanları Say</div>
-                                             <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_not_empty' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_not_empty' } })}>Dolu Olanları Say</div>
-                                             {id === 'amount' && (
-                                               <>
-                                                 <div className="dropdown-divider opacity-10"></div>
-                                                 <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'sum' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'sum' } })}>Toplam (Sum)</div>
-                                                 <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'avg' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'avg' } })}>Ortalama (Avg)</div>
-                                                 <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'min' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'min' } })}>En Küçük (Min)</div>
-                                                 <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light ${config.columnCalculations?.[id] === 'max' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'max' } })}>En Büyük (Max)</div>
-                                               </>
-                                             )}
-                                           </div>
-                                         </div>
-                                         <div className="dropdown-divider opacity-10"></div>
-                                          <div className="d-flex align-items-center gap-2">
-                                            <Dropdown autoClose="outside" className="d-inline">
-                                              <Dropdown.Toggle as="div" className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0 cursor-pointer hover-bg-secondary hover-text-white transition-all" style={{ width: '28px', height: '28px' }}>
-                                                {currentIcon}
-                                              </Dropdown.Toggle>
-                                              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ placement: 'bottom-start', modifiers: [{ name: 'offset', options: { offset: [0, 5] } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '180px' }}>
-                                                <div className="x-small fw-bold text-muted mb-2 px-2">CHOOSE ICON</div>
-                                                <div className="d-flex flex-wrap gap-1 justify-content-center">
-                                                  {ICON_LIST.map(item => (
-                                                    <div
-                                                      key={item.name}
-                                                      className={`rounded d-flex align-items-center justify-content-center cursor-pointer hover-bg-light p-1 ${config.propertyIcons?.[id] === item.name ? 'bg-primary text-white' : ''}`}
-                                                      style={{ width: '30px', height: '30px' }}
-                                                      onClick={() => handleUpdatePropertyIcon(id, item.name)}
+
+                                          <div className="dropdown-divider opacity-10 mx-1"></div>
+
+                                          {/* Hesapla Section */}
+                                          <div className="px-1 py-1">
+                                            <div 
+                                              className="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer"
+                                              onClick={(e) => { e.stopPropagation(); setShowCalculateSubmenu(!showCalculateSubmenu); }}
+                                            >
+                                              <div className="d-flex align-items-center gap-2">
+                                                <Sigma size={14} className="text-muted" />
+                                                <span>Hesapla</span>
+                                              </div>
+                                              <ChevronDown size={14} className={`text-muted transition-all ${showCalculateSubmenu ? 'rotate-180' : ''}`} />
+                                            </div>
+                                            <Collapse in={showCalculateSubmenu}>
+                                              <div className="px-1 py-1">
+                                                <div className="bg-light bg-opacity-50 rounded-3 p-1 d-flex flex-column gap-1">
+                                                  {[
+                                                    { label: 'Hiçbiri', value: 'none' },
+                                                    { label: 'Tümünü Say', value: 'count_all' },
+                                                    { label: 'Değerleri Say', value: 'count_values' },
+                                                    { label: 'Benzersizleri Say', value: 'count_unique' },
+                                                    { label: 'Boş Olanları Say', value: 'count_empty' },
+                                                    { label: 'Dolu Olanları Say', value: 'count_not_empty' },
+                                                    ...(id === 'amount' ? [
+                                                      { label: 'Toplam (Sum)', value: 'sum' },
+                                                      { label: 'Ortalama (Avg)', value: 'avg' },
+                                                      { label: 'En Küçük (Min)', value: 'min' },
+                                                      { label: 'En Büyük (Max)', value: 'max' }
+                                                    ] : [])
+                                                  ].map(item => (
+                                                    <div 
+                                                      key={item.value}
+                                                      className={`dropdown-item small rounded-2 py-1.5 d-flex align-items-center justify-content-between cursor-pointer ${(!config.columnCalculations?.[id] && item.value === 'none') || config.columnCalculations?.[id] === item.value ? 'bg-light text-primary fw-bold' : 'text-muted'}`}
+                                                      onClick={(e) => { 
+                                                        e.stopPropagation(); 
+                                                        updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: item.value } }); 
+                                                      }}
                                                     >
-                                                      {item.icon}
+                                                      <span>{item.label}</span>
+                                                      {((!config.columnCalculations?.[id] && item.value === 'none') || config.columnCalculations?.[id] === item.value) && <Check size={12} className="text-primary" />}
                                                     </div>
                                                   ))}
                                                 </div>
-                                              </Dropdown.Menu>
-                                            </Dropdown>
-                                            <div className="position-relative flex-grow-1">
-                                              <Form.Control
-                                                size="sm"
-                                                value={label}
-                                                onChange={(e) => handleUpdatePropertyLabel(id, e.target.value)}
-                                                className="border-primary-focus bg-light"
-                                                style={{ fontSize: '14px', paddingRight: '25px' }}
-                                              />
-                                              <div className="position-absolute end-0 top-50 translate-middle-y pe-2 opacity-50">
-                                                <div className="rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white" style={{ width: '14px', height: '14px', fontSize: '9px' }}>i</div>
                                               </div>
-                                            </div>
+                                            </Collapse>
                                           </div>
-                                        </div>
                                         <div className="dropdown-divider opacity-10"></div>
                                         <Dropdown.Item
                                           className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${isGroupSorted && localSort.direction === 'asc' ? 'bg-light text-primary fw-medium' : ''}`}
@@ -3892,13 +3949,55 @@ const BankTransactionsPage = () => {
                                             <EyeOff size={14} className="text-muted opacity-50" />
                                           )}
                                         </Dropdown.Item>
+                                        <div className="dropdown-divider opacity-10 mx-1"></div>
                                         <Dropdown.Item
                                           className="rounded-2 d-flex align-items-center gap-2 py-2 small"
                                           onClick={() => handleUpdatePropertyVisibility(id, false)}
                                         >
-                                          <Eye size={14} className="text-muted" /> Hide in view
+                                          <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><EyeOff size={14} className="text-muted" /></div> 
+                                          <span>Hide in view</span>
                                         </Dropdown.Item>
-                                      </Dropdown.Menu>
+
+                                        {id === 'date' && (
+                                          <>
+                                            <div className="dropdown-divider opacity-10 mx-1"></div>
+                                            <div className="px-1 py-1">
+                                              <div 
+                                                className="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer"
+                                                onClick={(e) => { e.stopPropagation(); setShowDateFormatSubmenu(!showDateFormatSubmenu); }}
+                                              >
+                                                <div className="d-flex align-items-center gap-2">
+                                                  <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><Calendar size={14} className="text-muted" /></div>
+                                                  <span>Tarih Formatı</span>
+                                                </div>
+                                                <ChevronDown size={14} className={`text-muted transition-all ${showDateFormatSubmenu ? 'rotate-180' : ''}`} />
+                                              </div>
+                                              <Collapse in={showDateFormatSubmenu}>
+                                                <div className="px-1 py-1">
+                                                  <div className="bg-light bg-opacity-50 rounded-3 p-1 d-flex flex-column gap-1">
+                                                    {[
+                                                      { label: '01/12/2026', value: 'DD/MM/YYYY' },
+                                                      { label: '01.12.2026', value: 'DD.MM.YYYY' },
+                                                      { label: '01 Ocak 2026', value: 'DD MMMM YYYY' },
+                                                      { label: '01 Oca 2026', value: 'DD MMM YYYY' }
+                                                    ].map(fmt => (
+                                                      <div
+                                                        key={fmt.value}
+                                                        className={`rounded-2 py-1.5 px-2 small cursor-pointer hover-bg-light d-flex align-items-center justify-content-between ${(config.dateFormat === fmt.value || (!config.dateFormat && fmt.value === 'DD/MM/YYYY')) ? 'bg-light text-primary fw-bold' : 'text-muted'}`}
+                                                        onClick={(e) => { e.stopPropagation(); handleUpdateDateFormat(fmt.value); }}
+                                                      >
+                                                        <span>{fmt.label}</span>
+                                                        {(config.dateFormat === fmt.value || (!config.dateFormat && fmt.value === 'DD/MM/YYYY')) && <Check size={12} />}
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              </Collapse>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    </Dropdown.Menu>
                                     </Dropdown>
                                   </th>
                                 );

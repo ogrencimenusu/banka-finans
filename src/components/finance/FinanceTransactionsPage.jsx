@@ -18,7 +18,7 @@ import {
   where,
   serverTimestamp
 } from 'firebase/firestore';
-import { Button, Form, Card, Row, Col, Table, Badge, Dropdown, Modal, Overlay } from 'react-bootstrap';
+import { Button, Form, Card, Row, Col, Table, Badge, Dropdown, Modal, Overlay, Collapse } from 'react-bootstrap';
 import {
   Trash2,
   Plus,
@@ -75,7 +75,8 @@ import {
   ShieldCheck,
   DollarSign,
   ShoppingBag,
-  Sigma
+  Sigma,
+  Briefcase
 } from 'lucide-react';
 
 // Dnd Kit Imports
@@ -620,6 +621,10 @@ const FinanceTransactionsPage = () => {
   const [simQuantity, setSimQuantity] = useState('');
   const [simPrice, setSimPrice] = useState('');
 
+  const [showCalculateSubmenu, setShowCalculateSubmenu] = useState(false);
+  const [showDateFormatSubmenu, setShowDateFormatSubmenu] = useState(false);
+  const [showVisibilitySubmenu, setShowVisibilitySubmenu] = useState(false);
+
   // Stock Edit States
   const [showEditStockModal, setShowEditStockModal] = useState(false);
   const [editingStock, setEditingStock] = useState(null);
@@ -909,7 +914,8 @@ const FinanceTransactionsPage = () => {
         const durationDays = totalSoldUnits > 0 ? Math.round(weightedDaysSum / totalSoldUnits) : 0;
 
         const totalSaleAmount = q * p;
-        const totalProfit = grossProfit - taxDeduction;
+        const finalTaxDeduction = (t.taxDeduction !== undefined && t.taxDeduction !== null && t.taxDeduction !== 0) ? t.taxDeduction : taxDeduction;
+        const totalProfit = grossProfit - finalTaxDeduction;
         const costBasis = totalSaleAmount - grossProfit;
         const profitPercentage = costBasis > 0 ? (totalProfit / costBasis) * 100 : 0;
 
@@ -920,7 +926,7 @@ const FinanceTransactionsPage = () => {
           _isAlis: false,
           _storageKey: storageKey,
           calculatedRemaining: totalRemainingAfterSale,
-          calculatedTaxDeduction: taxDeduction,
+          calculatedTaxDeduction: finalTaxDeduction,
           totalBuyAmount: 0,
           totalSaleAmount: totalSaleAmount,
           costBasis: costBasis,
@@ -1283,7 +1289,7 @@ const FinanceTransactionsPage = () => {
         portfolioRemainingQty = currentTotalQty + qty;
       }
       const newRef = doc(collection(db, `users/${user.uid}/financeTransactions`));
-      batch.set(newRef, { institutionId: formInstitutionId, stockId: formStockId, type, quantity: qty, remainingQuantity: type === 'ALIŞ' ? qty : portfolioRemainingQty, price: prc, date, taxRate: tax, taxDeduction: calculatedTaxDeduction, createdAt: serverTimestamp(), deleted: false });
+      batch.set(newRef, { institutionId: formInstitutionId, stockId: formStockId, type, quantity: qty, remainingQuantity: type === 'ALIŞ' ? qty : portfolioRemainingQty, price: prc, date, taxRate: tax, createdAt: serverTimestamp(), deleted: false });
       await batch.commit();
       setQuantity(''); setPrice(''); setTaxRate('0'); setShowTransactionModal(false);
     } catch (error) { console.error(error); }
@@ -1292,7 +1298,7 @@ const FinanceTransactionsPage = () => {
   const handleQuickNewTransaction = async () => {
     if (!user) return;
     const today = new Date().toISOString().split('T')[0];
-    await addDoc(collection(db, `users/${user.uid}/financeTransactions`), { institutionId: '', stockId: '', type: 'ALIŞ', quantity: 0, price: 0, taxRate: 0, remainingQuantity: 0, taxDeduction: 0, date: today, createdAt: serverTimestamp(), deleted: false });
+    await addDoc(collection(db, `users/${user.uid}/financeTransactions`), { institutionId: '', stockId: '', type: 'ALIŞ', quantity: 0, price: 0, taxRate: 0, remainingQuantity: 0, date: today, createdAt: serverTimestamp(), deleted: false });
   };
 
 
@@ -1385,9 +1391,31 @@ const FinanceTransactionsPage = () => {
       const cleanValue = value.toString().replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
       finalValue = parseFloat(cleanValue) || 0;
     }
-    await updateDoc(doc(db, `users/${user.uid}/financeTransactions`, transId), { [propId]: finalValue });
-    setEditingCell(null);
-    setCellDraft(null);
+    
+    const updates = { [propId]: finalValue };
+    
+    if (propId === 'stockId') {
+      const stock = stocks.find(s => s.id === value);
+      if (stock && stock.currentPrice !== undefined && stock.currentPrice !== null && stock.currentPrice !== '') {
+        const parsePrice = (p) => {
+          if (!p) return 0;
+          if (typeof p === 'number') return p;
+          const str = p.toString().trim();
+          if (str.includes(',')) return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+          return parseFloat(str) || 0;
+        };
+        updates.price = parsePrice(stock.currentPrice);
+      }
+    }
+    
+    await updateDoc(doc(db, `users/${user.uid}/financeTransactions`, transId), updates);
+    setEditingCell(prev => {
+      if (prev && prev.transId === transId && prev.propId === propId) {
+        setCellDraft(null);
+        return null;
+      }
+      return prev;
+    });
   };
 
   const handleSelect = React.useCallback((id, checked) => {
@@ -1398,12 +1426,12 @@ const FinanceTransactionsPage = () => {
     const inst = getInstitutionInfo(t.institutionId);
     const stock = getStockInfo(t.stockId);
     const isEditing = editingCell?.transId === t.id && editingCell?.propId === propId;
-    const startEdit = async (e) => { 
+    const startEdit = (e) => { 
       e.stopPropagation(); 
       setEditTarget(e.currentTarget);
       // Auto-save previous cell if exists
       if (editingCell && cellDraft !== null) {
-        await saveCell(editingCell.transId, editingCell.propId, cellDraft);
+        saveCell(editingCell.transId, editingCell.propId, cellDraft);
       }
       let initialValue = t[propId] ?? '';
       if (typeof initialValue === 'number' && ['quantity', 'price', 'taxRate'].includes(propId)) {
@@ -1440,7 +1468,7 @@ const FinanceTransactionsPage = () => {
                 {({ placement, arrowProps, show: _show, popper, hasDoneInitialMeasure, ...props }) => (
                   <div {...props} className="glass-card border-0 shadow-lg p-2 overflow-auto" style={{ ...props.style, zIndex: 20000, minWidth: '200px', maxHeight: '300px', backgroundColor: 'white' }}>
                     <div className="px-2 py-1 sticky-top bg-white border-bottom mb-1" style={{ zIndex: 1 }}>
-                      <Form.Control size="sm" placeholder="Kurum ara..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="border-0 bg-light" autoFocus />
+                      <Form.Control size="sm" placeholder="Kurum ara..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="border-0 bg-light" />
                     </div>
                     {institutions.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase())).map(i => (
                       <div key={i.id} className="d-flex align-items-center gap-2 p-1 px-2 rounded-1 cursor-pointer notion-option-item fs-14" onClick={(e) => { e.stopPropagation(); setCellDraft(i.id); saveCell(t.id, 'institutionId', i.id); setEditingCell(null); }}>
@@ -1479,7 +1507,7 @@ const FinanceTransactionsPage = () => {
                 {({ placement, arrowProps, show: _show, popper, hasDoneInitialMeasure, ...props }) => (
                   <div {...props} className="glass-card border-0 shadow-lg p-2 overflow-auto" style={{ ...props.style, zIndex: 20000, minWidth: '220px', maxHeight: '300px', backgroundColor: 'white' }}>
                     <div className="px-2 py-1 sticky-top bg-white border-bottom mb-1" style={{ zIndex: 1 }}>
-                      <Form.Control size="sm" placeholder="Hisse ara..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="border-0 bg-light" autoFocus />
+                      <Form.Control size="sm" placeholder="Hisse ara..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="border-0 bg-light" />
                     </div>
                     {[...stocks].filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())).sort((a, b) => (stockRemainingQuantities[b.id] || 0) - (stockRemainingQuantities[a.id] || 0)).map(s => { 
                       const qty = stockRemainingQuantities[s.id] || 0; 
@@ -1548,7 +1576,7 @@ const FinanceTransactionsPage = () => {
       );
       case 'remainingQuantity': return <td key={propId} className="fw-bold"><Badge bg={t.type === 'ALIŞ' ? (t.calculatedRemaining === 0 ? "secondary" : "info") : "primary"} className="rounded-pill">{t.calculatedRemaining}</Badge></td>;
       case 'taxDeduction': 
-        const taxVal = t.type === 'SATIŞ' && t.taxDeduction !== undefined ? t.taxDeduction : t.calculatedTaxDeduction;
+        const taxVal = t.calculatedTaxDeduction;
         return (
           <td key={propId} className={`${tdClass} text-danger fw-bold`} onClick={t.type === 'SATIŞ' ? tdClick : undefined}>
             {isEditing ? (
@@ -2266,29 +2294,39 @@ const FinanceTransactionsPage = () => {
         <div className="d-flex align-items-center gap-3 w-100 w-md-auto ms-md-auto justify-content-end" style={{ overflow: 'visible !important' }}>
           <div className="d-flex align-items-center gap-3 text-muted">
             <Dropdown align="end" className="d-inline" autoClose="outside" onToggle={(isOpen) => !isOpen && setSettingsView('main')}>
-              <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret cursor-pointer hover-text-primary transition-all"><SlidersHorizontal size={20} /></Dropdown.Toggle>
-              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-0 overflow-hidden" style={{ width: '280px', zIndex: 10005 }}>
-                {settingsView === 'main' ? (
-                  <div className="p-2">
-                    <Dropdown.Item onClick={() => setSettingsView('visibility')} className="rounded-2 d-flex align-items-center justify-content-between py-2">
-                      <div className="d-flex align-items-center gap-2"><Eye size={18} className="text-muted" /><span>Property visibility</span></div>
-                      <div className="d-flex align-items-center gap-2 text-muted opacity-50"><span>{Object.values(config.propertyVisibility || {}).filter(v => v !== false).length}</span><ChevronRight size={14} /></div>
-                    </Dropdown.Item>
-                    <div className="dropdown-divider mx-2 opacity-10"></div>
-                    <div className="px-3 py-1 mt-2 mb-1 small fw-bold text-muted opacity-50" style={{ fontSize: '10px' }}>İŞLEM SEÇENEKLERİ</div>
-                    <Dropdown.Item onClick={() => updateConfig({ propertyLabels: {} })} className="rounded-2 d-flex align-items-center gap-2"><RotateCcw size={15} /> Başlıkları Sıfırla</Dropdown.Item>
-                  </div>
-                ) : (
-                  <div className="d-flex flex-column" style={{ maxHeight: '450px' }}>
-                    <div className="p-2 d-flex align-items-center gap-2 border-bottom">
-                      <div className="cursor-pointer p-1 hover-bg-light rounded" onClick={() => setSettingsView('main')}><X size={16} /></div>
-                      <span className="fw-bold flex-grow-1" style={{ fontSize: '14px' }}>Property visibility</span>
+              <Dropdown.Toggle as="div" className="p-1 dropdown-no-caret cursor-pointer hover-text-primary transition-all">
+                <SlidersHorizontal size={20} />
+              </Dropdown.Toggle>
+              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '300px', zIndex: 10005 }}>
+                <div className="d-flex flex-column gap-1">
+                  <div className="px-3 py-2 mb-1 small fw-bold text-muted opacity-50 fs-10">TABLO AYARLARI</div>
+
+                  {/* Property Visibility Section */}
+                  <div className="px-1">
+                    <div 
+                      className="rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer hover-bg-light px-2 transition-all"
+                      onClick={(e) => { e.stopPropagation(); setShowVisibilitySubmenu(!showVisibilitySubmenu); }}
+                    >
+                      <div className="d-flex align-items-center gap-2">
+                        <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '28px', height: '28px' }}><Eye size={16} className="text-muted" /></div>
+                        <span>Sütun Görünürlüğü</span>
+                      </div>
+                      <div className="d-flex align-items-center gap-2 text-muted">
+                        <span className="bg-light px-2 rounded-pill fs-11 opacity-50">{Object.values(config.propertyVisibility || {}).filter(v => v !== false).length}</span>
+                        <ChevronDown size={14} className={`transition-all ${showVisibilitySubmenu ? 'rotate-180' : ''}`} />
+                      </div>
                     </div>
-                    <div className="p-2">
-                      <div className="overflow-auto" style={{ maxHeight: '400px' }}>
+                    <Collapse in={showVisibilitySubmenu}>
+                      <div className="mt-2 border-start ms-3 ps-2 py-2 d-flex flex-column gap-2 overflow-auto" style={{ maxHeight: '350px' }}>
+                        <div className="d-flex align-items-center justify-content-between mb-1">
+                          <span className="fs-11 fw-bold text-muted opacity-50">SÜTUNLAR</span>
+                          <div className="d-flex gap-2">
+                            <span className="fs-10 text-primary cursor-pointer fw-bold hover-underline" onClick={(e) => { e.stopPropagation(); toggleAllProperties(true); }}>Tümünü Aç</span>
+                            <span className="fs-10 text-primary cursor-pointer fw-bold hover-underline" onClick={(e) => { e.stopPropagation(); toggleAllProperties(false); }}>Kapat</span>
+                          </div>
+                        </div>
                         {(() => {
                           const currentOrder = Array.isArray(config.propertyOrder) ? config.propertyOrder : PROPERTIES.map(p => p.id);
-                          // Ensure all current properties are in the order even if not in DB
                           const allIds = PROPERTIES.map(p => p.id);
                           const finalOrder = [...currentOrder];
                           allIds.forEach(id => { if (!finalOrder.includes(id)) finalOrder.push(id); });
@@ -2296,23 +2334,29 @@ const FinanceTransactionsPage = () => {
                           return (
                             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => { const { active, over } = e; if (active && over && active.id !== over.id) { handleUpdatePropertyOrder(finalOrder.indexOf(active.id), finalOrder.indexOf(over.id)); } }}>
                               <SortableContext items={finalOrder} strategy={verticalListSortingStrategy}>
-                                <div className="d-flex align-items-center justify-content-between px-2 py-1 mb-1">
-                                  <span className="x-small fw-bold text-muted opacity-50">Properties</span>
-                                  <div className="d-flex gap-2"><span className="x-small text-primary cursor-pointer fw-medium" onClick={() => toggleAllProperties(true)}>Show all</span><span className="x-small text-primary cursor-pointer fw-medium" onClick={() => toggleAllProperties(false)}>Hide all</span></div>
+                                <div className="d-flex flex-column gap-1">
+                                  {finalOrder.map(id => {
+                                    const prop = PROPERTIES.find(p => p.id === id);
+                                    if (!prop) return null;
+                                    return <SortablePropertyItem key={id} prop={prop} icon={getPropertyIcon(id, config)} isVisible={config.propertyVisibility?.[id] !== false} toggleVisibility={handleUpdatePropertyVisibility} />;
+                                  })}
                                 </div>
-                                {finalOrder.map(id => {
-                                  const prop = PROPERTIES.find(p => p.id === id);
-                                  if (!prop) return null;
-                                  return <SortablePropertyItem key={id} prop={prop} icon={getPropertyIcon(id, config)} isVisible={config.propertyVisibility?.[id] !== false} toggleVisibility={handleUpdatePropertyVisibility} />;
-                                })}
                               </SortableContext>
                             </DndContext>
                           );
                         })()}
                       </div>
-                    </div>
+                    </Collapse>
                   </div>
-                )}
+
+                  <div className="dropdown-divider mx-2 opacity-10"></div>
+
+                  <div className="px-3 py-2 mb-1 small fw-bold text-muted opacity-50 fs-10">İŞLEM SEÇENEKLERİ</div>
+                  <Dropdown.Item onClick={() => updateConfig({ propertyLabels: {} })} className="rounded-2 d-flex align-items-center gap-2 py-2 small">
+                    <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '28px', height: '28px' }}><RotateCcw size={16} className="text-muted" /></div> 
+                    <span>Başlıkları Sıfırla</span>
+                  </Dropdown.Item>
+                </div>
               </Dropdown.Menu>
             </Dropdown>
           </div>
@@ -2528,85 +2572,166 @@ const FinanceTransactionsPage = () => {
                 const isSorted = config.sortConfig?.propId === id;
                 return (
                   <th key={id}>
-                    <Dropdown autoClose="outside">
-                      <Dropdown.Toggle as="button" type="button" className="btn btn-link p-0 text-decoration-none border-0 d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded px-2 py-1 flex-grow-1 text-dark text-start" style={{ marginLeft: '-8px' }}>
+                    <Dropdown autoClose="outside" onToggle={(isOpen) => { if (!isOpen) { setShowCalculateSubmenu(false); setShowDateFormatSubmenu(false); } }}>
+                      <Dropdown.Toggle as="div" className="btn btn-link p-2 text-decoration-none border-0 d-flex align-items-center gap-2 cursor-pointer dropdown-no-caret hover-bg-light rounded flex-grow-1" style={{ marginLeft: '-8px' }}>
                         <span className="text-muted d-flex align-items-center">{getPropertyIcon(id, config)}</span>
-                        <span className="text-nowrap">{label}</span>
-                        {isSorted && (
-                          <div className="ms-auto d-flex align-items-center gap-1">
-                            <span className="text-primary d-flex align-items-center cursor-pointer hover-bg-secondary rounded p-0 justify-content-center" style={{ width: '16px', height: '16px' }} onClick={(e) => { e.stopPropagation(); handleSort(id, config.sortConfig.direction === 'asc' ? 'desc' : 'asc'); }}>
-                              {config.sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
-                            </span>
-                            <div className="hover-bg-secondary rounded p-0 d-flex align-items-center justify-content-center opacity-50 hover-opacity-100 transition-all cursor-pointer" style={{ width: '16px', height: '16px' }} onClick={(e) => { e.stopPropagation(); updateConfig({ sortConfig: null }); }}><X size={10} /></div>
-                          </div>
-                        )}
+                        <span className="text-nowrap fw-bold fs-13 text-dark">{label}</span>
+                        <div className="ms-auto d-flex align-items-center gap-2">
+                          <ChevronDown size={14} className="text-muted opacity-50" />
+                        </div>
                       </Dropdown.Toggle>
-                    <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '220px', zIndex: 10005 }}>
-                        <div className="x-small fw-bold text-muted px-2 mb-2">İŞLEMLER</div>
-                        <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2" onClick={() => handleSort(id, 'asc')}><ArrowUp size={14} className="text-muted" /> Artan Sırala</Dropdown.Item>
-                        <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2" onClick={() => handleSort(id, 'desc')}><ArrowDown size={14} className="text-muted" /> Azalan Sırala</Dropdown.Item>
-                        <div className="border-top my-2"></div>
-                        <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2" onClick={() => handleUpdateFilter(id, 'contains', '')}><Filter size={14} className="text-muted" /> Filtrele</Dropdown.Item>
-                        <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2" onClick={() => { const newLabels = { ...config.propertyLabels, [id]: prompt('Yeni başlık ismi:', label) || label }; updateConfig({ propertyLabels: newLabels }); }}><Edit2 size={14} className="text-muted" /> Yeniden Adlandır</Dropdown.Item>
-                        <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2" onClick={() => updateConfig({ propertyVisibility: { ...config.propertyVisibility, [id]: false } })}><EyeOff size={14} className="text-muted" /> Gizle</Dropdown.Item>
-                        <Dropdown.Item className="rounded-2 d-flex align-items-center justify-content-between py-2 small" onClick={() => handleToggleWrap(id)}>
-                          <div className="d-flex align-items-center gap-2">
-                            <WrapText size={14} className="text-muted" /> Metni Kaydır
-                          </div>
-                          {config.propertyWrap?.[id] !== false ? <Eye size={14} className="text-primary" /> : <EyeOff size={14} className="text-muted opacity-50" />}
-                        </Dropdown.Item>
+                      <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ placement: 'bottom-start', modifiers: [{ name: 'offset', options: { offset: [0, 5] } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ width: '240px', zIndex: 10005 }}>
+                        <div className="d-flex flex-column gap-1">
+                          {/* Filter Section */}
+                          <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2 small" onClick={() => handleUpdateFilter(id, 'contains', '')}>
+                            <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><ListFilter size={14} className="text-muted" /></div> 
+                            <span>Filtrele</span>
+                          </Dropdown.Item>
+                          
+                          <div className="dropdown-divider opacity-10 mx-1"></div>
 
-                        <div className="border-top my-2"></div>
-                        <div className="position-relative dropdown-submenu">
-                          <div className="rounded-2 d-flex align-items-center justify-content-between py-2 small px-2 w-100 cursor-pointer hover-bg-light text-start transition-all">
-                            <div className="d-flex align-items-center gap-2"><Sigma size={14} className="text-muted" /> Hesapla</div>
-                            <ChevronRight size={14} className="text-muted opacity-50" />
+                    {/* Hesapla Section */}
+                    <div className="px-1 py-1">
+                      <div 
+                        className="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer"
+                        onClick={(e) => { e.stopPropagation(); setShowCalculateSubmenu(!showCalculateSubmenu); }}
+                      >
+                        <div className="d-flex align-items-center gap-2">
+                          <Sigma size={14} className="text-muted" />
+                          <span>Hesapla</span>
+                        </div>
+                        <ChevronDown size={14} className={`text-muted transition-all ${showCalculateSubmenu ? 'rotate-180' : ''}`} />
+                      </div>
+                      <Collapse in={showCalculateSubmenu}>
+                        <div className="px-1 py-1">
+                          <div className="bg-light bg-opacity-50 rounded-3 p-1 d-flex flex-column gap-1">
+                            {[
+                              { label: 'Hiçbiri', value: 'none' },
+                              { label: 'Tümünü Say', value: 'count_all' },
+                              { label: 'Değerleri Say', value: 'count_values' },
+                              { label: 'Benzersizleri Say', value: 'count_unique' },
+                              { label: 'Boş Olanları Say', value: 'count_empty' },
+                              { label: 'Dolu Olanları Say', value: 'count_not_empty' },
+                              ...(['quantity', 'price', 'taxRate', 'totalBuyAmount', 'totalSaleAmount', 'grossProfit', 'totalProfit', 'taxDeduction', 'remainingQuantity'].includes(id) ? [
+                                { label: 'Toplam (Sum)', value: 'sum' },
+                                { label: 'Ortalama (Avg)', value: 'avg' },
+                                { label: 'En Küçük (Min)', value: 'min' },
+                                { label: 'En Büyük (Max)', value: 'max' }
+                              ] : [])
+                            ].map(item => (
+                              <div 
+                                key={item.value}
+                                className={`dropdown-item small rounded-2 py-1.5 d-flex align-items-center justify-content-between cursor-pointer ${(!config.columnCalculations?.[id] && item.value === 'none') || config.columnCalculations?.[id] === item.value ? 'bg-light text-primary fw-bold' : 'text-muted'}`}
+                                onClick={(e) => { 
+                                  e.stopPropagation(); 
+                                  updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: item.value } }); 
+                                }}
+                              >
+                                <span>{item.label}</span>
+                                {((!config.columnCalculations?.[id] && item.value === 'none') || config.columnCalculations?.[id] === item.value) && <Check size={12} className="text-primary" />}
+                              </div>
+                            ))}
                           </div>
-                          <div className="submenu-content glass-card border shadow-lg p-2">
-                            <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${!config.columnCalculations?.[id] || config.columnCalculations?.[id] === 'none' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'none' } })}>Hiçbiri</div>
-                            <div className="dropdown-divider opacity-10"></div>
-                            <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_all' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_all' } })}>Tümünü Say</div>
-                            <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_values' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_values' } })}>Değerleri Say</div>
-                            <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_unique' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_unique' } })}>Benzersizleri Say</div>
-                            <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_empty' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_empty' } })}>Boş Olanları Say</div>
-                            <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'count_not_empty' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'count_not_empty' } })}>Dolu Olanları Say</div>
-                            {['quantity', 'price', 'taxRate', 'totalBuyAmount', 'totalSaleAmount', 'grossProfit', 'totalProfit', 'taxDeduction', 'remainingQuantity'].includes(id) && (
-                              <>
-                                <div className="dropdown-divider opacity-10"></div>
-                                <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'sum' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'sum' } })}>Toplam (Sum)</div>
-                                <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'avg' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'avg' } })}>Ortalama (Avg)</div>
-                                <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light mb-1 ${config.columnCalculations?.[id] === 'min' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'min' } })}>En Küçük (Min)</div>
-                                <div className={`rounded-2 py-1 px-2 small cursor-pointer hover-bg-light ${config.columnCalculations?.[id] === 'max' ? 'text-primary fw-medium bg-light bg-opacity-50' : ''}`} onClick={() => updateConfig({ columnCalculations: { ...config.columnCalculations, [id]: 'max' } })}>En Büyük (Max)</div>
+                        </div>
+                      </Collapse>
+                    </div>
+
+                    <div className="dropdown-divider opacity-10 mx-1"></div>
+
+                          {/* Rename Section */}
+                          <Dropdown.Item className="rounded-2 d-flex align-items-center gap-2 py-2 small" onClick={() => { const newLabel = prompt('Yeni başlık ismi:', label); if (newLabel) updateConfig({ propertyLabels: { ...config.propertyLabels, [id]: newLabel } }); }}>
+                            <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><Edit2 size={14} className="text-muted" /></div> 
+                            <span>Yeniden Adlandır</span>
+                          </Dropdown.Item>
+
+                          <div className="dropdown-divider opacity-10 mx-1"></div>
+
+                          <Dropdown.Item
+                            className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${isSorted && config.sortConfig.direction === 'asc' ? 'bg-light text-primary fw-bold' : ''}`}
+                            onClick={() => handleSort(id, 'asc')}
+                          >
+                            <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><ArrowUp size={14} className="text-muted" /></div> 
+                            <span>Artan Sırala</span>
+                            {isSorted && config.sortConfig.direction === 'asc' && <Check size={12} className="ms-auto" />}
+                          </Dropdown.Item>
+                          <Dropdown.Item
+                            className={`rounded-2 d-flex align-items-center gap-2 py-2 small ${isSorted && config.sortConfig.direction === 'desc' ? 'bg-light text-primary fw-bold' : ''}`}
+                            onClick={() => handleSort(id, 'desc')}
+                          >
+                            <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><ArrowDown size={14} className="text-muted" /></div> 
+                            <span>Azalan Sırala</span>
+                            {isSorted && config.sortConfig.direction === 'desc' && <Check size={12} className="ms-auto" />}
+                          </Dropdown.Item>
+
+                          <div className="dropdown-divider opacity-10 mx-1"></div>
+
+                          <Dropdown.Item
+                            className="rounded-2 d-flex align-items-center justify-content-between py-2 small"
+                            onClick={() => handleToggleWrap(id)}
+                          >
+                            <div className="d-flex align-items-center gap-2">
+                              <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><WrapText size={14} className="text-muted" /></div> 
+                              <span>Metni Kaydır</span>
+                            </div>
+                            {config.propertyWrap?.[id] !== false ? (
+                              <Eye size={14} className="text-primary" />
+                            ) : (
+                              <EyeOff size={14} className="text-muted opacity-50" />
+                            )}
+                          </Dropdown.Item>
+                          <Dropdown.Item
+                            className="rounded-2 d-flex align-items-center gap-2 py-2 small"
+                            onClick={() => updateConfig({ propertyVisibility: { ...config.propertyVisibility, [id]: false } })}
+                          >
+                            <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><EyeOff size={14} className="text-muted" /></div> 
+                            <span>Gizle</span>
+                          </Dropdown.Item>
+
+                    {id === 'date' && (
+                      <>
+                        <div className="dropdown-divider opacity-10 mx-1"></div>
+                        <div className="px-1 py-1">
+                          <div 
+                            className="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); setShowDateFormatSubmenu(!showDateFormatSubmenu); }}
+                          >
+                            <div className="d-flex align-items-center gap-2">
+                              <Calendar size={14} className="text-muted" />
+                              <span>Tarih Formatı</span>
+                            </div>
+                            <ChevronDown size={14} className={`text-muted transition-all ${showDateFormatSubmenu ? 'rotate-180' : ''}`} />
+                          </div>
+                          <Collapse in={showDateFormatSubmenu}>
+                            <div className="px-1 py-1">
+                              <div className="bg-light bg-opacity-50 rounded-3 p-1 d-flex flex-column gap-1">
+                                        {[
+                                          { label: '01/12/2026', value: 'DD/MM/YYYY' },
+                                          { label: '01.12.2026', value: 'DD.MM.YYYY' },
+                                          { label: '01 Ocak 2026', value: 'DD MMMM YYYY' },
+                                          { label: '01 Oca 2026', value: 'DD MMM YYYY' }
+                                        ].map(fmt => (
+                                          <div 
+                                            key={fmt.value} 
+                                            className={`dropdown-item small rounded-2 py-1.5 d-flex align-items-center justify-content-between cursor-pointer ${(config.dateFormat === fmt.value || (!config.dateFormat && fmt.value === 'DD/MM/YYYY')) ? 'bg-light text-primary fw-bold' : 'text-muted'}`}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              updateConfig({ ...config, dateFormat: fmt.value });
+                                            }}
+                                          >
+                                            <span>{fmt.label}</span>
+                                            {(config.dateFormat === fmt.value || (!config.dateFormat && fmt.value === 'DD/MM/YYYY')) && <Check size={12} className="text-primary" />}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </Collapse>
+                                </div>
                               </>
                             )}
                           </div>
-                        </div>
-
-                        {id === 'date' && (
-                          <>
-                            <div className="border-top my-2"></div>
-                            <Dropdown autoClose="outside" className="w-100">
-                              <Dropdown.Toggle as="div" className="rounded-2 d-flex align-items-center justify-content-between py-2 small px-2 w-100 cursor-pointer hover-bg-light dropdown-no-caret text-start">
-                                <div className="d-flex align-items-center gap-2"><Calendar size={14} className="text-muted" /> Tarih Formatı</div>
-                                <ChevronDown size={14} className="text-muted opacity-50" />
-                              </Dropdown.Toggle>
-                              <Dropdown.Menu rootCloseEvent="mousedown" popperConfig={{ strategy: 'fixed', modifiers: [{ name: 'computeStyles', options: { adaptive: false } }, { name: 'flip', options: { fallbackPlacements: ['top-start', 'bottom-start'] } }] }} className="glass-card border-0 shadow-lg p-2" style={{ minWidth: '180px' }}>
-                                {['DD/MM/YYYY', 'DD.MM.YYYY', 'DD MMMM YYYY', 'DD MMM YYYY'].map(fmt => (
-                                  <Dropdown.Item key={fmt} className={`rounded-2 d-flex align-items-center justify-content-between py-2 small ${config.dateFormat === fmt || (!config.dateFormat && fmt === 'DD/MM/YYYY') ? 'bg-light text-primary fw-medium' : ''}`} onClick={() => updateConfig({ dateFormat: fmt })}>
-                                    {fmt === 'DD/MM/YYYY' && '01/12/2026'}
-                                    {fmt === 'DD.MM.YYYY' && '01.12.2026'}
-                                    {fmt === 'DD MMMM YYYY' && '01 Ocak 2026'}
-                                    {fmt === 'DD MMM YYYY' && '01 Oca 2026'}
-                                    {(config.dateFormat === fmt || (!config.dateFormat && fmt === 'DD/MM/YYYY')) && <Check size={14} className="text-primary" />}
-                                  </Dropdown.Item>
-                                ))}
-                              </Dropdown.Menu>
-                            </Dropdown>
-                          </>
-                        )}
-                      </Dropdown.Menu>
-                    </Dropdown>
-                  </th>
+                        </Dropdown.Menu>
+                      </Dropdown>
+                    </th>
                 );
               })}
             </tr>
@@ -2678,7 +2803,74 @@ const FinanceTransactionsPage = () => {
         </div>
       )}
 
-      <Modal show={showTransactionModal} onHide={() => setShowTransactionModal(false)} size="lg" className="notion-modal"><Modal.Body className="p-5"><Form onSubmit={handleAddTransaction}><h2 className="fw-bold mb-4">Yeni İşlem</h2><Row className="g-3"><Col md={6}><Form.Label className="small fw-bold text-muted">Kurum</Form.Label><Form.Select value={formInstitutionId} onChange={e => setFormInstitutionId(e.target.value)} required><option value="">Seçiniz...</option>{institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</Form.Select></Col><Col md={6}><Form.Label className="small fw-bold text-muted">Hisse</Form.Label><Form.Select value={formStockId} onChange={e => setFormStockId(e.target.value)} required><option value="">Seçiniz...</option>{stocks.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Form.Select></Col><Col md={4}><Form.Label className="small fw-bold text-muted">Tür</Form.Label><Form.Select value={type} onChange={e => setType(e.target.value)}><option value="ALIŞ">ALIŞ</option><option value="SATIŞ">SATIŞ</option></Form.Select></Col><Col md={4}><Form.Label className="small fw-bold text-muted">Adet</Form.Label><Form.Control value={quantity} onChange={e => setQuantity(e.target.value.replace(/[^0-9,]/g, ''))} required /></Col><Col md={4}><Form.Label className="small fw-bold text-muted">Fiyat</Form.Label><Form.Control value={price} onChange={e => setPrice(e.target.value.replace(/[^0-9,]/g, ''))} required /></Col><Col md={6}><Form.Label className="small fw-bold text-muted">Tarih</Form.Label><Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} required /></Col><Col md={6}><Form.Label className="small fw-bold text-muted">Stopaj (%)</Form.Label><Form.Control value={taxRate} onChange={e => setTaxRate(e.target.value.replace(/[^0-9,]/g, ''))} /></Col></Row><Button variant="primary" type="submit" className="w-100 rounded-pill mt-4 py-2 fw-bold">Kaydet</Button></Form></Modal.Body></Modal>
+      <FinanceCharts 
+        currentPortfolio={currentPortfolio}
+        institutions={institutions}
+        institutionStats={institutionStats}
+        getStockInfo={getStockInfo}
+        getInstitutionInfo={getInstitutionInfo}
+        parseNum={parseNum}
+      />
+
+      <Modal show={showTransactionModal} onHide={() => setShowTransactionModal(false)} size="lg" className="notion-modal">
+        <Modal.Body className="p-5">
+          <Form onSubmit={handleAddTransaction}>
+            <h2 className="fw-bold mb-4">Yeni İşlem</h2>
+            <Row className="g-3">
+              <Col md={6}>
+                <Form.Label className="small fw-bold text-muted">Kurum</Form.Label>
+                <Form.Select value={formInstitutionId} onChange={e => setFormInstitutionId(e.target.value)} required>
+                  <option value="">Seçiniz...</option>
+                  {institutions.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </Form.Select>
+              </Col>
+              <Col md={6}>
+                <Form.Label className="small fw-bold text-muted">Hisse</Form.Label>
+                <Form.Select 
+                  value={formStockId} 
+                  onChange={e => {
+                    const stockId = e.target.value;
+                    setFormStockId(stockId);
+                    const stock = stocks.find(s => s.id === stockId);
+                    if (stock && stock.currentPrice !== undefined && stock.currentPrice !== null && stock.currentPrice !== '') {
+                      const priceStr = stock.currentPrice.toString().replace('.', ',');
+                      setPrice(priceStr);
+                    }
+                  }} 
+                  required
+                >
+                  <option value="">Seçiniz...</option>
+                  {stocks.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </Form.Select>
+              </Col>
+              <Col md={4}>
+                <Form.Label className="small fw-bold text-muted">Tür</Form.Label>
+                <Form.Select value={type} onChange={e => setType(e.target.value)}>
+                  <option value="ALIŞ">ALIŞ</option>
+                  <option value="SATIŞ">SATIŞ</option>
+                </Form.Select>
+              </Col>
+              <Col md={4}>
+                <Form.Label className="small fw-bold text-muted">Adet</Form.Label>
+                <Form.Control value={quantity} onChange={e => setQuantity(e.target.value.replace(/[^0-9,]/g, ''))} required />
+              </Col>
+              <Col md={4}>
+                <Form.Label className="small fw-bold text-muted">Fiyat</Form.Label>
+                <Form.Control value={price} onChange={e => setPrice(e.target.value.replace(/[^0-9,]/g, ''))} required />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="small fw-bold text-muted">Tarih</Form.Label>
+                <Form.Control type="date" value={date} onChange={e => setDate(e.target.value)} required />
+              </Col>
+              <Col md={6}>
+                <Form.Label className="small fw-bold text-muted">Stopaj (%)</Form.Label>
+                <Form.Control value={taxRate} onChange={e => setTaxRate(e.target.value.replace(/[^0-9,]/g, ''))} />
+              </Col>
+            </Row>
+            <Button variant="primary" type="submit" className="w-100 rounded-pill mt-4 py-2 fw-bold">Kaydet</Button>
+          </Form>
+        </Modal.Body>
+      </Modal>
       <Modal show={showInstitutionModal} onHide={() => setShowInstitutionModal(false)} centered className="glass-card">
         <Modal.Header closeButton className="border-0"><Modal.Title className="fw-bold">Kurum Ekle</Modal.Title></Modal.Header>
         <Modal.Body className="p-4">
@@ -2771,6 +2963,381 @@ const FinanceTransactionsPage = () => {
         </Modal.Body>
       </Modal>
       <ImportModal show={showImportModal} onHide={() => setShowImportModal(false)} onImport={handleBulkImport} />
+    </div>
+  );
+};
+
+const FinanceCharts = ({
+  currentPortfolio,
+  institutions,
+  institutionStats,
+  getStockInfo,
+  getInstitutionInfo,
+  parseNum
+}) => {
+  const [chartLayout, setChartLayout] = useState('hisse'); // 'hisse' or 'kurum'
+  const [hoveredSlice, setHoveredSlice] = useState(null);
+
+  const colors = [
+    '#3e64ff',
+    '#10b981',
+    '#f59e0b',
+    '#ec4899',
+    '#8b5cf6',
+    '#06b6d4',
+    '#f43f5e',
+    '#14b8a6',
+    '#f97316',
+    '#a855f7'
+  ];
+
+  // -------------------------------------------------------------
+  // HISSE LAYOUT DATA
+  // -------------------------------------------------------------
+  const activeStocks = useMemo(() => {
+    return currentPortfolio
+      .map((s) => {
+        const value = s.quantity * s.currentPrice;
+        return {
+          id: s.id,
+          name: s.name,
+          value: value,
+          cost: s.totalCost,
+          profit: s.totalProfit,
+          percentage: s.profitPercentage,
+          quantity: s.quantity,
+        };
+      })
+      .filter(s => s.value > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [currentPortfolio]);
+
+  const totalStockValue = useMemo(() => {
+    return activeStocks.reduce((sum, s) => sum + s.value, 0);
+  }, [activeStocks]);
+
+  const totalStockCost = useMemo(() => {
+    return activeStocks.reduce((sum, s) => sum + s.cost, 0);
+  }, [activeStocks]);
+
+  const totalStockProfit = useMemo(() => {
+    return activeStocks.reduce((sum, s) => sum + s.profit, 0);
+  }, [activeStocks]);
+
+  const overallStockProfitPercent = totalStockCost > 0 ? (totalStockProfit / totalStockCost) * 100 : 0;
+
+  const stockDonutData = useMemo(() => {
+    let accumulatedPercent = 0;
+    return activeStocks.map((item, idx) => {
+      const percentage = totalStockValue > 0 ? item.value / totalStockValue : 0;
+      const strokeLength = percentage * 314.159;
+      const strokeOffset = 314.159 - (accumulatedPercent * 314.159) + 78.539;
+      accumulatedPercent += percentage;
+      return {
+        ...item,
+        percentageVal: percentage * 100,
+        strokeLength,
+        strokeOffset,
+        color: colors[idx % colors.length]
+      };
+    });
+  }, [activeStocks, totalStockValue]);
+
+  // -------------------------------------------------------------
+  // KURUM LAYOUT DATA
+  // -------------------------------------------------------------
+  const activeInstitutions = useMemo(() => {
+    return institutions
+      .map((i) => {
+        const stats = institutionStats[i.id] || { currentValue: 0, totalInvestment: 0, realizedNet: 0, unrealizedNet: 0, dailyGain: 0 };
+        return {
+          id: i.id,
+          name: i.name,
+          logo: i.logo,
+          value: stats.currentValue,
+          cost: stats.totalInvestment,
+          profit: stats.unrealizedNet + stats.realizedNet,
+          dailyGain: stats.dailyGain,
+        };
+      })
+      .filter(i => i.value > 0 || i.cost > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [institutions, institutionStats]);
+
+  const totalInstValue = useMemo(() => {
+    return activeInstitutions.reduce((sum, i) => sum + i.value, 0);
+  }, [activeInstitutions]);
+
+  const totalInstCost = useMemo(() => {
+    return activeInstitutions.reduce((sum, i) => sum + i.cost, 0);
+  }, [activeInstitutions]);
+
+  const totalInstProfit = useMemo(() => {
+    return activeInstitutions.reduce((sum, i) => sum + i.profit, 0);
+  }, [activeInstitutions]);
+
+  const overallInstProfitPercent = totalInstCost > 0 ? (totalInstProfit / totalInstCost) * 100 : 0;
+
+  const instDonutData = useMemo(() => {
+    let accumulatedPercent = 0;
+    return activeInstitutions.map((item, idx) => {
+      const percentage = totalInstValue > 0 ? item.value / totalInstValue : 0;
+      const strokeLength = percentage * 314.159;
+      const strokeOffset = 314.159 - (accumulatedPercent * 314.159) + 78.539;
+      accumulatedPercent += percentage;
+      return {
+        ...item,
+        percentageVal: percentage * 100,
+        strokeLength,
+        strokeOffset,
+        color: colors[idx % colors.length]
+      };
+    });
+  }, [activeInstitutions, totalInstValue]);
+
+  const currentDonutData = chartLayout === 'hisse' ? stockDonutData : instDonutData;
+  const currentTotalValue = chartLayout === 'hisse' ? totalStockValue : totalInstValue;
+
+  const activeHoverInfo = useMemo(() => {
+    if (hoveredSlice !== null && currentDonutData[hoveredSlice]) {
+      return currentDonutData[hoveredSlice];
+    }
+    return null;
+  }, [hoveredSlice, currentDonutData]);
+
+  return (
+    <div className="mt-5 mb-5 animate-fade-in">
+      <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
+        <div>
+          <h2 className="fw-bold m-0 text-dark">Portföy Analizi</h2>
+          <p className="text-muted small m-0 mt-1">Mevcut hisse dağılımları ve kurum bazlı finansal özetler</p>
+        </div>
+        <div className="d-flex align-items-center gap-1 bg-light bg-opacity-50 p-1 rounded-pill" style={{ border: '1px solid rgba(0,0,0,0.05)' }}>
+          <Button
+            variant="light"
+            size="sm"
+            onClick={() => { setChartLayout('hisse'); setHoveredSlice(null); }}
+            className={`rounded-pill px-3 py-1 fw-bold border-0 transition-all ${chartLayout === 'hisse' ? 'bg-white shadow-sm text-primary' : 'bg-transparent text-muted'}`}
+            style={{ fontSize: '12px' }}
+          >
+            <PieChart size={14} className="me-1" /> Hisse Dağılımı
+          </Button>
+          <Button
+            variant="light"
+            size="sm"
+            onClick={() => { setChartLayout('kurum'); setHoveredSlice(null); }}
+            className={`rounded-pill px-3 py-1 fw-bold border-0 transition-all ${chartLayout === 'kurum' ? 'bg-white shadow-sm text-primary' : 'bg-transparent text-muted'}`}
+            style={{ fontSize: '12px' }}
+          >
+            <Briefcase size={14} className="me-1" /> Kurum Dağılımı
+          </Button>
+        </div>
+      </div>
+
+      <Row className="g-4">
+        <Col lg={5} md={12}>
+          <Card className="glass-card border shadow-sm p-4 h-100 d-flex flex-column align-items-center justify-content-center" style={{ minHeight: '380px' }}>
+            <div className="w-100 d-flex justify-content-between align-items-center mb-3">
+              <span className="x-small fw-bold text-muted opacity-75 text-uppercase">
+                {chartLayout === 'hisse' ? 'HİSSE DAĞILIMI' : 'KURUMSAL DAĞILIM'}
+              </span>
+              <span className="x-small text-muted">Halka üzerine geliniz</span>
+            </div>
+            
+            {currentDonutData.length === 0 ? (
+              <div className="text-center py-5 text-muted">
+                <div className="opacity-50 mb-2"><PieChart size={32} /></div>
+                <div className="small">Görüntülenecek veri bulunamadı</div>
+              </div>
+            ) : (
+              <div className="position-relative d-flex align-items-center justify-content-center" style={{ width: '220px', height: '220px' }}>
+                <svg viewBox="0 0 160 160" width="100%" height="100%">
+                  <circle cx="80" cy="80" r="50" fill="transparent" stroke="rgba(0,0,0,0.03)" strokeWidth="15" />
+                  {currentDonutData.map((d, i) => (
+                    <circle
+                      key={d.id}
+                      cx="80"
+                      cy="80"
+                      r="50"
+                      fill="transparent"
+                      stroke={d.color}
+                      strokeWidth={hoveredSlice === i ? 18 : 15}
+                      strokeDasharray={`${d.strokeLength} 314.159`}
+                      strokeDashoffset={d.strokeOffset}
+                      strokeLinecap="round"
+                      className="transition-all"
+                      style={{ 
+                        cursor: 'pointer',
+                        filter: hoveredSlice === i ? 'drop-shadow(0px 4px 8px rgba(0,0,0,0.15))' : 'none'
+                      }}
+                      onMouseEnter={() => setHoveredSlice(i)}
+                      onMouseLeave={() => setHoveredSlice(null)}
+                    />
+                  ))}
+                </svg>
+                
+                <div className="position-absolute text-center d-flex flex-column align-items-center justify-content-center" style={{ width: '130px', height: '130px', borderRadius: '50%', pointerEvents: 'none' }}>
+                  {activeHoverInfo ? (
+                    <>
+                      <span className="fw-bold text-dark fs-14 text-truncate px-2 w-100">{activeHoverInfo.name}</span>
+                      <span className="text-muted fs-11 mt-0.5">{activeHoverInfo.percentageVal.toFixed(1)}%</span>
+                      <span className="fw-bold text-primary fs-14 mt-1">
+                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(activeHoverInfo.value)}₺
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-muted fs-10 text-uppercase fw-bold opacity-75">TOPLAM DEĞER</span>
+                      <span className="fw-bold text-dark fs-18 mt-1">
+                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalValue)}₺
+                      </span>
+                      <span className={`fw-bold fs-11 mt-1 ${chartLayout === 'hisse' ? (totalStockProfit >= 0 ? 'text-success' : 'text-danger') : (totalInstProfit >= 0 ? 'text-success' : 'text-danger')}`}>
+                        {chartLayout === 'hisse' ? (overallStockProfitPercent >= 0 ? '+' : '') : (overallInstProfitPercent >= 0 ? '+' : '')}
+                        {chartLayout === 'hisse' ? overallStockProfitPercent.toFixed(2) : overallInstProfitPercent.toFixed(2)}%
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </Card>
+        </Col>
+
+        <Col lg={7} md={12}>
+          <Card className="glass-card border shadow-sm p-4 h-100 d-flex flex-column justify-content-between" style={{ minHeight: '380px' }}>
+            <div>
+              <div className="d-flex align-items-center justify-content-between mb-4">
+                <span className="x-small fw-bold text-muted opacity-75 text-uppercase">
+                  {chartLayout === 'hisse' ? 'HİSSE DETAYLARI VE KAR/ZARAR' : 'KURUMSAL ÖZETLER'}
+                </span>
+                <Badge bg="primary" className="rounded-pill opacity-75 px-3 py-1 fs-11">
+                  {chartLayout === 'hisse' ? `${activeStocks.length} Aktif Hisse` : `${activeInstitutions.length} Aktif Kurum`}
+                </Badge>
+              </div>
+
+              {chartLayout === 'hisse' ? (
+                activeStocks.length === 0 ? (
+                  <div className="text-center py-5 text-muted small">Aktif portföy bulunmamaktadır</div>
+                ) : (
+                  <div className="overflow-auto pe-1" style={{ maxHeight: '240px' }}>
+                    <Table hover className="mb-0 fs-13 align-middle" borderless>
+                      <thead>
+                        <tr className="text-muted x-small fw-bold border-bottom" style={{ fontSize: '9px', opacity: 0.6 }}>
+                          <th style={{ width: '40%' }}>HİSSE</th>
+                          <th className="text-end" style={{ width: '20%' }}>MİKTAR</th>
+                          <th className="text-end" style={{ width: '20%' }}>PORTFÖY PAYI</th>
+                          <th className="text-end pe-2" style={{ width: '20%' }}>NET KAR/ZARAR</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {stockDonutData.map((d, i) => (
+                          <tr 
+                            key={d.id} 
+                            className={`rounded-3 transition-all cursor-pointer ${hoveredSlice === i ? 'bg-light bg-opacity-75' : ''}`}
+                            onMouseEnter={() => setHoveredSlice(i)}
+                            onMouseLeave={() => setHoveredSlice(null)}
+                          >
+                            <td>
+                              <div className="d-flex align-items-center gap-2">
+                                <div className="rounded flex-shrink-0" style={{ width: '12px', height: '12px', backgroundColor: d.color, borderRadius: '3px' }} />
+                                <span className="fw-bold text-dark">{d.name}</span>
+                              </div>
+                            </td>
+                            <td className="text-end text-muted">{new Intl.NumberFormat('tr-TR').format(d.quantity)} Lot</td>
+                            <td className="text-end fw-medium">{d.percentageVal.toFixed(1)}%</td>
+                            <td className={`text-end pe-2 fw-bold ${d.profit >= 0 ? 'text-success' : 'text-danger'}`}>
+                              <div className="d-flex flex-column align-items-end">
+                                <span>{d.profit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.profit)}₺</span>
+                                <span style={{ fontSize: '9px' }} className="opacity-75">({d.percentage >= 0 ? '+' : ''}{d.percentage.toFixed(2)}%)</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+                )
+              ) : (
+                activeInstitutions.length === 0 ? (
+                  <div className="text-center py-5 text-muted small">Aktif kurum bulunmamaktadır</div>
+                ) : (
+                  <div className="overflow-auto pe-1" style={{ maxHeight: '240px' }}>
+                    <Table hover className="mb-0 fs-13 align-middle" borderless>
+                      <thead>
+                        <tr className="text-muted x-small fw-bold border-bottom" style={{ fontSize: '9px', opacity: 0.6 }}>
+                          <th style={{ width: '40%' }}>KURUM</th>
+                          <th className="text-end" style={{ width: '20%' }}>GÜNLÜK KAZANÇ</th>
+                          <th className="text-end" style={{ width: '20%' }}>PORTFÖY DEĞERİ</th>
+                          <th className="text-end pe-2" style={{ width: '20%' }}>TOPLAM KAZANÇ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {instDonutData.map((d, i) => (
+                          <tr 
+                            key={d.id} 
+                            className={`rounded-3 transition-all cursor-pointer ${hoveredSlice === i ? 'bg-light bg-opacity-75' : ''}`}
+                            onMouseEnter={() => setHoveredSlice(i)}
+                            onMouseLeave={() => setHoveredSlice(null)}
+                          >
+                            <td>
+                              <div className="d-flex align-items-center gap-2">
+                                <div className="rounded flex-shrink-0" style={{ width: '12px', height: '12px', backgroundColor: d.color, borderRadius: '3px' }} />
+                                {d.logo ? (
+                                  <img src={d.logo} alt="" width="16" height="16" className="rounded-circle" style={{ objectFit: 'contain' }} />
+                                ) : (
+                                  <Landmark size={14} className="text-muted" />
+                                )}
+                                <span className="fw-bold text-dark">{d.name}</span>
+                              </div>
+                            </td>
+                            <td className={`text-end fw-bold ${d.dailyGain >= 0 ? 'text-success' : 'text-danger'}`}>
+                              {d.dailyGain > 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.dailyGain)}₺
+                            </td>
+                            <td className="text-end fw-bold">{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.value)}₺</td>
+                            <td className={`text-end pe-2 fw-bold ${d.profit >= 0 ? 'text-success' : 'text-danger'}`}>
+                              {d.profit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.profit)}₺
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+                )
+              )}
+            </div>
+
+            <div className="border-top pt-3 mt-3">
+              <Row className="g-2">
+                <Col xs={4}>
+                  <div className="bg-light bg-opacity-25 rounded-3 p-2 text-center border">
+                    <div className="text-muted x-small opacity-75" style={{ fontSize: '9px' }}>TOPLAM YATIRIM</div>
+                    <div className="fw-bold text-dark mt-1 fs-12">
+                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(chartLayout === 'hisse' ? totalStockCost : totalInstCost)}₺
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={4}>
+                  <div className="bg-light bg-opacity-25 rounded-3 p-2 text-center border">
+                    <div className="text-muted x-small opacity-75" style={{ fontSize: '9px' }}>PORTFÖY DEĞERİ</div>
+                    <div className="fw-bold text-primary mt-1 fs-12">
+                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(chartLayout === 'hisse' ? totalStockValue : totalInstValue)}₺
+                    </div>
+                  </div>
+                </Col>
+                <Col xs={4}>
+                  <div className={`rounded-3 p-2 text-center border ${chartLayout === 'hisse' ? (totalStockProfit >= 0 ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger') : (totalInstProfit >= 0 ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger')}`}>
+                    <div className="x-small opacity-75" style={{ fontSize: '9px' }}>NET KAR/ZARAR</div>
+                    <div className="fw-bold mt-1 fs-12">
+                      {chartLayout === 'hisse' ? (totalStockProfit >= 0 ? '+' : '') : (totalInstProfit >= 0 ? '+' : '')}
+                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(chartLayout === 'hisse' ? totalStockProfit : totalInstProfit)}₺
+                    </div>
+                  </div>
+                </Col>
+              </Row>
+            </div>
+          </Card>
+        </Col>
+      </Row>
     </div>
   );
 };
