@@ -1166,4 +1166,31 @@ textarea,
 
 .transition-all {
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
-}
+}
+
+/* Table Success/Danger colors and background overrides for Light Mode */
+.table td.bg-success {
+  background-color: rgba(25, 135, 84, 0.12) !important;
+}
+.table td.bg-danger {
+  background-color: rgba(220, 53, 69, 0.12) !important;
+}
+.table td.bg-success.bg-opacity-25 {
+  background-color: rgba(25, 135, 84, 0.25) !important;
+}
+.table td.bg-danger.bg-opacity-25 {
+  background-color: rgba(220, 53, 69, 0.25) !important;
+}
+.table td.bg-success.bg-opacity-10 {
+  background-color: rgba(25, 135, 84, 0.1) !important;
+}
+.table td.bg-danger.bg-opacity-10 {
+  background-color: rgba(220, 53, 69, 0.1) !important;
+}
+.table td.text-success {
+  color: #2e7d32 !important;
+}
+.table td.text-danger {
+  color: #d32f2f !important;
+}
+

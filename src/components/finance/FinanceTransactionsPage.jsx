@@ -354,33 +354,52 @@ const SimulationCalculatorCard = ({
 
 const ImportModal = ({ show, onHide, onImport }) => {
   const [text, setText] = React.useState('');
-  const handleProcess = () => {
-    const lines = text.trim().split('\n');
-    const results = lines.map(line => {
-      const parts = line.split('\t');
-      if (parts.length < 11) return null;
-      const institutionName = parts[0].trim();
-      const stockName = parts[2].trim();
-      const typeName = parts[3].trim().toUpperCase() === 'ALIŞ' ? 'ALIŞ' : 'SATIŞ';
-      const quantity = parts[4].trim().replace(/\./g, '').replace(',', '.');
-      const price = parts[5].trim().replace('₺', '').replace(/\./g, '').replace(',', '.');
-      const taxRate = parts[6].trim().replace('₺', '').replace(/\./g, '').replace(',', '.');
-      const dateStr = parts[10].trim();
-      const [d, m, y] = dateStr.split('.');
-      const formattedDate = `${y}-${m}-${d}`;
-      return { institutionName, stockName, typeName, quantity, price, taxRate, date: formattedDate };
-    }).filter(Boolean);
-    onImport(results);
-    setText('');
-    onHide();
+  const [isProcessing, setIsProcessing] = React.useState(false);
+
+  React.useEffect(() => {
+    if (show) {
+      setIsProcessing(false);
+    }
+  }, [show]);
+
+  const handleProcess = async () => {
+    if (isProcessing || !text.trim()) return;
+    setIsProcessing(true);
+    try {
+      const lines = text.trim().split('\n');
+      const results = lines.map(line => {
+        const parts = line.split('\t');
+        if (parts.length < 11) return null;
+        const institutionName = parts[0].trim();
+        const stockName = parts[2].trim();
+        const typeName = parts[3].trim().toUpperCase() === 'ALIŞ' ? 'ALIŞ' : 'SATIŞ';
+        const quantity = parts[4].trim().replace(/\./g, '').replace(',', '.');
+        const price = parts[5].trim().replace('₺', '').replace(/\./g, '').replace(',', '.');
+        const taxRate = parts[6].trim().replace('₺', '').replace(/\./g, '').replace(',', '.');
+        const dateStr = parts[10].trim();
+        const [d, m, y] = dateStr.split('.');
+        const formattedDate = `${y}-${m}-${d}`;
+        return { institutionName, stockName, typeName, quantity, price, taxRate, date: formattedDate };
+      }).filter(Boolean);
+
+      if (results.length > 0) {
+        await onImport(results);
+      }
+      setText('');
+      onHide();
+    } catch (err) {
+      console.error('Import processing error:', err);
+    } finally {
+      setIsProcessing(false);
+    }
   };
   return (
     <Modal show={show} onHide={onHide} size="lg" className="glass-card">
       <Modal.Header closeButton className="border-0"><Modal.Title className="fw-bold">İşlemleri İçe Aktar</Modal.Title></Modal.Header>
       <Modal.Body className="p-4">
         <div className="alert alert-info border-0 rounded-3 small mb-3">Verileri sütunları ile birlikte (başlıksız) buraya yapıştırın. Format: Kurum, Sembol Borsa, Sembol, Durum, Adet, Fiyat, Komisyon... Tarih</div>
-        <Form.Control as="textarea" rows={10} className="glass-card p-3 border-0 bg-light" placeholder="Verileri buraya yapıştırın..." value={text} onChange={e => setText(e.target.value)} style={{ fontSize: '13px' }} />
-        <Button className="mt-3 w-100 rounded-pill py-2 fw-bold" onClick={handleProcess}>Aktarımı Tamamla</Button>
+        <Form.Control as="textarea" rows={10} className="glass-card p-3 border-0 bg-light" placeholder="Verileri buraya yapıştırın..." value={text} onChange={e => setText(e.target.value)} disabled={isProcessing} style={{ fontSize: '13px' }} />
+        <Button className="mt-3 w-100 rounded-pill py-2 fw-bold" onClick={handleProcess} disabled={isProcessing}>{isProcessing ? 'Aktarılıyor...' : 'Aktarımı Tamamla'}</Button>
       </Modal.Body>
     </Modal>
   );
@@ -773,7 +792,7 @@ const FinanceTransactionsPage = () => {
     const values = filteredTransactions.map(t => {
       if (['quantity', 'price', 'taxRate', 'totalBuyAmount', 'totalSaleAmount', 'grossProfit', 'totalProfit', 'taxDeduction', 'remainingQuantity'].includes(propId)) {
         if (propId === 'taxDeduction') return t.calculatedTaxDeduction || 0;
-        if (propId === 'remainingQuantity') return t.calculatedRemaining || 0;
+        if (propId === 'remainingQuantity') return t.runningBalance || 0;
         return t[propId] || 0;
       }
       return t[propId];
@@ -855,6 +874,7 @@ const FinanceTransactionsPage = () => {
       return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
     });
     const buyLots = {};
+    const runningBalances = {};
     const intermediateResults = [];
 
     sorted.forEach((t) => {
@@ -865,11 +885,15 @@ const FinanceTransactionsPage = () => {
       const instId = t.institutionId || 'MISSING_INST';
       const storageKey = `${sId}_${instId}`;
 
+      if (!runningBalances[storageKey]) runningBalances[storageKey] = 0;
+
       if (t.type === 'ALIŞ') {
         if (!buyLots[storageKey]) buyLots[storageKey] = [];
         const lotIndex = buyLots[storageKey].length;
         const newLot = { originalQty: q, remaining: q, price: p, taxRate: tr, date: t.date };
         buyLots[storageKey].push(newLot);
+        
+        runningBalances[storageKey] += q;
         
         intermediateResults.push({
           ...t,
@@ -877,6 +901,7 @@ const FinanceTransactionsPage = () => {
           _isAlis: true,
           _lotIndex: lotIndex,
           _storageKey: storageKey,
+          runningBalance: runningBalances[storageKey],
           calculatedTaxDeduction: 0,
           totalBuyAmount: q * p,
           totalSaleAmount: 0,
@@ -919,12 +944,15 @@ const FinanceTransactionsPage = () => {
         const costBasis = totalSaleAmount - grossProfit;
         const profitPercentage = costBasis > 0 ? (totalProfit / costBasis) * 100 : 0;
 
+        runningBalances[storageKey] = Math.max(0, runningBalances[storageKey] - q);
+
         const totalRemainingAfterSale = (buyLots[storageKey] || []).reduce((acc, lot) => acc + lot.remaining, 0);
         intermediateResults.push({
           ...t,
           quantity: q, price: p, taxRate: tr,
           _isAlis: false,
           _storageKey: storageKey,
+          runningBalance: runningBalances[storageKey],
           calculatedRemaining: totalRemainingAfterSale,
           calculatedTaxDeduction: finalTaxDeduction,
           totalBuyAmount: 0,
@@ -1574,7 +1602,7 @@ const FinanceTransactionsPage = () => {
           ) : '-'}
         </td>
       );
-      case 'remainingQuantity': return <td key={propId} className="fw-bold"><Badge bg={t.type === 'ALIŞ' ? (t.calculatedRemaining === 0 ? "secondary" : "info") : "primary"} className="rounded-pill">{t.calculatedRemaining}</Badge></td>;
+      case 'remainingQuantity': return <td key={propId} className="fw-bold"><Badge bg={t.type === 'ALIŞ' ? (t.calculatedRemaining === 0 ? "secondary" : "info") : "primary"} className="rounded-pill">{t.runningBalance}</Badge></td>;
       case 'taxDeduction': 
         const taxVal = t.calculatedTaxDeduction;
         return (
@@ -1953,7 +1981,7 @@ const FinanceTransactionsPage = () => {
                             <div className="text-muted x-small opacity-50" style={{ fontSize: '9px', fontWeight: 400 }}>NET KAZANÇ</div>
                             <div>{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(gNetProfit)}₺</div>
                             {gTaxDeduction > 0 && (
-                              <div className="text-muted x-small opacity-50" style={{ fontSize: '9px', fontWeight: 400 }}>
+                              <div className="text-danger x-small opacity-75" style={{ fontSize: '9px', fontWeight: 500 }}>
                                 Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(gTaxDeduction)}₺
                               </div>
                             )}
@@ -2001,7 +2029,7 @@ const FinanceTransactionsPage = () => {
                         <td className={`fw-bold ${netProfit >= 0 ? 'bg-success bg-opacity-25 text-success' : 'bg-danger bg-opacity-25 text-danger'}`}>
                           <div>{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(netProfit)}₺</div>
                           {taxDeduction > 0 && (
-                            <div className="text-muted x-small opacity-50" style={{ fontSize: '9px' }}>
+                            <div className="text-danger x-small opacity-75" style={{ fontSize: '9px', fontWeight: 500 }}>
                               Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(taxDeduction)}₺
                             </div>
                           )}
@@ -2090,7 +2118,7 @@ const FinanceTransactionsPage = () => {
                       <td className={`fw-bold ${totalNetProfit >= 0 ? 'text-success' : 'text-danger'}`}>
                         <div>{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalNetProfit)}₺</div>
                         {totalTaxDeduction > 0 && (
-                          <div className="text-muted x-small opacity-50" style={{ fontSize: '9px', fontWeight: 400 }}>
+                          <div className="text-danger x-small opacity-75" style={{ fontSize: '9px', fontWeight: 500 }}>
                             Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalTaxDeduction)}₺
                           </div>
                         )}
@@ -2666,13 +2694,11 @@ const FinanceTransactionsPage = () => {
                           <div className="dropdown-divider opacity-10 mx-1"></div>
 
                           <Dropdown.Item
-                            className="rounded-2 d-flex align-items-center justify-content-between py-2 small"
-                            onClick={() => handleToggleWrap(id)}
+                            className="rounded-2 d-flex align-items-center gap-2 py-2 small"
+                            onClick={() => updateConfig({ propertyWrap: { ...config.propertyWrap, [id]: !config.propertyWrap?.[id] } })}
                           >
-                            <div className="d-flex align-items-center gap-2">
-                              <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><WrapText size={14} className="text-muted" /></div> 
-                              <span>Metni Kaydır</span>
-                            </div>
+                            <div className="rounded d-flex align-items-center justify-content-center bg-light flex-shrink-0" style={{ width: '24px', height: '24px' }}><WrapText size={14} className="text-muted" /></div>
+                            <span>Metni Kaydır</span>
                             {config.propertyWrap?.[id] !== false ? (
                               <Eye size={14} className="text-primary" />
                             ) : (
@@ -2687,51 +2713,51 @@ const FinanceTransactionsPage = () => {
                             <span>Gizle</span>
                           </Dropdown.Item>
 
-                    {id === 'date' && (
-                      <>
-                        <div className="dropdown-divider opacity-10 mx-1"></div>
-                        <div className="px-1 py-1">
-                          <div 
-                            className="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer"
-                            onClick={(e) => { e.stopPropagation(); setShowDateFormatSubmenu(!showDateFormatSubmenu); }}
-                          >
-                            <div className="d-flex align-items-center gap-2">
-                              <Calendar size={14} className="text-muted" />
-                              <span>Tarih Formatı</span>
-                            </div>
-                            <ChevronDown size={14} className={`text-muted transition-all ${showDateFormatSubmenu ? 'rotate-180' : ''}`} />
-                          </div>
-                          <Collapse in={showDateFormatSubmenu}>
-                            <div className="px-1 py-1">
-                              <div className="bg-light bg-opacity-50 rounded-3 p-1 d-flex flex-column gap-1">
-                                        {[
-                                          { label: '01/12/2026', value: 'DD/MM/YYYY' },
-                                          { label: '01.12.2026', value: 'DD.MM.YYYY' },
-                                          { label: '01 Ocak 2026', value: 'DD MMMM YYYY' },
-                                          { label: '01 Oca 2026', value: 'DD MMM YYYY' }
-                                        ].map(fmt => (
-                                          <div 
-                                            key={fmt.value} 
-                                            className={`dropdown-item small rounded-2 py-1.5 d-flex align-items-center justify-content-between cursor-pointer ${(config.dateFormat === fmt.value || (!config.dateFormat && fmt.value === 'DD/MM/YYYY')) ? 'bg-light text-primary fw-bold' : 'text-muted'}`}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              updateConfig({ ...config, dateFormat: fmt.value });
-                                            }}
-                                          >
-                                            <span>{fmt.label}</span>
-                                            {(config.dateFormat === fmt.value || (!config.dateFormat && fmt.value === 'DD/MM/YYYY')) && <Check size={12} className="text-primary" />}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  </Collapse>
+                          {id === 'date' && (
+                            <>
+                              <div className="dropdown-divider opacity-10 mx-1"></div>
+                              <div className="px-1 py-1">
+                                <div 
+                                  className="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer"
+                                  onClick={(e) => { e.stopPropagation(); setShowDateFormatSubmenu(!showDateFormatSubmenu); }}
+                                >
+                                  <div className="d-flex align-items-center gap-2">
+                                    <Calendar size={14} className="text-muted" />
+                                    <span>Tarih Formatı</span>
+                                  </div>
+                                  <ChevronDown size={14} className={`text-muted transition-all ${showDateFormatSubmenu ? 'rotate-180' : ''}`} />
                                 </div>
-                              </>
-                            )}
-                          </div>
-                        </Dropdown.Menu>
-                      </Dropdown>
-                    </th>
+                                <Collapse in={showDateFormatSubmenu}>
+                                  <div className="px-1 py-1">
+                                    <div className="bg-light bg-opacity-50 rounded-3 p-1 d-flex flex-column gap-1">
+                                      {[
+                                        { label: '01/12/2026', value: 'DD/MM/YYYY' },
+                                        { label: '01.12.2026', value: 'DD.MM.YYYY' },
+                                        { label: '01 Ocak 2026', value: 'DD MMMM YYYY' },
+                                        { label: '01 Oca 2026', value: 'DD MMM YYYY' }
+                                      ].map(fmt => (
+                                        <div 
+                                          key={fmt.value} 
+                                          className={`dropdown-item small rounded-2 py-1.5 d-flex align-items-center justify-content-between cursor-pointer ${(config.dateFormat === fmt.value || (!config.dateFormat && fmt.value === 'DD/MM/YYYY')) ? 'bg-light text-primary fw-bold' : 'text-muted'}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            updateConfig({ ...config, dateFormat: fmt.value });
+                                          }}
+                                        >
+                                          <span>{fmt.label}</span>
+                                          {(config.dateFormat === fmt.value || (!config.dateFormat && fmt.value === 'DD/MM/YYYY')) && <Check size={12} className="text-primary" />}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </Collapse>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </Dropdown.Menu>
+                    </Dropdown>
+                  </th>
                 );
               })}
             </tr>
@@ -2810,6 +2836,7 @@ const FinanceTransactionsPage = () => {
         getStockInfo={getStockInfo}
         getInstitutionInfo={getInstitutionInfo}
         parseNum={parseNum}
+        processedTransactions={processedTransactions}
       />
 
       <Modal show={showTransactionModal} onHide={() => setShowTransactionModal(false)} size="lg" className="notion-modal">
@@ -2932,36 +2959,39 @@ const FinanceTransactionsPage = () => {
       <Modal show={showEditStockModal} onHide={() => setShowEditStockModal(false)} centered className="glass-card">
         <Modal.Header closeButton className="border-0"><Modal.Title className="fw-bold">Hisse Düzenle</Modal.Title></Modal.Header>
         <Modal.Body className="p-4">
-          {editingStock && (
-            <div className="mb-4 p-3 rounded-3 bg-light bg-opacity-50 border border-light">
+          <Form onSubmit={(e) => { e.preventDefault(); handleUpdateStock(); }}>
+            {editingStock && (
+              <div className="mb-4 p-3 rounded-3 bg-light bg-opacity-50 border border-light">
+                <div className="d-flex justify-content-between align-items-center mb-1">
+                  <span className="x-small text-muted fw-bold">SON GÜNCELLEME:</span>
+                  <span className="x-small fw-bold text-muted opacity-75">{editingStock.updatedAt ? formatDate(editingStock.updatedAt) : 'Hiç güncellenmedi'}</span>
+                </div>
+                <div className="d-flex justify-content-between align-items-center">
+                  <span className="x-small text-muted fw-bold">ÖNCEKİ FİYAT:</span>
+                  <span className="x-small fw-bold">{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 8 }).format(parseNum(editingStock.currentPrice))} TL</span>
+                </div>
+              </div>
+            )}
+            <Form.Group className="mb-3">
+              <Form.Label className="small fw-bold opacity-50">HİSSE KODU</Form.Label>
+              <Form.Control className="border-0 bg-light" value={editStockName} onChange={(e) => setEditStockName(e.target.value)} />
+            </Form.Group>
+            <Form.Group className="mb-3">
               <div className="d-flex justify-content-between align-items-center mb-1">
-                <span className="x-small text-muted fw-bold">SON GÜNCELLEME:</span>
-                <span className="x-small fw-bold text-muted opacity-75">{editingStock.updatedAt ? formatDate(editingStock.updatedAt) : 'Hiç güncellenmedi'}</span>
+                <Form.Label className="small fw-bold opacity-50 m-0">GÜNCEL FİYAT</Form.Label>
+                {editingStock && editStockValue && (
+                  <span className={`fw-bold x-small ${((parseNum(editStockValue) - parseNum(editingStock.currentPrice)) / parseNum(editingStock.currentPrice)) >= 0 ? 'text-success' : 'text-danger'}`}>
+                    {((parseNum(editStockValue) - parseNum(editingStock.currentPrice)) / parseNum(editingStock.currentPrice) * 100).toFixed(2)}%
+                  </span>
+                )}
               </div>
-              <div className="d-flex justify-content-between align-items-center">
-                <span className="x-small text-muted fw-bold">ÖNCEKİ FİYAT:</span>
-                <span className="x-small fw-bold">{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 8 }).format(parseNum(editingStock.currentPrice))} TL</span>
-              </div>
-            </div>
-          )}
-          <Form.Group className="mb-3">
-            <Form.Label className="small fw-bold opacity-50">HİSSE KODU</Form.Label>
-            <Form.Control className="border-0 bg-light" value={editStockName} onChange={(e) => setEditStockName(e.target.value)} />
-          </Form.Group>
-          <Form.Group className="mb-3">
-            <div className="d-flex justify-content-between align-items-center mb-1">
-              <Form.Label className="small fw-bold opacity-50 m-0">GÜNCEL FİYAT</Form.Label>
-              {editingStock && editStockValue && (
-                <span className={`fw-bold x-small ${((parseNum(editStockValue) - parseNum(editingStock.currentPrice)) / parseNum(editingStock.currentPrice)) >= 0 ? 'text-success' : 'text-danger'}`}>
-                  {((parseNum(editStockValue) - parseNum(editingStock.currentPrice)) / parseNum(editingStock.currentPrice) * 100).toFixed(2)}%
-                </span>
-              )}
-            </div>
-            <Form.Control className="border-0 bg-light" value={editStockValue} onChange={(e) => setEditStockValue(e.target.value.replace(/[^0-9,.]/g, ''))} autoFocus />
-          </Form.Group>
-          <Button variant="success" className="w-100 rounded-pill mt-3 py-2 fw-bold" onClick={handleUpdateStock}>Değişiklikleri Kaydet</Button>
+              <Form.Control className="border-0 bg-light" value={editStockValue} onChange={(e) => setEditStockValue(e.target.value.replace(/[^0-9,.]/g, ''))} autoFocus />
+            </Form.Group>
+            <Button variant="primary" type="submit" className="w-100 rounded-pill py-2 fw-bold">Güncelle</Button>
+          </Form>
         </Modal.Body>
       </Modal>
+
       <ImportModal show={showImportModal} onHide={() => setShowImportModal(false)} onImport={handleBulkImport} />
     </div>
   );
@@ -2973,10 +3003,12 @@ const FinanceCharts = ({
   institutionStats,
   getStockInfo,
   getInstitutionInfo,
-  parseNum
+  parseNum,
+  processedTransactions
 }) => {
-  const [chartLayout, setChartLayout] = useState('hisse'); // 'hisse' or 'kurum'
+  const [chartLayout, setChartLayout] = useState('hisse_mevcut'); // 'hisse_mevcut', 'hisse_genel', 'kurum_mevcut', 'kurum_genel'
   const [hoveredSlice, setHoveredSlice] = useState(null);
+  const [showAllHisseGenel, setShowAllHisseGenel] = useState(false);
 
   const colors = [
     '#3e64ff',
@@ -2992,7 +3024,7 @@ const FinanceCharts = ({
   ];
 
   // -------------------------------------------------------------
-  // HISSE LAYOUT DATA
+  // HISSE LAYOUT DATA (MEVCUT)
   // -------------------------------------------------------------
   const activeStocks = useMemo(() => {
     return currentPortfolio
@@ -3004,6 +3036,7 @@ const FinanceCharts = ({
           value: value,
           cost: s.totalCost,
           profit: s.totalProfit,
+          tax: s.totalTaxDeduction,
           percentage: s.profitPercentage,
           quantity: s.quantity,
         };
@@ -3024,45 +3057,122 @@ const FinanceCharts = ({
     return activeStocks.reduce((sum, s) => sum + s.profit, 0);
   }, [activeStocks]);
 
+  const totalStockTax = useMemo(() => {
+    return activeStocks.reduce((sum, s) => sum + s.tax, 0);
+  }, [activeStocks]);
+
   const overallStockProfitPercent = totalStockCost > 0 ? (totalStockProfit / totalStockCost) * 100 : 0;
 
-  const stockDonutData = useMemo(() => {
-    let accumulatedPercent = 0;
-    return activeStocks.map((item, idx) => {
-      const percentage = totalStockValue > 0 ? item.value / totalStockValue : 0;
-      const strokeLength = percentage * 314.159;
-      const strokeOffset = 314.159 - (accumulatedPercent * 314.159) + 78.539;
-      accumulatedPercent += percentage;
+  // -------------------------------------------------------------
+  // HISSE LAYOUT DATA (GENEL - MEVCUT VE TARIHSEL)
+  // -------------------------------------------------------------
+  const allStocks = useMemo(() => {
+    if (!processedTransactions) return [];
+    
+    // Get all unique stockIds from processedTransactions
+    const uniqueStockIds = [...new Set(processedTransactions.map(t => t.stockId))].filter(Boolean);
+    
+    return uniqueStockIds.map(stockId => {
+      const sInfo = getStockInfo(stockId);
+      const portfolioStock = currentPortfolio.find(p => p.id === stockId);
+      
+      const stockTx = processedTransactions.filter(t => t.stockId === stockId);
+      let realizedProfit = 0;
+      let realizedTax = 0;
+      let latestSoldDate = '';
+      
+      stockTx.forEach(t => {
+        if (t.type === 'SATIŞ') {
+          realizedProfit += t.totalProfit || 0;
+          realizedTax += t.calculatedTaxDeduction || 0;
+          if (!latestSoldDate || t.date > latestSoldDate) {
+            latestSoldDate = t.date;
+          }
+        }
+      });
+      
+      const quantity = portfolioStock ? portfolioStock.quantity : 0;
+      const value = portfolioStock ? (portfolioStock.quantity * portfolioStock.currentPrice) : 0;
+      const cost = portfolioStock ? portfolioStock.totalCost : 0;
+      
+      const unrealizedProfit = portfolioStock ? portfolioStock.totalProfit : 0;
+      const unrealizedTax = portfolioStock ? portfolioStock.totalTaxDeduction : 0;
+      
+      const totalProfit = realizedProfit + unrealizedProfit;
+      const totalTax = realizedTax + unrealizedTax;
+      
       return {
-        ...item,
-        percentageVal: percentage * 100,
-        strokeLength,
-        strokeOffset,
-        color: colors[idx % colors.length]
+        id: stockId,
+        name: sInfo.name || stockId,
+        value: value,
+        cost: cost,
+        profit: totalProfit,
+        tax: totalTax,
+        quantity: quantity,
+        latestSoldDate: latestSoldDate,
+        isActive: quantity > 0
       };
+    }).sort((a, b) => {
+      // Active holdings first
+      if (a.isActive && !b.isActive) return -1;
+      if (!a.isActive && b.isActive) return 1;
+      
+      if (a.isActive && b.isActive) {
+        // Both active: sort by value descending
+        return b.value - a.value;
+      } else {
+        // Both sold out: sort by latestSoldDate descending (most recently sold first)
+        return b.latestSoldDate.localeCompare(a.latestSoldDate);
+      }
     });
-  }, [activeStocks, totalStockValue]);
+  }, [processedTransactions, currentPortfolio, getStockInfo]);
+
+  const totalStockGenelCost = useMemo(() => {
+    return allStocks.reduce((sum, s) => sum + s.cost, 0);
+  }, [allStocks]);
+
+  const totalStockGenelProfit = useMemo(() => {
+    return allStocks.reduce((sum, s) => sum + s.profit, 0);
+  }, [allStocks]);
+
+  const totalStockGenelTax = useMemo(() => {
+    return allStocks.reduce((sum, s) => sum + s.tax, 0);
+  }, [allStocks]);
 
   // -------------------------------------------------------------
-  // KURUM LAYOUT DATA
+  // KURUM LAYOUT DATA (MEVCUT VE GENEL)
   // -------------------------------------------------------------
   const activeInstitutions = useMemo(() => {
+    const isGenel = chartLayout === 'kurum_genel';
     return institutions
       .map((i) => {
-        const stats = institutionStats[i.id] || { currentValue: 0, totalInvestment: 0, realizedNet: 0, unrealizedNet: 0, dailyGain: 0 };
+        const stats = institutionStats[i.id] || { currentValue: 0, totalInvestment: 0, realizedGross: 0, realizedNet: 0, unrealizedGross: 0, unrealizedNet: 0, dailyGain: 0 };
+        
+        const value = stats.currentValue;
+        const cost = stats.totalInvestment;
+        
+        const profit = isGenel 
+          ? stats.unrealizedNet + stats.realizedNet 
+          : stats.unrealizedNet;
+          
+        const tax = isGenel
+          ? (stats.unrealizedGross - stats.unrealizedNet) + (stats.realizedGross - stats.realizedNet)
+          : (stats.unrealizedGross - stats.unrealizedNet);
+          
         return {
           id: i.id,
           name: i.name,
           logo: i.logo,
-          value: stats.currentValue,
-          cost: stats.totalInvestment,
-          profit: stats.unrealizedNet + stats.realizedNet,
+          value: value,
+          cost: cost,
+          profit: profit,
+          tax: tax,
           dailyGain: stats.dailyGain,
         };
       })
-      .filter(i => i.value > 0 || i.cost > 0)
+      .filter(i => i.value > 0 || i.cost > 0 || (isGenel && Math.abs(i.profit) > 0))
       .sort((a, b) => b.value - a.value);
-  }, [institutions, institutionStats]);
+  }, [institutions, institutionStats, chartLayout]);
 
   const totalInstValue = useMemo(() => {
     return activeInstitutions.reduce((sum, i) => sum + i.value, 0);
@@ -3076,34 +3186,87 @@ const FinanceCharts = ({
     return activeInstitutions.reduce((sum, i) => sum + i.profit, 0);
   }, [activeInstitutions]);
 
+  const totalInstTax = useMemo(() => {
+    return activeInstitutions.reduce((sum, i) => sum + i.tax, 0);
+  }, [activeInstitutions]);
+
   const overallInstProfitPercent = totalInstCost > 0 ? (totalInstProfit / totalInstCost) * 100 : 0;
 
-  const instDonutData = useMemo(() => {
+  // -------------------------------------------------------------
+  // DYNAMIC CHART DATA ASSIGNMENTS
+  // -------------------------------------------------------------
+  const isHisse = chartLayout === 'hisse_mevcut' || chartLayout === 'hisse_genel';
+  
+  const currentData = useMemo(() => {
+    if (chartLayout === 'hisse_mevcut') return activeStocks;
+    if (chartLayout === 'hisse_genel') return allStocks;
+    return activeInstitutions;
+  }, [chartLayout, activeStocks, allStocks, activeInstitutions]);
+
+  const currentTotalValue = totalStockValue; // donut calculations and chart visualization only for active portfolio values
+
+  const currentTotalCost = useMemo(() => {
+    if (chartLayout === 'hisse_mevcut') return totalStockCost;
+    if (chartLayout === 'hisse_genel') return totalStockGenelCost;
+    return totalInstCost;
+  }, [chartLayout, totalStockCost, totalStockGenelCost, totalInstCost]);
+
+  const currentTotalProfit = useMemo(() => {
+    if (chartLayout === 'hisse_mevcut') return totalStockProfit;
+    if (chartLayout === 'hisse_genel') return totalStockGenelProfit;
+    return totalInstProfit;
+  }, [chartLayout, totalStockProfit, totalStockGenelProfit, totalInstProfit]);
+
+  const currentTotalTax = useMemo(() => {
+    if (chartLayout === 'hisse_mevcut') return totalStockTax;
+    if (chartLayout === 'hisse_genel') return totalStockGenelTax;
+    return totalInstTax;
+  }, [chartLayout, totalStockTax, totalStockGenelTax, totalInstTax]);
+
+  const currentOverallProfitPercent = useMemo(() => {
+    if (chartLayout === 'hisse_mevcut') return overallStockProfitPercent;
+    if (chartLayout === 'hisse_genel') return totalStockGenelCost > 0 ? (totalStockGenelProfit / totalStockGenelCost) * 100 : 0;
+    return overallInstProfitPercent;
+  }, [chartLayout, overallStockProfitPercent, totalStockGenelCost, totalStockGenelProfit, overallInstProfitPercent]);
+
+  // Bulletproof SVG donut segment calculations with CSS transform rotation
+  const donutData = useMemo(() => {
     let accumulatedPercent = 0;
-    return activeInstitutions.map((item, idx) => {
-      const percentage = totalInstValue > 0 ? item.value / totalInstValue : 0;
+    
+    // For Hisse Genel, donut chart visualization is based on value of active stocks only (value > 0)
+    // Sold-out stocks (value = 0) are in currentData but will have 0% percentage and won't form a slice
+    const valueData = currentData;
+    const activeTotalVal = valueData.reduce((sum, item) => sum + item.value, 0);
+
+    return valueData.map((item, idx) => {
+      const percentage = activeTotalVal > 0 ? item.value / activeTotalVal : 0;
       const strokeLength = percentage * 314.159;
-      const strokeOffset = 314.159 - (accumulatedPercent * 314.159) + 78.539;
+      const rotationAngle = -90 + (accumulatedPercent * 360);
       accumulatedPercent += percentage;
       return {
         ...item,
         percentageVal: percentage * 100,
         strokeLength,
-        strokeOffset,
+        rotationAngle,
         color: colors[idx % colors.length]
       };
     });
-  }, [activeInstitutions, totalInstValue]);
-
-  const currentDonutData = chartLayout === 'hisse' ? stockDonutData : instDonutData;
-  const currentTotalValue = chartLayout === 'hisse' ? totalStockValue : totalInstValue;
+  }, [currentData, colors]);
 
   const activeHoverInfo = useMemo(() => {
-    if (hoveredSlice !== null && currentDonutData[hoveredSlice]) {
-      return currentDonutData[hoveredSlice];
+    if (hoveredSlice !== null && donutData[hoveredSlice]) {
+      return donutData[hoveredSlice];
     }
     return null;
-  }, [hoveredSlice, currentDonutData]);
+  }, [hoveredSlice, donutData]);
+
+  const displayedStocks = useMemo(() => {
+    if (chartLayout === 'hisse_mevcut') return donutData;
+    if (chartLayout === 'hisse_genel') {
+      return showAllHisseGenel ? donutData : donutData.slice(0, 10);
+    }
+    return [];
+  }, [chartLayout, donutData, showAllHisseGenel]);
 
   return (
     <div className="mt-5 mb-5 animate-fade-in">
@@ -3112,12 +3275,12 @@ const FinanceCharts = ({
           <h2 className="fw-bold m-0 text-dark">Portföy Analizi</h2>
           <p className="text-muted small m-0 mt-1">Mevcut hisse dağılımları ve kurum bazlı finansal özetler</p>
         </div>
-        <div className="d-flex align-items-center gap-1 bg-light bg-opacity-50 p-1 rounded-pill" style={{ border: '1px solid rgba(0,0,0,0.05)' }}>
+        <div className="d-flex align-items-center gap-1 bg-light bg-opacity-50 p-1 rounded-pill flex-wrap" style={{ border: '1px solid rgba(0,0,0,0.05)' }}>
           <Button
             variant="light"
             size="sm"
-            onClick={() => { setChartLayout('hisse'); setHoveredSlice(null); }}
-            className={`rounded-pill px-3 py-1 fw-bold border-0 transition-all ${chartLayout === 'hisse' ? 'bg-white shadow-sm text-primary' : 'bg-transparent text-muted'}`}
+            onClick={() => { setChartLayout('hisse_mevcut'); setHoveredSlice(null); }}
+            className={`rounded-pill px-3 py-1 fw-bold border-0 transition-all ${chartLayout === 'hisse_mevcut' ? 'bg-white shadow-sm text-primary' : 'bg-transparent text-muted'}`}
             style={{ fontSize: '12px' }}
           >
             <PieChart size={14} className="me-1" /> Hisse Dağılımı
@@ -3125,11 +3288,29 @@ const FinanceCharts = ({
           <Button
             variant="light"
             size="sm"
-            onClick={() => { setChartLayout('kurum'); setHoveredSlice(null); }}
-            className={`rounded-pill px-3 py-1 fw-bold border-0 transition-all ${chartLayout === 'kurum' ? 'bg-white shadow-sm text-primary' : 'bg-transparent text-muted'}`}
+            onClick={() => { setChartLayout('hisse_genel'); setHoveredSlice(null); }}
+            className={`rounded-pill px-3 py-1 fw-bold border-0 transition-all ${chartLayout === 'hisse_genel' ? 'bg-white shadow-sm text-primary' : 'bg-transparent text-muted'}`}
+            style={{ fontSize: '12px' }}
+          >
+            <PieChart size={14} className="me-1" /> Hisse Genel
+          </Button>
+          <Button
+            variant="light"
+            size="sm"
+            onClick={() => { setChartLayout('kurum_mevcut'); setHoveredSlice(null); }}
+            className={`rounded-pill px-3 py-1 fw-bold border-0 transition-all ${chartLayout === 'kurum_mevcut' ? 'bg-white shadow-sm text-primary' : 'bg-transparent text-muted'}`}
             style={{ fontSize: '12px' }}
           >
             <Briefcase size={14} className="me-1" /> Kurum Dağılımı
+          </Button>
+          <Button
+            variant="light"
+            size="sm"
+            onClick={() => { setChartLayout('kurum_genel'); setHoveredSlice(null); }}
+            className={`rounded-pill px-3 py-1 fw-bold border-0 transition-all ${chartLayout === 'kurum_genel' ? 'bg-white shadow-sm text-primary' : 'bg-transparent text-muted'}`}
+            style={{ fontSize: '12px' }}
+          >
+            <Briefcase size={14} className="me-1" /> Kurum Genel
           </Button>
         </div>
       </div>
@@ -3139,41 +3320,46 @@ const FinanceCharts = ({
           <Card className="glass-card border shadow-sm p-4 h-100 d-flex flex-column align-items-center justify-content-center" style={{ minHeight: '380px' }}>
             <div className="w-100 d-flex justify-content-between align-items-center mb-3">
               <span className="x-small fw-bold text-muted opacity-75 text-uppercase">
-                {chartLayout === 'hisse' ? 'HİSSE DAĞILIMI' : 'KURUMSAL DAĞILIM'}
+                {chartLayout === 'hisse_mevcut' ? 'HİSSE DAĞILIMI (MEVCUT)' : chartLayout === 'hisse_genel' ? 'HİSSE DAĞILIMI (GENEL)' : chartLayout === 'kurum_mevcut' ? 'KURUMSAL DAĞILIM (MEVCUT)' : 'KURUMSAL DAĞILIM (GENEL)'}
               </span>
               <span className="x-small text-muted">Halka üzerine geliniz</span>
             </div>
             
-            {currentDonutData.length === 0 ? (
+            {donutData.filter(d => d.value > 0).length === 0 ? (
               <div className="text-center py-5 text-muted">
                 <div className="opacity-50 mb-2"><PieChart size={32} /></div>
-                <div className="small">Görüntülenecek veri bulunamadı</div>
+                <div className="small">Görüntülenecek aktif veri bulunamadı</div>
               </div>
             ) : (
               <div className="position-relative d-flex align-items-center justify-content-center" style={{ width: '220px', height: '220px' }}>
                 <svg viewBox="0 0 160 160" width="100%" height="100%">
                   <circle cx="80" cy="80" r="50" fill="transparent" stroke="rgba(0,0,0,0.03)" strokeWidth="15" />
-                  {currentDonutData.map((d, i) => (
-                    <circle
-                      key={d.id}
-                      cx="80"
-                      cy="80"
-                      r="50"
-                      fill="transparent"
-                      stroke={d.color}
-                      strokeWidth={hoveredSlice === i ? 18 : 15}
-                      strokeDasharray={`${d.strokeLength} 314.159`}
-                      strokeDashoffset={d.strokeOffset}
-                      strokeLinecap="round"
-                      className="transition-all"
-                      style={{ 
-                        cursor: 'pointer',
-                        filter: hoveredSlice === i ? 'drop-shadow(0px 4px 8px rgba(0,0,0,0.15))' : 'none'
-                      }}
-                      onMouseEnter={() => setHoveredSlice(i)}
-                      onMouseLeave={() => setHoveredSlice(null)}
-                    />
-                  ))}
+                  {donutData.map((d, i) => {
+                    if (d.value <= 0) return null;
+                    return (
+                      <circle
+                        key={d.id}
+                        cx="80"
+                        cy="80"
+                        r="50"
+                        fill="transparent"
+                        stroke={d.color}
+                        strokeWidth={hoveredSlice === i ? 18 : 15}
+                        strokeDasharray={`${d.strokeLength} 314.159`}
+                        strokeDashoffset="0"
+                        strokeLinecap="round"
+                        className="transition-all"
+                        style={{ 
+                          cursor: 'pointer',
+                          filter: hoveredSlice === i ? 'drop-shadow(0px 4px 8px rgba(0,0,0,0.15))' : 'none',
+                          transform: `rotate(${d.rotationAngle}deg)`,
+                          transformOrigin: '80px 80px'
+                        }}
+                        onMouseEnter={() => setHoveredSlice(i)}
+                        onMouseLeave={() => setHoveredSlice(null)}
+                      />
+                    );
+                  })}
                 </svg>
                 
                 <div className="position-absolute text-center d-flex flex-column align-items-center justify-content-center" style={{ width: '130px', height: '130px', borderRadius: '50%', pointerEvents: 'none' }}>
@@ -3181,19 +3367,31 @@ const FinanceCharts = ({
                     <>
                       <span className="fw-bold text-dark fs-14 text-truncate px-2 w-100">{activeHoverInfo.name}</span>
                       <span className="text-muted fs-11 mt-0.5">{activeHoverInfo.percentageVal.toFixed(1)}%</span>
-                      <span className="fw-bold text-primary fs-14 mt-1">
-                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(activeHoverInfo.value)}₺
+                      {activeHoverInfo.value > 0 ? (
+                        <span className="fw-bold text-primary fs-14 mt-1">
+                          {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(activeHoverInfo.value)}₺
+                        </span>
+                      ) : (
+                        <span className="text-muted fs-11 mt-1">
+                          Aktif Değil
+                        </span>
+                      )}
+                      <span className="text-danger fw-bold mt-0.5" style={{ fontSize: '9px' }}>
+                        Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(activeHoverInfo.tax)}₺
                       </span>
                     </>
                   ) : (
                     <>
                       <span className="text-muted fs-10 text-uppercase fw-bold opacity-75">TOPLAM DEĞER</span>
                       <span className="fw-bold text-dark fs-18 mt-1">
-                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalValue)}₺
+                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalStockValue)}₺
                       </span>
-                      <span className={`fw-bold fs-11 mt-1 ${chartLayout === 'hisse' ? (totalStockProfit >= 0 ? 'text-success' : 'text-danger') : (totalInstProfit >= 0 ? 'text-success' : 'text-danger')}`}>
-                        {chartLayout === 'hisse' ? (overallStockProfitPercent >= 0 ? '+' : '') : (overallInstProfitPercent >= 0 ? '+' : '')}
-                        {chartLayout === 'hisse' ? overallStockProfitPercent.toFixed(2) : overallInstProfitPercent.toFixed(2)}%
+                      <span className={`fw-bold fs-11 mt-1 ${currentTotalProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {currentTotalProfit >= 0 ? '+' : ''}
+                        {currentOverallProfitPercent.toFixed(2)}%
+                      </span>
+                      <span className="text-danger fw-bold mt-0.5" style={{ fontSize: '9px' }}>
+                        Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalTax)}₺
                       </span>
                     </>
                   )}
@@ -3208,16 +3406,16 @@ const FinanceCharts = ({
             <div>
               <div className="d-flex align-items-center justify-content-between mb-4">
                 <span className="x-small fw-bold text-muted opacity-75 text-uppercase">
-                  {chartLayout === 'hisse' ? 'HİSSE DETAYLARI VE KAR/ZARAR' : 'KURUMSAL ÖZETLER'}
+                  {chartLayout === 'hisse_mevcut' ? 'HİSSE DETAYLARI (MEVCUT)' : chartLayout === 'hisse_genel' ? 'HİSSE DETAYLARI (GENEL)' : chartLayout === 'kurum_mevcut' ? 'KURUMSAL ÖZETLER (MEVCUT)' : 'KURUMSAL ÖZETLER (GENEL)'}
                 </span>
                 <Badge bg="primary" className="rounded-pill opacity-75 px-3 py-1 fs-11">
-                  {chartLayout === 'hisse' ? `${activeStocks.length} Aktif Hisse` : `${activeInstitutions.length} Aktif Kurum`}
+                  {chartLayout === 'hisse_mevcut' ? `${activeStocks.length} Aktif Hisse` : chartLayout === 'hisse_genel' ? `${allStocks.length} Hisse (Mevcut/Tarihsel)` : `${activeInstitutions.length} Aktif Kurum`}
                 </Badge>
               </div>
 
-              {chartLayout === 'hisse' ? (
-                activeStocks.length === 0 ? (
-                  <div className="text-center py-5 text-muted small">Aktif portföy bulunmamaktadır</div>
+              {(chartLayout === 'hisse_mevcut' || chartLayout === 'hisse_genel') ? (
+                (chartLayout === 'hisse_mevcut' ? activeStocks : allStocks).length === 0 ? (
+                  <div className="text-center py-5 text-muted small">Portföy bulunmamaktadır</div>
                 ) : (
                   <div className="overflow-auto pe-1" style={{ maxHeight: '240px' }}>
                     <Table hover className="mb-0 fs-13 align-middle" borderless>
@@ -3230,7 +3428,7 @@ const FinanceCharts = ({
                         </tr>
                       </thead>
                       <tbody>
-                        {stockDonutData.map((d, i) => (
+                        {displayedStocks.map((d, i) => (
                           <tr 
                             key={d.id} 
                             className={`rounded-3 transition-all cursor-pointer ${hoveredSlice === i ? 'bg-light bg-opacity-75' : ''}`}
@@ -3243,18 +3441,33 @@ const FinanceCharts = ({
                                 <span className="fw-bold text-dark">{d.name}</span>
                               </div>
                             </td>
-                            <td className="text-end text-muted">{new Intl.NumberFormat('tr-TR').format(d.quantity)} Lot</td>
+                            <td className="text-end text-muted">{d.quantity > 0 ? `${new Intl.NumberFormat('tr-TR').format(d.quantity)} Lot` : '0 Lot'}</td>
                             <td className="text-end fw-medium">{d.percentageVal.toFixed(1)}%</td>
                             <td className={`text-end pe-2 fw-bold ${d.profit >= 0 ? 'text-success' : 'text-danger'}`}>
                               <div className="d-flex flex-column align-items-end">
                                 <span>{d.profit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.profit)}₺</span>
-                                <span style={{ fontSize: '9px' }} className="opacity-75">({d.percentage >= 0 ? '+' : ''}{d.percentage.toFixed(2)}%)</span>
+                                {d.percentage !== undefined && d.percentage !== 0 && (
+                                  <span style={{ fontSize: '9px' }} className="opacity-75">({d.percentage >= 0 ? '+' : ''}{d.percentage.toFixed(2)}%)</span>
+                                )}
+                                <span style={{ fontSize: '9px', fontWeight: 500 }} className="text-danger">Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.tax)}₺</span>
                               </div>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </Table>
+                    {chartLayout === 'hisse_genel' && allStocks.length > 10 && (
+                      <div className="d-flex justify-content-center mt-2">
+                        <Button 
+                          variant="link" 
+                          size="sm" 
+                          className="text-decoration-none text-primary fw-bold p-0 py-1"
+                          onClick={() => setShowAllHisseGenel(!showAllHisseGenel)}
+                        >
+                          {showAllHisseGenel ? 'Daha Az Göster' : 'Devamını Gör'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )
               ) : (
@@ -3268,11 +3481,11 @@ const FinanceCharts = ({
                           <th style={{ width: '40%' }}>KURUM</th>
                           <th className="text-end" style={{ width: '20%' }}>GÜNLÜK KAZANÇ</th>
                           <th className="text-end" style={{ width: '20%' }}>PORTFÖY DEĞERİ</th>
-                          <th className="text-end pe-2" style={{ width: '20%' }}>TOPLAM KAZANÇ</th>
+                          <th className="text-end pe-2" style={{ width: '20%' }}>NET KAZANÇ</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {instDonutData.map((d, i) => (
+                        {donutData.map((d, i) => (
                           <tr 
                             key={d.id} 
                             className={`rounded-3 transition-all cursor-pointer ${hoveredSlice === i ? 'bg-light bg-opacity-75' : ''}`}
@@ -3295,7 +3508,10 @@ const FinanceCharts = ({
                             </td>
                             <td className="text-end fw-bold">{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.value)}₺</td>
                             <td className={`text-end pe-2 fw-bold ${d.profit >= 0 ? 'text-success' : 'text-danger'}`}>
-                              {d.profit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.profit)}₺
+                              <div className="d-flex flex-column align-items-end">
+                                <span>{d.profit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.profit)}₺</span>
+                                <span style={{ fontSize: '9px', fontWeight: 500 }} className="text-danger">Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.tax)}₺</span>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -3312,7 +3528,7 @@ const FinanceCharts = ({
                   <div className="bg-light bg-opacity-25 rounded-3 p-2 text-center border">
                     <div className="text-muted x-small opacity-75" style={{ fontSize: '9px' }}>TOPLAM YATIRIM</div>
                     <div className="fw-bold text-dark mt-1 fs-12">
-                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(chartLayout === 'hisse' ? totalStockCost : totalInstCost)}₺
+                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalCost)}₺
                     </div>
                   </div>
                 </Col>
@@ -3320,16 +3536,19 @@ const FinanceCharts = ({
                   <div className="bg-light bg-opacity-25 rounded-3 p-2 text-center border">
                     <div className="text-muted x-small opacity-75" style={{ fontSize: '9px' }}>PORTFÖY DEĞERİ</div>
                     <div className="fw-bold text-primary mt-1 fs-12">
-                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(chartLayout === 'hisse' ? totalStockValue : totalInstValue)}₺
+                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalStockValue)}₺
                     </div>
                   </div>
                 </Col>
                 <Col xs={4}>
-                  <div className={`rounded-3 p-2 text-center border ${chartLayout === 'hisse' ? (totalStockProfit >= 0 ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger') : (totalInstProfit >= 0 ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger')}`}>
-                    <div className="x-small opacity-75" style={{ fontSize: '9px' }}>NET KAR/ZARAR</div>
+                  <div className={`rounded-3 p-2 text-center border ${currentTotalProfit >= 0 ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`}>
+                    <div className="x-small opacity-75" style={{ fontSize: '9px', fontWeight: 500 }}>NET KAR/ZARAR</div>
                     <div className="fw-bold mt-1 fs-12">
-                      {chartLayout === 'hisse' ? (totalStockProfit >= 0 ? '+' : '') : (totalInstProfit >= 0 ? '+' : '')}
-                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(chartLayout === 'hisse' ? totalStockProfit : totalInstProfit)}₺
+                      {currentTotalProfit >= 0 ? '+' : ''}
+                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalProfit)}₺
+                    </div>
+                    <div className="text-danger fw-bold mt-1" style={{ fontSize: '9px' }}>
+                      Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalTax)}₺
                     </div>
                   </div>
                 </Col>

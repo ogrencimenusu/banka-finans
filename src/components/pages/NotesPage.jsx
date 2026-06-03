@@ -75,7 +75,9 @@ import {
   Repeat,
   XCircle,
   Scissors,
-  CalendarOff
+  CalendarOff,
+  Clipboard,
+  Copy
 } from 'lucide-react';
 import { Modal, Button, Form, Badge, Dropdown, Collapse, Table, Card } from 'react-bootstrap';
 import './NotesPage.css';
@@ -484,6 +486,9 @@ const NotesPage = () => {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringType, setRecurringType] = useState('monthly');
   const [recurringEndDate, setRecurringEndDate] = useState('');
+  const [tempIsRecurring, setTempIsRecurring] = useState(false);
+  const [tempRecurringType, setTempRecurringType] = useState('monthly');
+  const [tempRecurringEndDate, setTempRecurringEndDate] = useState('');
   const [recurringGroupId, setRecurringGroupId] = useState(null);
   const [showRecurringDeleteModal, setShowRecurringDeleteModal] = useState(false);
   const [activeRecurringDeleteAction, setActiveRecurringDeleteAction] = useState(null);
@@ -900,6 +905,9 @@ const NotesPage = () => {
     setIsRecurring(false);
     setRecurringType('monthly');
     setRecurringEndDate('');
+    setTempIsRecurring(false);
+    setTempRecurringType('monthly');
+    setTempRecurringEndDate('');
     setRecurringGroupId(null);
   };
 
@@ -1242,6 +1250,9 @@ const NotesPage = () => {
     setIsRecurring(note.isRecurring || false);
     setRecurringType(note.recurringType || 'monthly');
     setRecurringEndDate(note.recurringEndDate || '');
+    setTempIsRecurring(note.isRecurring || false);
+    setTempRecurringType(note.recurringType || 'monthly');
+    setTempRecurringEndDate(note.recurringEndDate || '');
     setRecurringGroupId(note.recurringGroupId || null);
     setShowModal(true);
   };
@@ -1254,6 +1265,7 @@ const NotesPage = () => {
         setNoteText(template.text || '');
         setNoteTags(template.tags || []);
         setIsRecurring(true);
+        setTempIsRecurring(true);
       }
     }
   }, [noteTitle, notes, editingNote, showModal]);
@@ -1388,6 +1400,140 @@ const NotesPage = () => {
     }
   };
 
+  const getRecurringCount = () => {
+    if (!tempIsRecurring || !tempRecurringEndDate || !selectedDate) return 0;
+    
+    const startY = selectedDate.getFullYear();
+    const startM = selectedDate.getMonth();
+    const startD = selectedDate.getDate();
+    let curr = new Date(startY, startM, startD);
+    
+    const [endY, endM, endD] = tempRecurringEndDate.split('-').map(Number);
+    if (!endY || isNaN(endM) || isNaN(endD)) return 0;
+    const end = new Date(endY, endM - 1, endD);
+    
+    if (curr >= end) return 0;
+    
+    let count = 0;
+    while (true) {
+      if (tempRecurringType === 'daily') curr.setDate(curr.getDate() + 1);
+      else if (tempRecurringType === 'weekly') curr.setDate(curr.getDate() + 7);
+      else if (tempRecurringType === 'monthly') curr.setMonth(curr.getMonth() + 1);
+      else if (tempRecurringType === 'yearly') curr.setFullYear(curr.getFullYear() + 1);
+      
+      if (curr > end) break;
+      count++;
+      if (count > 500) break; // Safety limit
+    }
+    return count;
+  };
+
+  const handleSaveRecursion = async (nextIsRecurring, nextType, nextEndDate) => {
+    if (!user || !selectedDate) return;
+
+    isSavingRef.current = true;
+    setIsSaving(true);
+    const dateStr = formatIdDate(selectedDate);
+    
+    let gid = recurringGroupId;
+    if (nextIsRecurring && !gid) {
+      gid = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      setRecurringGroupId(gid);
+    }
+
+    const noteData = {
+      title: noteTitle,
+      text: noteText,
+      tags: noteTags,
+      color: noteColor,
+      date: dateStr,
+      isRecurring: nextIsRecurring,
+      recurringType: nextIsRecurring ? nextType : null,
+      recurringEndDate: nextIsRecurring ? nextEndDate : null,
+      recurringGroupId: nextIsRecurring ? gid : null,
+      updatedAt: serverTimestamp()
+    };
+
+    try {
+      let currentNoteId = editingNote?.id;
+      if (currentNoteId) {
+        await updateDoc(doc(db, `users/${user.uid}/notes`, currentNoteId), noteData);
+        
+        // SYNC RECURRING NOTES (Update existing items in the series)
+        if (nextIsRecurring && gid) {
+          const notesToSync = notes.filter(n => n.recurringGroupId === gid && n.id !== currentNoteId);
+          for (const sn of notesToSync) {
+            await updateDoc(doc(db, `users/${user.uid}/notes`, sn.id), {
+              title: noteTitle,
+              text: noteText,
+              tags: noteTags,
+              updatedAt: serverTimestamp()
+            });
+          }
+        }
+        setEditingNote(prev => ({ ...prev, ...noteData }));
+      } else {
+        const docRef = await addDoc(collection(db, `users/${user.uid}/notes`), {
+          ...noteData,
+          createdAt: serverTimestamp()
+        });
+        currentNoteId = docRef.id;
+        setEditingNote({ id: docRef.id, ...noteData });
+      }
+
+      // GENERATE MISSING FUTURE OCCURRENCES
+      if (nextIsRecurring && gid && nextEndDate) {
+        const existingDates = notes.filter(n => n.recurringGroupId === gid).map(n => n.date);
+        const futureDates = [];
+        
+        const startY = selectedDate.getFullYear();
+        const startM = selectedDate.getMonth();
+        const startD = selectedDate.getDate();
+        let curr = new Date(startY, startM, startD);
+        
+        const [endY, endM, endD] = nextEndDate.split('-').map(Number);
+        const end = new Date(endY, endM - 1, endD);
+
+        while (true) {
+          if (nextType === 'daily') curr.setDate(curr.getDate() + 1);
+          else if (nextType === 'weekly') curr.setDate(curr.getDate() + 7);
+          else if (nextType === 'monthly') curr.setMonth(curr.getMonth() + 1);
+          else if (nextType === 'yearly') curr.setFullYear(curr.getFullYear() + 1);
+          
+          if (curr > end) break;
+          const fDate = formatIdDate(new Date(curr));
+          if (!existingDates.includes(fDate)) {
+            futureDates.push(fDate);
+          }
+          if (futureDates.length > 500) break; // Safety limit
+        }
+
+        for (const fDate of futureDates) {
+          await addDoc(collection(db, `users/${user.uid}/notes`), {
+            ...noteData,
+            date: fDate,
+            createdAt: serverTimestamp()
+          });
+        }
+      }
+
+      // Commit to main states
+      setIsRecurring(nextIsRecurring);
+      setRecurringType(nextType);
+      setRecurringEndDate(nextEndDate);
+
+      setIsSaving(false);
+      isSavingRef.current = false;
+      setShowSaveIndicator(true);
+      setLastSaved(new Date());
+      setTimeout(() => setShowSaveIndicator(false), 1500);
+    } catch (error) {
+      console.error("Error saving recursion:", error);
+      setIsSaving(false);
+      isSavingRef.current = false;
+    }
+  };
+
   const handleAutoSave = async () => {
     if (!user || !selectedDate || isSavingRef.current) return;
     
@@ -1456,38 +1602,6 @@ const NotesPage = () => {
         setEditingNote({ id: docRef.id, ...noteData });
       }
 
-      // GENERATE MISSING FUTURE OCCURRENCES
-      // ONLY generate missing future occurrences if recurrence was newly turned on or if it is a brand new note.
-      // This prevents editing an existing note in the modal from regenerating/shifting the recurring instances.
-      if (isRecurring && gid && recurringEndDate && (!editingNote || !editingNote.isRecurring)) {
-        const existingDates = notes.filter(n => n.recurringGroupId === gid).map(n => n.date);
-        const futureDates = [];
-        let curr = new Date(selectedDate);
-        const end = new Date(recurringEndDate);
-        
-        while (true) {
-          if (recurringType === 'daily') curr.setDate(curr.getDate() + 1);
-          else if (recurringType === 'weekly') curr.setDate(curr.getDate() + 7);
-          else if (recurringType === 'monthly') curr.setMonth(curr.getMonth() + 1);
-          else if (recurringType === 'yearly') curr.setFullYear(curr.getFullYear() + 1);
-          
-          if (curr > end) break;
-          const fDate = formatIdDate(new Date(curr));
-          if (!existingDates.includes(fDate)) {
-            futureDates.push(fDate);
-          }
-          if (futureDates.length > 500) break; // Safety limit
-        }
-
-        for (const fDate of futureDates) {
-          await addDoc(collection(db, `users/${user.uid}/notes`), {
-            ...noteData,
-            date: fDate,
-            createdAt: serverTimestamp()
-          });
-        }
-      }
-
       setIsSaving(false);
       isSavingRef.current = false;
       setShowSaveIndicator(true);
@@ -1532,6 +1646,7 @@ const NotesPage = () => {
 
   const handleRecurringToggle = (checked) => {
     const gid = editingNote?.recurringGroupId || recurringGroupId;
+    setTempIsRecurring(checked);
     if (!checked && gid) {
       setShowRecurringDeleteModal(true);
     } else {
@@ -1564,7 +1679,9 @@ const NotesPage = () => {
         
         // Update local state
         setRecurringEndDate(currentDateStr);
+        setTempRecurringEndDate(currentDateStr);
         setIsRecurring(true); // Keep it on as requested
+        setTempIsRecurring(true);
         
       } else if (action === 'past') {
         // Delete previous ones (before selected date)
@@ -1581,9 +1698,12 @@ const NotesPage = () => {
         }
         
         setIsRecurring(false);
+        setTempIsRecurring(false);
         setRecurringGroupId(null);
         setRecurringType(null);
+        setTempRecurringType('monthly');
         setRecurringEndDate('');
+        setTempRecurringEndDate('');
         setShowModal(false);
         
       } else if (action === 'unlink') {
@@ -1595,9 +1715,12 @@ const NotesPage = () => {
         
         // 2. Remove recurrence from this note to make it standalone
         setIsRecurring(false);
+        setTempIsRecurring(false);
         setRecurringGroupId(null);
         setRecurringType(null);
+        setTempRecurringType('monthly');
         setRecurringEndDate('');
+        setTempRecurringEndDate('');
         
         if (editingNote?.id) {
           await updateDoc(doc(db, `users/${user.uid}/notes`, editingNote.id), {
@@ -2396,7 +2519,7 @@ const NotesPage = () => {
                   if (showFarFuture) {
                     farFutureNotes.forEach(note => {
                       rows.push(
-                        <tr key={note.id || `far-holiday-${note.date}-${note.name}`} className={`align-middle cursor-pointer opacity-75 ${note.itemType === 'holiday' ? 'bg-warning bg-opacity-5' : ''}`} onClick={() => {
+                        <tr key={note.id || `far-holiday-${note.date}-${note.name}`} className="align-middle cursor-pointer opacity-75" onClick={() => {
                           if (note.itemType === 'note') handleEditNote(note);
                           else if (note.itemType === 'holiday') return;
                           else handleShowSummary(note);
@@ -2417,7 +2540,7 @@ const NotesPage = () => {
                           {NOTE_PROPERTIES.filter(p => noteConfig.propertyVisibility[p.id] !== false).map(p => (
                             <td key={p.id}>
                               {p.id === 'date' && (
-                                <span className="small text-muted">
+                                <span className={`small ${note.itemType === 'holiday' ? 'text-warning fw-bold' : 'text-muted'}`}>
                                   {formatDisplayDate(note.date, noteConfig.dateFormat)}
                                 </span>
                               )}
@@ -2429,7 +2552,7 @@ const NotesPage = () => {
                                   {note.itemType === 'holiday' && <Flag size={14} className="text-warning" />}
                                   {note.itemType === 'bank' && <Landmark size={14} className="text-danger opacity-50" />}
                                   {note.itemType === 'finance' && <PieChart size={14} className="text-success opacity-50" />}
-                                  <span className="fw-bold text-truncate d-inline-block" style={{ maxWidth: '350px', verticalAlign: 'middle' }}>
+                                  <span className={`fw-bold text-truncate d-inline-block ${note.itemType === 'holiday' ? 'text-warning' : ''}`} style={{ maxWidth: '350px', verticalAlign: 'middle' }}>
                                     {note.itemType === 'finance' 
                                       ? (stocks.find(s => s.id === note.stockId)?.name || 'Bilinmeyen Hisse')
                                       : (note.title || note.name || note.description || 'Başlıksız')
@@ -2515,7 +2638,7 @@ const NotesPage = () => {
                   }
                   
                   rows.push(
-                    <tr key={note.id || `holiday-${note.date}-${note.name}`} className={`align-middle cursor-pointer ${note.itemType === 'holiday' ? 'bg-warning bg-opacity-5' : ''}`} onClick={() => {
+                    <tr key={note.id || `holiday-${note.date}-${note.name}`} className="align-middle cursor-pointer" onClick={() => {
                       if (note.itemType === 'note') handleEditNote(note);
                       else if (note.itemType === 'holiday') return;
                       else handleShowSummary(note);
@@ -2548,7 +2671,7 @@ const NotesPage = () => {
                               {note.itemType === 'holiday' && <Flag size={14} className="text-warning" />}
                               {note.itemType === 'bank' && <Landmark size={14} className="text-danger opacity-50" />}
                               {note.itemType === 'finance' && <PieChart size={14} className="text-success opacity-50" />}
-                              <span className="fw-bold text-truncate d-inline-block" style={{ maxWidth: '350px', verticalAlign: 'middle' }}>
+                              <span className={`fw-bold text-truncate d-inline-block ${note.itemType === 'holiday' ? 'text-warning' : ''}`} style={{ maxWidth: '350px', verticalAlign: 'middle' }}>
                                     {note.itemType === 'finance' 
                                       ? (stocks.find(s => s.id === note.stockId)?.name || 'Bilinmeyen Hisse')
                                       : (note.title || note.name || note.description || 'Başlıksız')
@@ -3798,12 +3921,12 @@ const NotesPage = () => {
                   <Form.Check 
                     type="switch" 
                     id="recurring-switch"
-                    checked={isRecurring}
+                    checked={tempIsRecurring}
                     onChange={(e) => handleRecurringToggle(e.target.checked)}
                   />
                 </div>
                 
-                {isRecurring && (
+                {tempIsRecurring && (
                   <div className="animate-fade-in">
                     <Form.Group className="mb-3">
                       <Form.Label className="x-small fw-bold opacity-50 text-uppercase mb-2">SIKLIK</Form.Label>
@@ -3816,11 +3939,11 @@ const NotesPage = () => {
                         ].map(type => (
                           <div 
                             key={type.id}
-                            className={`p-2 px-3 rounded cursor-pointer fs-12 transition-all d-flex align-items-center justify-content-between ${recurringType === type.id ? 'bg-primary bg-opacity-10 text-primary fw-bold' : 'hover-bg-light text-muted'}`}
-                            onClick={() => setRecurringType(type.id)}
+                            className={`p-2 px-3 rounded cursor-pointer fs-12 transition-all d-flex align-items-center justify-content-between ${tempRecurringType === type.id ? 'bg-primary bg-opacity-10 text-primary fw-bold' : 'hover-bg-light text-muted'}`}
+                            onClick={() => setTempRecurringType(type.id)}
                           >
                             {type.label}
-                            {recurringType === type.id && <Check size={12} />}
+                            {tempRecurringType === type.id && <Check size={12} />}
                           </div>
                         ))}
                       </div>
@@ -3832,13 +3955,26 @@ const NotesPage = () => {
                         type="date" 
                         size="sm"
                         className="bg-light border-0 fs-12"
-                        value={recurringEndDate}
+                        value={tempRecurringEndDate}
                         min={selectedDate ? formatIdDate(selectedDate) : ''}
-                        onChange={(e) => setRecurringEndDate(e.target.value)}
+                        onChange={(e) => setTempRecurringEndDate(e.target.value)}
                       />
                     </Form.Group>
                     <div className="x-small text-muted opacity-50 mt-1">
                       * Bu serideki tüm notlar (renk hariç) senkronize edilecektir.
+                    </div>
+                    <div className="d-grid mt-3">
+                      <Button 
+                        variant="primary" 
+                        size="sm" 
+                        className="text-white fw-bold py-1.5"
+                        onClick={() => handleSaveRecursion(tempIsRecurring, tempRecurringType, tempRecurringEndDate)}
+                      >
+                        Kaydet
+                      </Button>
+                    </div>
+                    <div className="x-small text-muted text-center mt-2 fw-medium">
+                      Bu not {getRecurringCount()} kez tekrar edilecek.
                     </div>
                   </div>
                 )}
@@ -4029,22 +4165,24 @@ const NotesPage = () => {
                 <AlignLeft size={14} className="text-muted" />
                 <Form.Label className="text-muted small fw-bold mb-0 uppercase-tracking">İÇERİK</Form.Label>
               </div>
-              <div className="d-flex align-items-center gap-1">
+              <div className="d-flex align-items-center gap-2">
                 <button 
                   type="button" 
-                  className="btn btn-link p-1 text-muted hover-text-primary border-0 shadow-none transition-all" 
+                  className="btn btn-link p-1 text-muted hover-text-primary border-0 shadow-none transition-all d-flex align-items-center gap-1" 
                   onClick={handleUndo} 
                   title="Geri Al"
                 >
                   <Undo size={14} />
+                  <span className="fs-12 fw-medium d-inline d-md-none">Geri</span>
                 </button>
                 <button 
                   type="button" 
-                  className="btn btn-link p-1 text-muted hover-text-primary border-0 shadow-none transition-all" 
+                  className="btn btn-link p-1 text-muted hover-text-primary border-0 shadow-none transition-all d-flex align-items-center gap-1" 
                   onClick={handleRedo} 
                   title="İleri Al"
                 >
                   <Redo size={14} />
+                  <span className="fs-12 fw-medium d-inline d-md-none">İleri</span>
                 </button>
               </div>
             </div>
@@ -4186,17 +4324,52 @@ const NotesPage = () => {
               </div>
               <div className="d-flex flex-column gap-1">
                 <label className="text-muted fw-bold" style={{ fontSize: '10px' }}>URL</label>
-                <input 
-                  type="text" 
-                  className="form-control form-control-sm border shadow-none" 
-                  style={{ fontSize: '12px', padding: '4px 8px', borderRadius: '6px' }}
-                  value={linkEditor.url}
-                  onChange={(e) => setLinkEditor(prev => ({ ...prev, url: e.target.value }))}
-                  placeholder="https://..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveLink(e);
-                  }}
-                />
+                <div className="d-flex align-items-center gap-1">
+                  <input 
+                    type="text" 
+                    className="form-control form-control-sm border shadow-none flex-grow-1" 
+                    style={{ fontSize: '12px', padding: '4px 8px', borderRadius: '6px' }}
+                    value={linkEditor.url}
+                    onChange={(e) => setLinkEditor(prev => ({ ...prev, url: e.target.value }))}
+                    placeholder="https://..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveLink(e);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-light btn-xs p-1 d-flex align-items-center justify-content-center border"
+                    style={{ width: '26px', height: '26px', borderRadius: '6px' }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={async () => {
+                      try {
+                        const text = await navigator.clipboard.readText();
+                        setLinkEditor(prev => ({ ...prev, url: text }));
+                      } catch (err) {
+                        console.error('Clipboard read failed:', err);
+                      }
+                    }}
+                    title="Yapıştır"
+                  >
+                    <Clipboard size={12} className="text-muted" />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-light btn-xs p-1 d-flex align-items-center justify-content-center border"
+                    style={{ width: '26px', height: '26px', borderRadius: '6px' }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(linkEditor.url);
+                      } catch (err) {
+                        console.error('Clipboard write failed:', err);
+                      }
+                    }}
+                    title="Kopyala"
+                  >
+                    <Copy size={12} className="text-muted" />
+                  </button>
+                </div>
               </div>
               <div className="d-flex align-items-center justify-content-end gap-2 mt-1">
                 <button 
@@ -4543,8 +4716,12 @@ const NotesPage = () => {
       {/* Recurring Deletion Options Modal */}
       <Modal 
         show={showRecurringDeleteModal} 
-        onHide={() => activeRecurringDeleteAction === null && setShowRecurringDeleteModal(false)} 
-        centered 
+        onHide={() => {
+          if (activeRecurringDeleteAction === null) {
+            setShowRecurringDeleteModal(false);
+            setTempIsRecurring(isRecurring);
+          }
+        }} 
         className="notion-modal" 
         backdropClassName="notion-modal-backdrop"
         size="md"
@@ -4720,7 +4897,12 @@ const NotesPage = () => {
           </div>
         </Modal.Body>
         <Modal.Footer className="border-0 pt-0 pb-4 px-4">
-          <Button variant="link" className="text-muted fs-13 w-100 text-decoration-none" onClick={() => activeRecurringDeleteAction === null && setShowRecurringDeleteModal(false)}>İptal</Button>
+          <Button variant="link" className="text-muted fs-13 w-100 text-decoration-none" onClick={() => {
+            if (activeRecurringDeleteAction === null) {
+              setShowRecurringDeleteModal(false);
+              setTempIsRecurring(isRecurring);
+            }
+          }}>İptal</Button>
         </Modal.Footer>
       </Modal>
 
@@ -5349,6 +5531,11 @@ const NotesPage = () => {
             .mini-month-v2 {
               padding: 5px !important;
             }
+            .notion-text-input {
+              padding: 10px !important;
+              border: 0 !important;
+              background: transparent !important;
+            }
           }
           
           [data-theme="dark"] .active-day-highlight .week-day-number {
@@ -5377,55 +5564,51 @@ const NotesPage = () => {
           .transition-all { transition: all 0.3s ease; }
         `}} />
       {headerPortalTarget && createPortal(
-        <div className="d-flex align-items-center gap-1">
-          <div className="d-flex align-items-center gap-1">
-            <span className="fw-bold text-danger fs-14">{currentDate.getFullYear()}</span>
-          </div>
-
-          <div className="d-flex align-items-center bg-light rounded-3 px-1">
+        <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center bg-light rounded-3 px-2">
             <button 
               className={`nav-btn p-0 border-0 bg-transparent ${viewMode === 'list' ? 'text-primary' : 'text-muted opacity-50'}`} 
               onClick={() => updateViewMode('list')}
-              style={{ width: '28px' }}
+              style={{ width: '38px' }}
             >
-              <ListIcon size={15} />
+              <ListIcon size={16} />
             </button>
             <button 
               className={`nav-btn p-0 border-0 bg-transparent ${viewMode === 'week' ? 'text-primary' : 'text-muted opacity-50'}`} 
               onClick={() => updateViewMode('week')}
-              style={{ width: '28px' }}
+              style={{ width: '38px' }}
             >
-              <Columns size={15} />
+              <Columns size={16} />
             </button>
             <button 
               className={`nav-btn p-0 border-0 bg-transparent ${viewMode === 'month' ? 'text-primary' : 'text-muted opacity-50'}`} 
               onClick={() => updateViewMode('month')}
-              style={{ width: '28px' }}
+              style={{ width: '38px' }}
             >
-              <CalendarIcon size={15} />
+              <CalendarIcon size={16} />
             </button>
             <button 
               className={`nav-btn p-0 border-0 bg-transparent ${viewMode === 'year' ? 'text-primary' : 'text-muted opacity-50'}`} 
               onClick={() => updateViewMode('year')}
-              style={{ width: '28px' }}
+              style={{ width: '38px' }}
             >
-              <Layers size={15} />
+              <Layers size={16} />
             </button>
           </div>
 
-          <div className="d-flex align-items-center bg-light rounded-3 px-1" style={{ scale: '0.85' }}>
-            <button className="nav-btn today-btn p-0 border-0 bg-transparent fs-10 fw-bold" onClick={goToToday} style={{ width: 'auto', padding: '0 8px' }}>BUGÜN</button>
+          <div className="d-flex align-items-center bg-light rounded-3 px-2" style={{ scale: '0.95' }}>
+            <button className="nav-btn today-btn p-0 border-0 bg-transparent fs-10 fw-bold" onClick={goToToday} style={{ width: 'auto', padding: '0 12px' }}>BUGÜN</button>
           </div>
 
-          <button className="nav-btn p-0 border-0 bg-transparent shadow-none ms-auto" onClick={handleMobileSearchClick} style={{ width: '32px' }}>
-            <Search size={18} className="text-muted" />
+          <button className="nav-btn p-0 border-0 bg-transparent shadow-none ms-auto" onClick={handleMobileSearchClick} style={{ width: '38px' }}>
+            <Search size={19} className="text-muted" />
           </button>
-          <button className="nav-btn p-0 border-0 bg-transparent shadow-none" onClick={() => handleDayClick(new Date())} style={{ width: '32px' }}>
-            <Plus size={20} className="text-muted" />
+          <button className="nav-btn p-0 border-0 bg-transparent shadow-none" onClick={() => handleDayClick(new Date())} style={{ width: '38px' }}>
+            <Plus size={22} className="text-muted" />
           </button>
           <Dropdown align="end">
-            <Dropdown.Toggle as="button" className="nav-btn p-0 border-0 bg-transparent shadow-none no-caret" style={{ width: '32px' }}>
-              <Settings size={18} className="text-muted" />
+            <Dropdown.Toggle as="button" className="nav-btn p-0 border-0 bg-transparent shadow-none no-caret" style={{ width: '38px' }}>
+              <Settings size={19} className="text-muted" />
             </Dropdown.Toggle>
             {renderSettingsMenu()}
           </Dropdown>
