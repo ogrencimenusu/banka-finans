@@ -58,6 +58,7 @@ const MainLayout = ({ children }) => {
       '/bank-transactions': 'Banka İşlemleri',
       '/finance': 'Finans İşlemleri',
       '/notes': 'Notlar',
+      '/tags': 'Etiketler',
       '/trash': 'Çöp Kutusu',
       '/login': 'Giriş Yap'
     };

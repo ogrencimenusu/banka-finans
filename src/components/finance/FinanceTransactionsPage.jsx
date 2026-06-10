@@ -863,7 +863,7 @@ const FinanceTransactionsPage = () => {
   const processedTransactions = useMemo(() => {
 
     const sorted = [...transactions].sort((a, b) => {
-      const dateCmp = a.date.localeCompare(b.date);
+      const dateCmp = (a.date || '').localeCompare(b.date || '');
       if (dateCmp !== 0) return dateCmp;
       
       // If dates are same, prioritize ALIŞ (Buy) over SATIŞ (Sell)
@@ -1239,7 +1239,7 @@ const FinanceTransactionsPage = () => {
           dailyChangePerc
         };
       })
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   }, [processedTransactions, stocks]);
 
 
@@ -1296,10 +1296,10 @@ const FinanceTransactionsPage = () => {
       const batch = writeBatch(db);
       let calculatedTaxDeduction = 0;
       let portfolioRemainingQty = 0;
-      const stockTrans = transactions.filter(t => t.stockId === formStockId).sort((a, b) => a.date.localeCompare(b.date) || a.createdAt?.seconds - b.createdAt?.seconds);
+      const stockTrans = transactions.filter(t => t.stockId === formStockId).sort((a, b) => (a.date || '').localeCompare(b.date || '') || a.createdAt?.seconds - b.createdAt?.seconds);
       const currentTotalQty = stockTrans.reduce((acc, t) => acc + (t.type === 'ALIŞ' ? t.quantity : -t.quantity), 0);
       if (type === 'SATIŞ') {
-        const buyDocs = transactions.filter(t => t.stockId === formStockId && t.type === 'ALIŞ' && t.remainingQuantity > 0).sort((a, b) => a.date.localeCompare(b.date));
+        const buyDocs = transactions.filter(t => t.stockId === formStockId && t.type === 'ALIŞ' && t.remainingQuantity > 0).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
         let totalAvailable = buyDocs.reduce((acc, d) => acc + (d.remainingQuantity || 0), 0);
         if (totalAvailable < qty) { alert(`Yetersiz adet! Mevcut: ${totalAvailable}`); return; }
         let remainingToSell = qty;
@@ -1337,7 +1337,7 @@ const FinanceTransactionsPage = () => {
   const handleAutoSortInstitutions = async (criteria) => {
     let sorted = [...institutions];
     if (criteria === 'name') {
-      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     } else if (criteria === 'date') {
       sorted.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
     }
@@ -1872,7 +1872,7 @@ const FinanceTransactionsPage = () => {
                   const sortedInstIds = Object.keys(groups).sort((a, b) => {
                     const nameA = getInstitutionInfo(a).name || '';
                     const nameB = getInstitutionInfo(b).name || '';
-                    return nameA.localeCompare(nameB);
+                    return (nameA || '').localeCompare(nameB || '');
                   });
 
                   const parsePrice = (val) => {
@@ -1916,7 +1916,7 @@ const FinanceTransactionsPage = () => {
                     const sortedLots = [...groups[instId]].sort((a, b) => {
                       const stockA = getStockInfo(a.stockId).name || '';
                       const stockB = getStockInfo(b.stockId).name || '';
-                      if (stockA !== stockB) return stockA.localeCompare(stockB);
+                      if (stockA !== stockB) return (stockA || '').localeCompare(stockB || '');
                       return new Date(a.date) - new Date(b.date);
                     });
                     
@@ -2823,7 +2823,7 @@ const FinanceTransactionsPage = () => {
                 setLimitCount(100);
               }}
             >
-              Hepsini Gör
+              Hepsini Gör ({filteredTransactions.length})
             </span>
           </div>
         </div>
@@ -2985,7 +2985,32 @@ const FinanceTransactionsPage = () => {
                   </span>
                 )}
               </div>
-              <Form.Control className="border-0 bg-light" value={editStockValue} onChange={(e) => setEditStockValue(e.target.value.replace(/[^0-9,.]/g, ''))} autoFocus />
+              <div className="d-flex align-items-center gap-2">
+                <Form.Control 
+                  className="border-0 bg-light flex-grow-1" 
+                  value={editStockValue} 
+                  onChange={(e) => setEditStockValue(e.target.value.replace(/[^0-9,.]/g, ''))} 
+                  autoFocus 
+                />
+                <Button
+                  variant="light"
+                  className="d-flex align-items-center justify-content-center border"
+                  style={{ width: '38px', height: '38px', borderRadius: '8px', flexShrink: 0 }}
+                  onClick={async () => {
+                    try {
+                      const text = await navigator.clipboard.readText();
+                      const cleanText = text.replace(/[^0-9,.]/g, '');
+                      setEditStockValue(cleanText);
+                    } catch (err) {
+                      console.error('Clipboard read failed:', err);
+                    }
+                  }}
+                  title="Yapıştır"
+                  type="button"
+                >
+                  <Clipboard size={16} className="text-muted" />
+                </Button>
+              </div>
             </Form.Group>
             <Button variant="primary" type="submit" className="w-100 rounded-pill py-2 fw-bold">Güncelle</Button>
           </Form>
@@ -3122,7 +3147,7 @@ const FinanceCharts = ({
         return b.value - a.value;
       } else {
         // Both sold out: sort by latestSoldDate descending (most recently sold first)
-        return b.latestSoldDate.localeCompare(a.latestSoldDate);
+        return (b.latestSoldDate || '').localeCompare(a.latestSoldDate || '');
       }
     });
   }, [processedTransactions, currentPortfolio, getStockInfo]);

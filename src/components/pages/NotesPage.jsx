@@ -556,7 +556,7 @@ const NotesPage = () => {
     if (!financeTransactions.length) return [];
     
     const sorted = [...financeTransactions].sort((a, b) => {
-      const dateCmp = a.date.localeCompare(b.date);
+      const dateCmp = (a.date || '').localeCompare(b.date || '');
       if (dateCmp !== 0) return dateCmp;
       const typeScore = (t) => t.type === 'ALIŞ' ? 0 : 1;
       const typeCmp = typeScore(a) - typeScore(b);
@@ -727,7 +727,7 @@ const NotesPage = () => {
         combined.push({ name: tagName, color: 'Blue', isUnmanaged: true });
       }
     });
-    return combined.sort((a,b) => a.name.localeCompare(b.name));
+    return combined.sort((a,b) => (a.name || '').localeCompare(b.name || ''));
   }, [globalNoteTags, allTags]);
 
   const filteredItems = useMemo(() => {
@@ -2784,7 +2784,7 @@ const NotesPage = () => {
                 }}
                 style={{ whiteSpace: 'nowrap' }}
               >
-                Hepsini Gör
+                Hepsini Gör ({filteredNoteListData.length})
               </span>
             </div>
           </div>
@@ -3693,7 +3693,7 @@ const NotesPage = () => {
 
                         {/* Inactive Stocks (qty <= 0) */}
                         <div className="dropdown-header fs-10 text-uppercase opacity-50 fw-bold mt-2">Geçmiş Hisseler</div>
-                        {stocks.filter(s => !(stockBalances[s.id] > 0)).sort((a, b) => a.name.localeCompare(b.name)).map(s => (
+                        {stocks.filter(s => !(stockBalances[s.id] > 0)).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(s => (
                           <Dropdown.Item key={s.id} className="rounded py-2 fs-12 d-flex justify-content-between align-items-center opacity-75" onClick={() => setFilters(f => ({ ...f, stockId: s.id }))}>
                             <span>{s.name}</span>
                             <span className="small text-muted">0 Adet</span>

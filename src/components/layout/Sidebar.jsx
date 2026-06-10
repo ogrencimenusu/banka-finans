@@ -20,7 +20,8 @@ import {
   Monitor,
   Calendar,
   NotebookPen,
-  X
+  X,
+  Tag
 } from 'lucide-react';
 import logo from '../../assets/logo.svg';
 import logoIcon from '../../assets/logo-icon.svg';
@@ -78,6 +79,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
     { name: 'Banka İşlemleri', path: '/bank-transactions', icon: Wallet },
     { name: 'Finans İşlemleri', path: '/finance', icon: PieChart },
     { name: 'Notlar', path: '/notes', icon: Calendar },
+    { name: 'Etiketler', path: '/tags', icon: Tag },
     { name: 'Son Silinenler', path: '/trash', icon: Trash2 },
   ];
 
@@ -148,7 +150,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
             <div className="overflow-hidden">
               <div className="fw-bold small d-flex align-items-center justify-content-between w-100">
                 <span className="text-truncate">{user?.displayName}</span>
-                <span className="text-muted smaller opacity-50 fw-normal ms-2" style={{ fontSize: '11px' }}>v1.0.8</span>
+                <span className="text-muted smaller opacity-50 fw-normal ms-2" style={{ fontSize: '11px' }}>v1.0.9</span>
               </div>
               <div className="text-truncate text-muted smaller" style={{ fontSize: '11px' }}>{user?.email}</div>
             </div>

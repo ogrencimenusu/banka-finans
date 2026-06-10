@@ -1,0 +1,856 @@
+/* TagsPage.css - Premium Styles for Etiketler Page */
+
+/* Layout Toggles */
+.view-tabs-container {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--glass-border);
+  margin-bottom: 24px;
+  padding-bottom: 1px;
+}
+
+.view-tab-btn {
+  background: transparent;
+  border: none;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  position: relative;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-tab-btn:hover {
+  color: var(--text-main);
+}
+
+.view-tab-btn.active {
+  color: var(--primary-color);
+}
+
+[data-theme="dark"] .view-tab-btn.active {
+  color: #60a5fa;
+}
+
+.view-tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--primary-color);
+  border-radius: 2px 2px 0 0;
+}
+
+[data-theme="dark"] .view-tab-btn.active::after {
+  background: #60a5fa;
+}
+
+/* Grid and Gallery Layout */
+.tags-gallery-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 20px;
+  padding-top: 12px;
+  padding-bottom: 24px;
+  margin-top: -12px;
+  margin-bottom: 28px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tags-gallery-grid::-webkit-scrollbar {
+  height: 6px;
+}
+
+.tags-gallery-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tags-gallery-grid::-webkit-scrollbar-thumb {
+  background: var(--glass-border, rgba(0, 0, 0, 0.1));
+  border-radius: 6px;
+}
+
+.tags-gallery-grid .tag-card {
+  flex: 0 0 250px;
+  height: 380px;
+  scroll-snap-align: start;
+}
+
+@media (max-width: 576px) {
+  .tags-gallery-grid {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 12px;
+    padding-top: 12px;
+    padding-bottom: 20px;
+    margin-top: -12px;
+    margin-bottom: 16px;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .tags-gallery-grid::-webkit-scrollbar {
+    height: 4px;
+  }
+  
+  .tags-gallery-grid::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .tags-gallery-grid::-webkit-scrollbar-thumb {
+    background: var(--glass-border, rgba(0, 0, 0, 0.1));
+    border-radius: 4px;
+  }
+
+  .tags-gallery-grid .tag-card {
+    flex: 0 0 230px;
+    height: 280px;
+    scroll-snap-align: start;
+  }
+}
+
+/* Premium Card Design - Vertical Poster Overlay */
+.tag-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 380px; /* Vertical movie poster ratio */
+  overflow: hidden;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--glass-border) !important;
+  background: var(--glass-bg);
+}
+
+.tag-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15) !important;
+  border-color: rgba(62, 100, 255, 0.2) !important;
+}
+
+[data-theme="dark"] .tag-card:hover {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45) !important;
+  border-color: rgba(96, 165, 250, 0.3) !important;
+}
+
+.tag-card.active {
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 3px rgba(62, 100, 255, 0.2), 0 6px 18px rgba(62, 100, 255, 0.12) !important;
+}
+
+[data-theme="dark"] .tag-card.active {
+  border-color: #60a5fa !important;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2), 0 6px 18px rgba(96, 165, 250, 0.2) !important;
+}
+
+/* Card Cover Image fills full card */
+.tag-card-cover-container {
+  position: relative;
+  height: 100%; /* Covers entire card background */
+  width: 100%;
+  overflow: hidden;
+  background-color: rgba(0,0,0,0.03);
+}
+
+.tag-card-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: var(--tag-cover-fit, cover);
+  transition: transform 0.5s ease;
+}
+
+.tag-card:hover .tag-card-cover {
+  transform: scale(1.04);
+}
+
+/* Info Overlay floating on bottom of poster */
+.tag-card-info-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 36px 16px 16px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.45) 65%, transparent 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  z-index: 5;
+  transition: all 0.3s ease;
+}
+
+.tag-card:hover .tag-card-info-overlay {
+  padding-bottom: 20px;
+}
+
+.tag-card-badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+}
+
+.tag-card-notes-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85) !important; /* Forced white text */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Controls at top-right of cover */
+.tag-card-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.tag-card:hover .tag-card-controls {
+  opacity: 1;
+}
+
+.tag-card-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: #333333;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+
+.tag-card-btn:hover {
+  background: #ffffff;
+  transform: scale(1.1);
+  color: var(--primary-color);
+}
+
+[data-theme="dark"] .tag-card-btn {
+  background: rgba(30, 30, 40, 0.9);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #e0e0e0;
+}
+
+[data-theme="dark"] .tag-card-btn:hover {
+  background: rgba(45, 45, 60, 0.95);
+  color: #60a5fa;
+}
+
+/* Tags List Table View */
+.tags-list-table-container {
+  margin-bottom: 40px;
+}
+
+.tags-list-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.tags-list-table th {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 12px 16px;
+  border-bottom: 2px solid var(--glass-border);
+}
+
+.tags-list-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--glass-border);
+  vertical-align: middle;
+}
+
+.tags-list-table tr {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tags-list-table tr:hover td {
+  background: rgba(0, 0, 0, 0.015);
+}
+
+[data-theme="dark"] .tags-list-table tr:hover td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.tags-list-table tr.active td {
+  background: rgba(62, 100, 255, 0.04);
+}
+
+[data-theme="dark"] .tags-list-table tr.active td {
+  background: rgba(96, 165, 250, 0.06);
+}
+
+.tag-table-cover-thumb {
+  width: 32px;
+  height: 48px;
+  border-radius: 4px;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid var(--glass-border);
+}
+
+/* Detail Section styling */
+/* Detail Section styling - stretches edge-to-edge */
+.tag-detail-section.glass-card {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.tag-detail-section .table-responsive {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+}
+
+/* Custom table styling - stretches edge-to-edge */
+.tags-notes-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+.tags-notes-table th {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  padding: 14px 16px;
+  border-bottom: 2px solid var(--glass-border);
+}
+
+.tags-notes-table td {
+  padding: 14px 16px;
+  font-size: 14px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.tags-notes-table th:first-child,
+.tags-notes-table td:first-child {
+  padding-left: 24px !important;
+}
+
+.tags-notes-table th:last-child,
+.tags-notes-table td:last-child {
+  padding-right: 24px !important;
+}
+
+.tags-notes-table tr:hover td {
+  background: rgba(0, 0, 0, 0.015);
+}
+
+[data-theme="dark"] .tags-notes-table tr:hover td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+/* Action buttons styling */
+.action-btn-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50% !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+  padding: 0 !important;
+}
+
+.action-btn-circle:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-main);
+  transform: scale(1.05);
+}
+
+[data-theme="dark"] .action-btn-circle:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.action-btn-circle.edit:hover {
+  color: var(--primary-color);
+  border-color: rgba(62, 100, 255, 0.2);
+}
+
+.action-btn-circle.delete:hover {
+  color: #dc3545;
+  border-color: rgba(220, 53, 69, 0.2);
+}
+
+/* Color dot indicators */
+.note-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Note title links */
+.note-table-title-link {
+  color: var(--text-main);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+
+.note-table-title-link:hover {
+  color: var(--primary-color);
+}
+
+[data-theme="dark"] .note-table-title-link:hover {
+  color: #60a5fa;
+}
+
+/* Notion OPAQUE Modal Styles (Fixing readability) */
+.notion-modal .modal-content {
+  background: #ffffff !important;
+  color: #333333 !important;
+  border-radius: 20px !important;
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.15) !important;
+}
+
+[data-theme="dark"] .notion-modal .modal-content {
+  background: #18191c !important;
+  color: #e0e0e0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5) !important;
+}
+
+.notes-modal-header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.modal-title-date {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.save-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+[data-theme="dark"] .save-status-pill {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.save-status-pill.saved {
+  background: rgba(46, 204, 113, 0.12);
+  color: #27ae60;
+}
+
+[data-theme="dark"] .save-status-pill.saved {
+  background: rgba(46, 204, 113, 0.2);
+  color: #2ecc71;
+}
+
+.notion-title-input {
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  color: var(--text-main) !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+}
+
+.notion-title-input:focus {
+  border-bottom-color: rgba(62, 100, 255, 0.1) !important;
+}
+
+/* Tags badge display in modal */
+.tags-input-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px !important;
+  background: rgba(0,0,0,0.03);
+  border-radius: 12px;
+}
+
+[data-theme="dark"] .tags-input-container {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.tag-input {
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  padding: 2px 4px;
+  min-width: 100px;
+}
+
+.tag-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+/* Rich Text Editor */
+.notion-text-input {
+  color: var(--text-main) !important;
+  line-height: 1.6;
+  font-size: 15px;
+}
+
+.notion-text-input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  opacity: 0.5;
+  cursor: text;
+}
+
+/* Formatting toolbar - floating layout */
+.floating-format-toolbar {
+  display: flex;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  transition: all 0.15s ease-in-out;
+}
+
+[data-theme="dark"] .floating-format-toolbar {
+  background: #18191c;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.floating-format-toolbar input.form-control {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+  color: var(--text-main) !important;
+  border-color: var(--glass-border) !important;
+}
+
+[data-theme="dark"] .floating-format-toolbar input.form-control {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* Custom Tag Color Dot Picker */
+.tag-color-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(0,0,0,0.02);
+  border-radius: 12px;
+}
+
+[data-theme="dark"] .tag-color-selector {
+  background: rgba(255,255,255,0.02);
+}
+
+/* Color dot indicator buttons */
+.tag-color-dot-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.tag-color-dot-btn:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.tag-color-dot-btn.active {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+[data-theme="dark"] .tag-color-dot-btn.active {
+  box-shadow: 0 0 0 2px #60a5fa;
+}
+
+/* Drag and drop active states */
+.tag-card.dragging {
+  opacity: 0.4;
+  transform: scale(0.95);
+  border: 2px dashed var(--primary-color) !important;
+}
+
+.tags-list-table tr.dragging {
+  opacity: 0.4;
+  background: rgba(0,0,0,0.05);
+}
+
+/* Reorder panel item list styling */
+.settings-tags-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(0,0,0,0.02);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+[data-theme="dark"] .settings-tags-list-item {
+  background: rgba(255,255,255,0.02);
+}
+
+.settings-tags-list-item.dragging {
+  opacity: 0.5;
+  border-color: var(--primary-color);
+}
+
+/* Custom search styling */
+.search-input-container {
+  display: inline-block;
+}
+
+.search-input-styled {
+  background: var(--glass-bg, rgba(255, 255, 255, 0.85)) !important;
+  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.1)) !important;
+  color: var(--text-main, #333) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.search-input-styled:focus {
+  background: #ffffff !important;
+  border-color: var(--primary-color, #3e64ff) !important;
+  box-shadow: 0 0 0 3px rgba(62, 100, 255, 0.15) !important;
+  width: 210px !important;
+}
+
+[data-theme="dark"] .search-input-styled {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #e0e0e0 !important;
+}
+
+[data-theme="dark"] .search-input-styled:focus {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: #60a5fa !important;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15) !important;
+}
+
+/* Custom switch size in settings dropdown */
+.custom-switch-sm .form-check-input {
+  width: 1.6rem !important;
+  height: 0.85rem !important;
+  cursor: pointer;
+}
+
+/* Light/Primary background pagination badges */
+.bg-light-primary {
+  background-color: rgba(62, 100, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .bg-light-primary {
+  background-color: rgba(96, 165, 250, 0.15) !important;
+}
+
+/* Fullscreen Modal on Mobile */
+@media (max-width: 991px) {
+  .mobile-fullscreen-modal .modal-dialog {
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+  }
+  
+  .mobile-fullscreen-modal .modal-content {
+    height: 100% !important;
+    border-radius: 0 !important;
+    border: none !important;
+    display: flex;
+    flex-direction: column;
+    padding-top: 56px !important;
+  }
+
+  .mobile-fullscreen-modal .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding-bottom: 40px;
+  }
+
+  .notes-modal-header {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    flex-wrap: nowrap !important;
+    padding: 12px 16px !important;
+  }
+}
+
+/* Expanded Modal on Desktop */
+.notion-modal.is-expanded.modal {
+  padding: 0 !important;
+}
+
+.notion-modal.is-expanded .modal-dialog {
+  margin: 0 !important;
+  margin-left: auto !important;
+  width: calc(100% - var(--sidebar-width, 240px)) !important;
+  max-width: none !important;
+  height: 100% !important;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Sidebar collapsed width adjustments */
+html[data-sidebar-collapsed="true"] .notion-modal.is-expanded .modal-dialog {
+  width: calc(100% - var(--sidebar-collapsed-width, 70px)) !important;
+}
+
+.notion-modal.is-expanded .modal-content {
+  height: 100% !important;
+  border-radius: 0 !important;
+  border: none !important;
+  border-left: 1px solid var(--glass-border) !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.notion-modal.is-expanded .modal-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.notes-modal-header-container {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  flex-wrap: nowrap !important;
+  padding: 12px 16px !important;
+  background: var(--glass-bg) !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 1050 !important;
+  width: 100% !important;
+  border-bottom: 1px solid var(--glass-border) !important;
+}
+
+.modal-title-date {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.modal-title-date span {
+  font-size: 14px !important;
+  font-weight: bold !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.modal-header-actions {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.save-status-pill {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 4px 10px !important;
+  border-radius: 20px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  background-color: rgba(0,0,0,0.05) !important;
+  color: var(--text-muted) !important;
+  height: 32px !important;
+  white-space: nowrap !important;
+}
+
+.save-status-pill.saved {
+  background-color: #28a745 !important;
+  color: white !important;
+}
+
+.notion-title-input:focus, .notion-text-input:focus {
+  box-shadow: none !important;
+}
+
+/* Dark Mode Modal Customizations */
+[data-theme="dark"] .notion-modal .modal-content { 
+  background: #141414 !important; 
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7) !important;
+}
+
+[data-theme="dark"] .notion-title-input, 
+[data-theme="dark"] .notion-text-input { 
+  background: transparent !important; 
+  color: #e0e0e0 !important;
+}
+
+[data-theme="dark"] .notes-modal-header-container { 
+  background: #1a1a1a !important; 
+  border-bottom-color: rgba(255,255,255,0.05) !important; 
+}

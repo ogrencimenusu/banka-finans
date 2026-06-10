@@ -233,7 +233,7 @@ const TrashPage = () => {
               setLimit(100);
             }}
           >
-            Hepsini Gör
+            Hepsini Gör ({totalCount})
           </span>
         </div>
       </div>

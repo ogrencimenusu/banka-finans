@@ -9,6 +9,7 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import MainLayout from './components/layout/MainLayout';
 import TrashPage from './components/pages/TrashPage';
 import NotesPage from './components/pages/NotesPage';
+import TagsPage from './components/pages/TagsPage';
 import { LayoutDashboard, Wallet, PieChart, Settings, ArrowRight, Landmark, Calendar, Clock, StickyNote, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db } from './firebase';
@@ -145,7 +146,7 @@ const Dashboard = () => {
     const getStockInfo = (id) => stocks.find(s => s.id === id) || {};
 
     const sortedTrans = [...financeTransactions].sort((a, b) => {
-      const dateCmp = a.date.localeCompare(b.date);
+      const dateCmp = (a.date || '').localeCompare(b.date || '');
       if (dateCmp !== 0) return dateCmp;
       return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
     });
@@ -758,6 +759,7 @@ function App() {
                       <Route path="/bank-transactions" element={<BankTransactionsPage />} />
                       <Route path="/finance" element={<FinanceTransactionsPage />} />
                       <Route path="/notes" element={<NotesPage />} />
+                      <Route path="/tags" element={<TagsPage />} />
                       <Route path="/trash" element={<TrashPage />} />
                     </Routes>
                   </MainLayout>

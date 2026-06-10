@@ -790,6 +790,7 @@ const BankTransactionsPage = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [collapsedGroups, setCollapsedGroups] = useState({});
   const [groupLimits, setGroupLimits] = useState({});
+  const [groupInfinite, setGroupInfinite] = useState({});
   const [groupConfigs, setGroupConfigs] = useState({});
   const [groupSettings, setGroupSettings] = useState({});
   const [editTarget, setEditTarget] = useState(null);
@@ -997,7 +998,7 @@ const BankTransactionsPage = () => {
 
   const uniqueTitles = useMemo(() => {
     const titles = transactions.map(t => t.title).filter(Boolean);
-    return [...new Set(titles)].sort((a, b) => a.localeCompare(b, 'tr'));
+    return [...new Set(titles)].sort((a, b) => (a || '').localeCompare(b || '', 'tr'));
   }, [transactions]);
 
   const getBankInfo = (id) => banks.find(b => b.id === id) || {};
@@ -1820,7 +1821,7 @@ const BankTransactionsPage = () => {
   const handleAutoSort = async (type) => {
     let sortedBanks = [...banks];
     if (type === 'name') {
-      sortedBanks.sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+      sortedBanks.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'tr'));
     } else if (type === 'date') {
       sortedBanks.sort((a, b) => {
         const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
@@ -2017,7 +2018,7 @@ const BankTransactionsPage = () => {
       if (idxA !== -1 && idxB !== -1) return idxA - idxB;
       if (idxA !== -1) return -1;
       if (idxB !== -1) return 1;
-      return a.label.localeCompare(b.label);
+      return (a.label || '').localeCompare(b.label || '');
     });
 
     return groupsList.filter(g => visibility[g.id] !== false);
@@ -2065,7 +2066,7 @@ const BankTransactionsPage = () => {
       if (idxA !== -1 && idxB !== -1) return idxA - idxB;
       if (idxA !== -1) return -1;
       if (idxB !== -1) return 1;
-      return a.label.localeCompare(b.label);
+      return (a.label || '').localeCompare(b.label || '');
     });
     return groupsList;
   }, [transactions, config.groupBy, banks, typeTags, quickActionTags, groupSettings]);
@@ -3581,7 +3582,7 @@ const BankTransactionsPage = () => {
                   setLimitCount(100); // Start with 100 when view all is clicked
                 }}
               >
-                Hepsini Gör
+                Hepsini Gör ({sortedTransactions.length})
               </span>
             </div>
           </div>
@@ -3633,7 +3634,7 @@ const BankTransactionsPage = () => {
             const groupSpecificSorted = applySort(groupSpecificFiltered, localSort);
 
             const currentLimit = groupLimits[group.id] || 5;
-            const itemsToShow = groupSpecificSorted.slice(0, currentLimit);
+            const itemsToShow = groupInfinite[group.id] ? groupSpecificSorted : groupSpecificSorted.slice(0, currentLimit);
 
             return (
               <div key={group.id} className="mb-4">
@@ -4036,10 +4037,13 @@ const BankTransactionsPage = () => {
                     </Card>
 
                     <div className="d-flex align-items-center gap-4 mt-2 mb-5 mobile-scroll-x">
-                      {currentLimit < groupSpecificSorted.length && (
+                      {!groupInfinite[group.id] && currentLimit < groupSpecificSorted.length && (
                         <div className="d-flex align-items-center gap-2 py-2 px-3 hover-bg-light cursor-pointer text-muted small rounded-2"
                           style={{ width: 'fit-content' }}
-                          onClick={() => setGroupLimits(prev => ({ ...prev, [group.id]: (prev[group.id] || 5) + 5 }))}>
+                          onClick={() => {
+                            setGroupLimits(prev => ({ ...prev, [group.id]: (prev[group.id] || 5) + 5 }));
+                            setGroupInfinite(prev => ({ ...prev, [group.id]: false }));
+                          }}>
                           <Plus size={14} className="opacity-50" />
                           <span>Daha fazla göster</span>
                         </div>
@@ -4050,12 +4054,23 @@ const BankTransactionsPage = () => {
                         {[5, 10, 20, 50, 100].map(v => (
                           <span
                             key={v}
-                            className={`cursor-pointer hover-text-primary px-2 py-1 rounded ${currentLimit === v ? 'bg-light-primary text-primary fw-bold' : ''}`}
-                            onClick={() => setGroupLimits(prev => ({ ...prev, [group.id]: v }))}
+                            className={`cursor-pointer hover-text-primary px-2 py-1 rounded ${currentLimit === v && !groupInfinite[group.id] ? 'bg-light-primary text-primary fw-bold' : ''}`}
+                            onClick={() => {
+                              setGroupLimits(prev => ({ ...prev, [group.id]: v }));
+                              setGroupInfinite(prev => ({ ...prev, [group.id]: false }));
+                            }}
                           >
                             {v}
                           </span>
                         ))}
+                        <span
+                          className={`cursor-pointer hover-text-primary px-2 py-1 rounded ${groupInfinite[group.id] ? 'bg-light-primary text-primary fw-bold' : ''}`}
+                          onClick={() => {
+                            setGroupInfinite(prev => ({ ...prev, [group.id]: true }));
+                          }}
+                        >
+                          Hepsini Gör ({groupSpecificSorted.length})
+                        </span>
                       </div>
                     </div>
                   </>
