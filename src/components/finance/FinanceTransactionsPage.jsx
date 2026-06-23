@@ -210,6 +210,7 @@ const PROPERTIES = [
   { id: 'taxDeduction', label: 'Stopaj Kesintisi', icon: <ShieldCheck size={14} />, type: 'number' },
   { id: 'totalBuyAmount', label: 'Toplam Alış', icon: <ShoppingBag size={14} />, type: 'number' },
   { id: 'totalSaleAmount', label: 'Toplam Satış', icon: <DollarSign size={14} />, type: 'number' },
+  { id: 'avgBuyPrice', label: 'Ortalama Alış Fiyatı', icon: <Banknote size={14} />, type: 'number' },
   { id: 'grossProfit', label: 'Brüt Kazanç', icon: <TrendingUp size={14} />, type: 'number' },
   { id: 'totalProfit', label: 'Net Kazanç', icon: <TrendingUp size={14} />, type: 'number' },
 ];
@@ -472,16 +473,62 @@ const SortableBankItem = ({ bank, stats, viewLayout, handleDeleteBank, onEditCli
             <span className="fw-bold fs-16">{bank.name}</span>
           </div>
         </td>
-        <td className="fw-medium fs-15">
-          <div className="d-flex flex-column">
-            <span className={totalNet >= 0 ? 'text-success' : 'text-danger'}>{formatCurrency(totalNet)} TL</span>
-            <span className="x-small text-muted opacity-50">Net Kar</span>
+        <td className="fw-medium fs-15 py-3">
+          <div className="d-flex flex-column gap-1" style={{ maxWidth: '240px' }}>
+            <div className="d-flex justify-content-between align-items-center mb-1">
+              <span className="x-small text-muted fw-medium text-nowrap">Brüt Kar/Zarar:</span>
+              <span className={`x-small fw-bold text-nowrap ms-2 ${(stats?.unrealizedGross || 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                {(stats?.unrealizedGross || 0) > 0 ? '+' : ''}{formatCurrency(stats?.unrealizedGross || 0)} TL
+              </span>
+            </div>
+            <div className="d-flex justify-content-between align-items-center mb-1">
+              <span className="x-small text-muted fw-medium text-nowrap">Stopaj Kesintisi:</span>
+              <span className="x-small fw-bold text-danger text-nowrap ms-2">
+                -{formatCurrency((stats?.unrealizedGross || 0) - (stats?.unrealizedNet || 0))} TL
+              </span>
+            </div>
+            <div className="d-flex justify-content-between align-items-start mb-1">
+              <span className="x-small text-muted fw-medium text-nowrap">Net Kar/Zarar:</span>
+              <div className="text-end text-nowrap ms-2">
+                <div className={`x-small fw-bold ${(stats?.unrealizedNet || 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                  {(stats?.unrealizedNet || 0) > 0 ? '+' : ''}{formatCurrency(stats?.unrealizedNet || 0)} TL
+                </div>
+                <div className={`fw-bold ${(stats?.unrealizedNet || 0) >= 0 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '9px', opacity: 0.7, marginTop: '-2px' }}>
+                  ({(stats?.unrealizedNet || 0) > 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((stats?.totalInvestment || 0) > 0 ? ((stats?.unrealizedNet || 0) / stats.totalInvestment * 100) : 0)}%)
+                </div>
+              </div>
+            </div>
+            <div className="d-flex justify-content-between align-items-start pt-1 border-top border-light" style={{ marginTop: '2px' }}>
+              <span className="x-small text-muted fw-medium text-nowrap">Günlük Kazanç:</span>
+              <div className="text-end text-nowrap ms-2">
+                <div className={`x-small fw-bold ${(stats?.dailyGain || 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                  {(stats?.dailyGain || 0) > 0 ? '+' : ''}{formatCurrency(stats?.dailyGain || 0)} TL
+                </div>
+                <div className={`fw-bold ${(stats?.dailyGain || 0) >= 0 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '9px', opacity: 0.7, marginTop: '-2px' }}>
+                  ({(stats?.dailyGain || 0) > 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((stats?.currentValue || 0) > 0 ? ((stats?.dailyGain || 0) / (stats.currentValue - stats.dailyGain) * 100) : 0)}%)
+                </div>
+              </div>
+            </div>
           </div>
         </td>
-        <td className="text-end pe-4">
-          <div className="d-flex flex-column align-items-end">
-            <span className="fw-bold fs-14">{formatCurrency(stats?.currentValue || 0)} TL</span>
-            <span className="x-small text-muted opacity-50">Mevcut Değer</span>
+        <td className="text-end pe-4 py-3">
+          <div className="d-flex flex-column align-items-stretch gap-1 ms-auto" style={{ maxWidth: '240px' }}>
+            <div className="d-flex justify-content-between align-items-center mb-1">
+              <span className="x-small text-muted fw-bold text-nowrap">PORTFÖY DEĞERİ:</span>
+              <span className="x-small fw-bold text-nowrap ms-2">{formatCurrency(stats?.totalInvestment || 0)} TL</span>
+            </div>
+            <div className="d-flex justify-content-between align-items-center mb-1">
+              <span className="x-small text-muted fw-bold text-nowrap">BRÜT DEĞER:</span>
+              <span className={`x-small fw-bold text-nowrap ms-2 ${(stats?.totalInvestment || 0) + (stats?.unrealizedGross || 0) >= (stats?.totalInvestment || 0) ? 'text-success' : 'text-danger'}`}>
+                {formatCurrency((stats?.totalInvestment || 0) + (stats?.unrealizedGross || 0))} TL
+              </span>
+            </div>
+            <div className="d-flex justify-content-between align-items-center">
+              <span className="x-small text-muted fw-bold text-nowrap">NET DEĞER:</span>
+              <span className={`x-small fw-bold text-nowrap ms-2 ${(stats?.totalInvestment || 0) + (stats?.unrealizedNet || 0) >= (stats?.totalInvestment || 0) ? 'text-success' : 'text-danger'}`}>
+                {formatCurrency((stats?.totalInvestment || 0) + (stats?.unrealizedNet || 0))} TL
+              </span>
+            </div>
           </div>
         </td>
       </tr>
@@ -699,6 +746,15 @@ const FinanceTransactionsPage = () => {
     return parseFloat(str) || 0;
   };
 
+  const getDecimalPlaces = (val) => {
+    if (val === undefined || val === null || val === '') return 2;
+    const str = val.toString().trim();
+    const normalizedStr = str.replace(',', '.');
+    const dotIndex = normalizedStr.indexOf('.');
+    const count = dotIndex === -1 ? 0 : normalizedStr.length - dotIndex - 1;
+    return Math.min(8, count);
+  };
+
   const getInstitutionInfo = (id) => institutions.find(i => i.id === id) || {};
   const getStockInfo = (id) => stocks.find(s => s.id === id) || {};
 
@@ -790,7 +846,7 @@ const FinanceTransactionsPage = () => {
     if (!calcType || calcType === 'none') return null;
 
     const values = filteredTransactions.map(t => {
-      if (['quantity', 'price', 'taxRate', 'totalBuyAmount', 'totalSaleAmount', 'grossProfit', 'totalProfit', 'taxDeduction', 'remainingQuantity'].includes(propId)) {
+      if (['quantity', 'price', 'taxRate', 'totalBuyAmount', 'totalSaleAmount', 'grossProfit', 'totalProfit', 'taxDeduction', 'remainingQuantity', 'avgBuyPrice'].includes(propId)) {
         if (propId === 'taxDeduction') return t.calculatedTaxDeduction || 0;
         if (propId === 'remainingQuantity') return t.runningBalance || 0;
         return t[propId] || 0;
@@ -823,7 +879,7 @@ const FinanceTransactionsPage = () => {
       return <div className="text-end x-small text-muted fw-bold"><span className="opacity-50">{prefix}</span> {value}</div>;
     }
 
-    if (['price', 'totalBuyAmount', 'totalSaleAmount', 'grossProfit', 'totalProfit', 'taxDeduction'].includes(propId)) {
+    if (['price', 'totalBuyAmount', 'totalSaleAmount', 'grossProfit', 'totalProfit', 'taxDeduction', 'avgBuyPrice'].includes(propId)) {
       const formatted = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
       return <div className="text-end x-small text-muted fw-bold"><span className="opacity-50">{prefix}</span> {formatted} TL</div>;
     }
@@ -905,7 +961,8 @@ const FinanceTransactionsPage = () => {
           calculatedTaxDeduction: 0,
           totalBuyAmount: q * p,
           totalSaleAmount: 0,
-          totalProfit: 0
+          totalProfit: 0,
+          avgBuyPrice: p
         });
       } else {
         let remainingToSell = q;
@@ -961,7 +1018,8 @@ const FinanceTransactionsPage = () => {
           grossProfit: grossProfit,
           totalProfit: totalProfit,
           profitPercentage: profitPercentage,
-          holdingDurationDays: durationDays > 0 ? durationDays : 0
+          holdingDurationDays: durationDays > 0 ? durationDays : 0,
+          avgBuyPrice: q > 0 ? costBasis / q : 0
         });
       }
     });
@@ -1593,7 +1651,7 @@ const FinanceTransactionsPage = () => {
       case 'price': return <td key={propId} className={tdClass} onClick={tdClick}><OverlayCell isEditing={isEditing} display={`${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 8 }).format(t.price)} TL`} input={<LocalTextInput size="sm" inputMode="text" autoFocus value={cellDraft} onSave={(val) => saveCell(t.id, 'price', val)} onCancel={() => setEditingCell(null)} className="border-0 bg-transparent p-0" />} /></td>;
       case 'taxRate': return <td key={propId} className={tdClass} onClick={tdClick}><OverlayCell isEditing={isEditing} display={`%${(t.taxRate ?? 0).toString().replace('.', ',')}`} input={<LocalTextInput size="sm" inputMode="text" autoFocus value={cellDraft} onSave={(val) => saveCell(t.id, 'taxRate', val)} onCancel={() => setEditingCell(null)} className="border-0 bg-transparent p-0" />} /></td>;
       case 'grossProfit': return (
-        <td key={propId} className={`fw-bold ${t.grossProfit > 0 ? 'text-success' : t.grossProfit < 0 ? 'text-danger' : ''}`}>
+        <td key={propId} className={`fw-bold ${!isWrapped ? 'text-nowrap' : ''}`}>
           {t.type === 'SATIŞ' && t.grossProfit !== 0 ? (
             <div className="d-flex flex-column align-items-end">
               <span>{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(t.grossProfit)} TL</span>
@@ -1606,21 +1664,25 @@ const FinanceTransactionsPage = () => {
       case 'taxDeduction': 
         const taxVal = t.calculatedTaxDeduction;
         return (
-          <td key={propId} className={`${tdClass} text-danger fw-bold`} onClick={t.type === 'SATIŞ' ? tdClick : undefined}>
-            {isEditing ? (
-              <OverlayCell isEditing={isEditing} display={taxVal} input={<LocalTextInput size="sm" inputMode="text" autoFocus value={cellDraft} onSave={(val) => saveCell(t.id, 'taxDeduction', val)} onCancel={() => setEditingCell(null)} className="border-0 bg-transparent p-0 text-end fw-bold text-danger" />} />
-            ) : (
-              taxVal > 0 ? (
-                <div className="d-flex flex-column align-items-end">
-                  <span>{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(taxVal)} TL</span>
-                  <span className="x-small opacity-75">(%{(t.costBasis > 0 ? (taxVal / t.costBasis * 100) : 0).toFixed(2)})</span>
-                </div>
-              ) : '-'
-            )}
+          <td key={propId} className={`text-danger fw-bold ${!isWrapped ? 'text-nowrap' : ''}`}>
+            {taxVal > 0 ? (
+              <div className="d-flex flex-column align-items-end">
+                <span>{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(taxVal)} TL</span>
+                <span className="x-small opacity-75">(%{(t.costBasis > 0 ? (taxVal / t.costBasis * 100) : 0).toFixed(2)})</span>
+              </div>
+            ) : '-'}
           </td>
         );
       case 'totalBuyAmount': return <td key={propId} className="fw-bold">{t.type === 'ALIŞ' && t.totalBuyAmount > 0 ? `${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(t.totalBuyAmount)} TL` : '-'}</td>;
       case 'totalSaleAmount': return <td key={propId} className="fw-bold">{t.type === 'SATIŞ' && t.totalSaleAmount > 0 ? `${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(t.totalSaleAmount)} TL` : '-'}</td>;
+      case 'avgBuyPrice': {
+        const decimals = getDecimalPlaces(t.price);
+        return (
+          <td key={propId} className={`fw-bold ${!isWrapped ? 'text-nowrap' : ''}`}>
+            {t.avgBuyPrice > 0 ? `${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(t.avgBuyPrice)} TL` : '-'}
+          </td>
+        );
+      }
       case 'totalProfit': return (
         <td key={propId} className={`fw-bold ${t.totalProfit > 0 ? 'text-success' : t.totalProfit < 0 ? 'text-danger' : ''}`}>
           {t.type === 'SATIŞ' && t.totalProfit !== 0 ? (
@@ -2640,7 +2702,7 @@ const FinanceTransactionsPage = () => {
                               { label: 'Benzersizleri Say', value: 'count_unique' },
                               { label: 'Boş Olanları Say', value: 'count_empty' },
                               { label: 'Dolu Olanları Say', value: 'count_not_empty' },
-                              ...(['quantity', 'price', 'taxRate', 'totalBuyAmount', 'totalSaleAmount', 'grossProfit', 'totalProfit', 'taxDeduction', 'remainingQuantity'].includes(id) ? [
+                              ...(['quantity', 'price', 'taxRate', 'totalBuyAmount', 'totalSaleAmount', 'grossProfit', 'totalProfit', 'taxDeduction', 'remainingQuantity', 'avgBuyPrice'].includes(id) ? [
                                 { label: 'Toplam (Sum)', value: 'sum' },
                                 { label: 'Ortalama (Avg)', value: 'avg' },
                                 { label: 'En Küçük (Min)', value: 'min' },
@@ -3409,7 +3471,7 @@ const FinanceCharts = ({
                     <>
                       <span className="text-muted fs-10 text-uppercase fw-bold opacity-75">TOPLAM DEĞER</span>
                       <span className="fw-bold text-dark fs-18 mt-1">
-                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalStockValue)}₺
+                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalStockValue - currentTotalTax)}₺
                       </span>
                       <span className={`fw-bold fs-11 mt-1 ${currentTotalProfit >= 0 ? 'text-success' : 'text-danger'}`}>
                         {currentTotalProfit >= 0 ? '+' : ''}
@@ -3561,7 +3623,7 @@ const FinanceCharts = ({
                   <div className="bg-light bg-opacity-25 rounded-3 p-2 text-center border">
                     <div className="text-muted x-small opacity-75" style={{ fontSize: '9px' }}>PORTFÖY DEĞERİ</div>
                     <div className="fw-bold text-primary mt-1 fs-12">
-                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalStockValue)}₺
+                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalStockValue - currentTotalTax)}₺
                     </div>
                   </div>
                 </Col>

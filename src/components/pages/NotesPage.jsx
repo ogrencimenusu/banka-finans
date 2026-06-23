@@ -77,7 +77,8 @@ import {
   Scissors,
   CalendarOff,
   Clipboard,
-  Copy
+  Copy,
+  CheckCheck
 } from 'lucide-react';
 import { Modal, Button, Form, Badge, Dropdown, Collapse, Table, Card } from 'react-bootstrap';
 import './NotesPage.css';
@@ -263,6 +264,7 @@ const NotesPage = () => {
   const [showFarFuture, setShowFarFuture] = useState(false);
   const [showDateFormatSubmenu, setShowDateFormatSubmenu] = useState(false);
   const [showVisibilitySubmenu, setShowVisibilitySubmenu] = useState(false);
+  const [showTagsSubmenu, setShowTagsSubmenu] = useState(false);
   const [showViewModeSubmenu, setShowViewModeSubmenu] = useState(false);
   const [showManagementSubmenu, setShowManagementSubmenu] = useState(false);
   
@@ -826,6 +828,17 @@ const NotesPage = () => {
     setCurrentDate(newDate);
   };
 
+  const scrollYearContainerToYear = (year, smooth = false) => {
+    const container = document.querySelector('.year-view-scroll-container');
+    const element = document.getElementById(`year-section-${year}`);
+    if (container && element) {
+      container.scrollTo({
+        top: element.offsetTop,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
+    }
+  };
+
   const goToToday = () => {
     const today = new Date();
     setCurrentDate(today);
@@ -840,10 +853,7 @@ const NotesPage = () => {
       }, 100);
     } else if (viewMode === 'year') {
       setTimeout(() => {
-        const element = document.getElementById(`year-section-${today.getFullYear()}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
+        scrollYearContainerToYear(today.getFullYear(), true);
       }, 100);
     }
   };
@@ -882,10 +892,7 @@ const NotesPage = () => {
     if (viewMode === 'year') {
       const today = new Date();
       setTimeout(() => {
-        const element = document.getElementById(`year-section-${today.getFullYear()}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'auto', block: 'start' });
-        }
+        scrollYearContainerToYear(today.getFullYear(), false);
       }, 100);
     }
   }, [viewMode]);
@@ -928,11 +935,66 @@ const NotesPage = () => {
     });
   };
 
+  const trimSelectionRange = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+
+    const range = selection.getRangeAt(0);
+    let startContainer = range.startContainer;
+    let startOffset = range.startOffset;
+    let endContainer = range.endContainer;
+    let endOffset = range.endOffset;
+    let rangeChanged = false;
+
+    if (startContainer === endContainer) {
+      if (startContainer.nodeType === Node.TEXT_NODE) {
+        const text = startContainer.textContent;
+        while (startOffset < endOffset && /\s/.test(text.charAt(startOffset))) {
+          startOffset++;
+          rangeChanged = true;
+        }
+        while (endOffset > startOffset && /\s/.test(text.charAt(endOffset - 1))) {
+          endOffset--;
+          rangeChanged = true;
+        }
+      }
+    } else {
+      if (startContainer.nodeType === Node.TEXT_NODE) {
+        const text = startContainer.textContent;
+        while (startOffset < text.length && /\s/.test(text.charAt(startOffset))) {
+          startOffset++;
+          rangeChanged = true;
+        }
+      }
+      if (endContainer.nodeType === Node.TEXT_NODE) {
+        const text = endContainer.textContent;
+        while (endOffset > 0 && /\s/.test(text.charAt(endOffset - 1))) {
+          endOffset--;
+          rangeChanged = true;
+        }
+      }
+    }
+
+    if (rangeChanged) {
+      const newRange = document.createRange();
+      newRange.setStart(startContainer, startOffset);
+      newRange.setEnd(endContainer, endOffset);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+      return newRange;
+    }
+    return range;
+  };
+
   const applyFormatting = (type) => {
     const editor = contentInputRef.current;
     if (!editor) return;
 
     editor.focus();
+
+    if (['bold', 'italic', 'underline', 'strikethrough'].includes(type)) {
+      trimSelectionRange();
+    }
     
     switch (type) {
       case 'bold':
@@ -1003,6 +1065,17 @@ const NotesPage = () => {
       e.stopPropagation();
       
       const rect = anchor.getBoundingClientRect();
+      const clickX = e.clientX;
+      
+      // If clicked on the icon (last 22px of the anchor box width)
+      if (clickX >= rect.right - 22 && clickX <= rect.right + 4) {
+        const url = anchor.getAttribute('href') || '';
+        if (url) {
+          window.open(url, '_blank', 'noopener,noreferrer');
+          return;
+        }
+      }
+      
       const x = rect.left + rect.width / 2 + window.scrollX;
       const y = rect.bottom + window.scrollY + 6;
       
@@ -1080,6 +1153,8 @@ const NotesPage = () => {
   const handleOpenLinkEditor = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    trimSelectionRange();
     
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
@@ -1751,6 +1826,25 @@ const NotesPage = () => {
         : [...filters.tags, tag]
     };
     updateFilters(next);
+  };
+
+  const isAllTagsSelected = useMemo(() => {
+    return allTags.length > 0 && allTags.every(t => filters.tags.includes(t));
+  }, [allTags, filters.tags]);
+
+  const toggleAllTagsFilter = (e) => {
+    e.stopPropagation();
+    if (isAllTagsSelected) {
+      updateFilters({
+        ...filters,
+        tags: []
+      });
+    } else {
+      updateFilters({
+        ...filters,
+        tags: [...allTags]
+      });
+    }
   };
 
   const resetFilters = () => {
@@ -3261,6 +3355,64 @@ const NotesPage = () => {
               </div>
               {visibilityConfig.holidays ? <Check size={14} className="text-primary" /> : <EyeOff size={14} className="text-muted opacity-30" />}
             </div>
+          </div>
+        </div>
+      </Collapse>
+
+      <div className="dropdown-divider opacity-10 my-2"></div>
+
+      {/* Tags Visibility Settings - Collapsible */}
+      <div 
+        className="dropdown-item rounded-2 d-flex align-items-center justify-content-between py-2 small cursor-pointer"
+        onClick={(e) => { e.stopPropagation(); setShowTagsSubmenu(!showTagsSubmenu); }}
+      >
+        <div className="d-flex align-items-center gap-2">
+          <TagIcon size={14} className="text-muted" /> 
+          <span>Listelenecek Etiketler</span>
+          <button 
+            type="button"
+            className="btn btn-link p-0 ms-1 border-0 d-inline-flex align-items-center justify-content-center text-muted hover-text-primary transition-all"
+            style={{ width: '20px', height: '20px', outline: 'none', boxShadow: 'none' }}
+            onClick={toggleAllTagsFilter}
+            title={isAllTagsSelected ? "Tüm Seçimleri Kaldır" : "Tümünü Seç"}
+          >
+            <CheckCheck size={14} className={isAllTagsSelected ? "text-primary fw-bold" : "opacity-50"} />
+          </button>
+        </div>
+        <ChevronDown size={14} className="text-muted opacity-50 transition-all" style={{ transform: showTagsSubmenu ? 'rotate(180deg)' : 'none' }} />
+      </div>
+      
+      <Collapse in={showTagsSubmenu}>
+        <div className="px-1 py-1">
+          <div className="bg-light bg-opacity-50 rounded-3 p-1 d-flex flex-column gap-1" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+            {allTags.map(tag => {
+              const globalTag = globalNoteTags.find(gt => gt.name === tag);
+              const isSelected = filters.tags.includes(tag);
+              const tagStyle = getTagStyleByColor(globalTag?.color || 'Gray');
+              return (
+                <div 
+                  key={tag} 
+                  className="dropdown-item small rounded-2 py-2 d-flex align-items-center justify-content-between cursor-pointer" 
+                  onClick={(e) => { e.stopPropagation(); toggleFilterTag(tag); }}
+                >
+                  <div className="d-flex align-items-center gap-2">
+                    <span 
+                      className="rounded-circle" 
+                      style={{ 
+                        width: '8px', 
+                        height: '8px', 
+                        backgroundColor: tagStyle.color || 'var(--text-muted)' 
+                      }} 
+                    /> 
+                    <span className={isSelected ? 'text-dark fw-medium' : 'text-muted'}>{tag}</span>
+                  </div>
+                  {isSelected ? <Check size={14} className="text-primary" /> : <EyeOff size={14} className="text-muted opacity-30" />}
+                </div>
+              );
+            })}
+            {allTags.length === 0 && (
+              <div className="text-muted small text-center py-2">Etiket bulunamadı</div>
+            )}
           </div>
         </div>
       </Collapse>
@@ -5402,6 +5554,7 @@ const NotesPage = () => {
           }
           
           .year-view-scroll-container {
+            position: relative !important;
             height: calc(100vh - 120px) !important;
             overflow-y: auto !important;
             padding-bottom: 100px !important;

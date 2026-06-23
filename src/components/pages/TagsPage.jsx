@@ -22,6 +22,8 @@ import {
   AlignLeft, 
   Check, 
   ChevronDown, 
+  ChevronLeft,
+  ChevronRight,
   Repeat, 
   Undo, 
   Redo, 
@@ -54,6 +56,9 @@ import {
 } from 'lucide-react';
 import { Modal, Button, Form, Table, Dropdown } from 'react-bootstrap';
 import './TagsPage.css';
+
+
+
 
 const TR_MONTHS = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 
@@ -119,6 +124,222 @@ const getTagGradientClass = (name) => {
   return `tag-default-gradient-${index}`;
 };
 
+// Tag Card Component
+function SortableTagCard({
+  tag,
+  isSelected,
+  onClick,
+  renderTagCover,
+  tagNoteCounts,
+  handleEditTagCover,
+  scale,
+  lastNoteTimeText
+}) {
+  const scaleStyle = `scale(${scale})`;
+  const style = {
+    transform: scaleStyle,
+    transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+  };
+
+  const count = tagNoteCounts[tag.name] || 0;
+
+  return (
+    <div
+      style={style}
+      className={`tag-card glass-card ${isSelected ? 'active' : ''}`}
+      onClick={onClick}
+    >
+      {/* Cover Image */}
+      <div className="tag-card-cover-container">
+        {renderTagCover(tag)}
+        {lastNoteTimeText && (
+          <div 
+            style={{
+              position: 'absolute',
+              top: '12px',
+              left: '12px',
+              zIndex: 10,
+              background: 'rgba(0, 0, 0, 0.45)',
+              backdropFilter: 'blur(8px)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              color: '#ffffff',
+              padding: '3px 8px',
+              borderRadius: '20px',
+              fontSize: '10px',
+              fontWeight: '600',
+              textTransform: 'lowercase',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
+              pointerEvents: 'none',
+              letterSpacing: '0.3px'
+            }}
+          >
+            {lastNoteTimeText}
+          </div>
+        )}
+      </div>
+
+      {/* Info Overlay floating on top of cover */}
+      <div className="tag-card-info-overlay">
+        <span className="tag-card-badge mb-1" style={getTagStyleByColor(tag.color || 'Blue')}>
+          {tag.name}
+        </span>
+        <span className="tag-card-notes-count">{count} Not</span>
+      </div>
+      
+      {/* Controls in top-right */}
+      <div className="tag-card-controls" onClick={(e) => e.stopPropagation()}>
+        <button 
+          type="button" 
+          className="tag-card-btn"
+          onClick={(e) => handleEditTagCover(tag, e)}
+          title="Görseli Düzenle"
+        >
+          <Edit2 size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Tag Row Component
+function SortableTagRow({
+  tag,
+  isSelected,
+  onClick,
+  coverFitMode,
+  activeNotes,
+  handleEditTagCover,
+  handleDeleteGlobalTag,
+  tagNoteCounts,
+  lastNoteTimeText
+}) {
+  const count = tagNoteCounts[tag.name] || 0;
+
+  return (
+    <tr 
+      className={isSelected ? 'active' : ''}
+      onClick={onClick}
+    >
+      <td>
+        {/* Cover Thumb */}
+        <div className="d-flex align-items-center gap-2">
+          {(tag.imageUrl && !tag.useCollage) ? (
+            <div 
+              className="tag-table-cover-thumb" 
+              style={{ backgroundImage: `url(${tag.imageUrl})`, backgroundSize: coverFitMode }}
+            />
+          ) : (
+            (() => {
+              const firstNoteImg = activeNotes.find(n => n.tags?.includes(tag.name) && n.imageUrl)?.imageUrl;
+              if (firstNoteImg) {
+                return (
+                  <div 
+                    className="tag-table-cover-thumb" 
+                    style={{ backgroundImage: `url(${firstNoteImg})`, backgroundSize: 'cover' }}
+                  />
+                );
+              }
+              return (
+                <div 
+                  className={`tag-table-cover-thumb ${getTagGradientClass(tag.name)}`}
+                />
+              );
+            })()
+          )}
+        </div>
+      </td>
+      <td>
+        <div className="d-flex flex-column gap-1">
+          <span className="tag-card-badge" style={getTagStyleByColor(tag.color || 'Blue')}>
+            {tag.name}
+          </span>
+          {lastNoteTimeText && (
+            <span className="text-muted x-small text-lowercase" style={{ fontSize: '10px', opacity: 0.8 }}>
+              en son: {lastNoteTimeText.toLowerCase()}
+            </span>
+          )}
+        </div>
+      </td>
+      <td>
+        <span className="text-muted fw-semibold fs-13">{tag.color || 'Blue'}</span>
+      </td>
+      <td>
+        <span className="fw-bold fs-14">{count} Not</span>
+      </td>
+      <td className="text-end" onClick={(e) => e.stopPropagation()}>
+        <div className="d-inline-flex gap-1">
+          <button 
+            type="button" 
+            className="action-btn-circle edit" 
+            onClick={(e) => handleEditTagCover(tag, e)}
+            title="Görseli/Rengi Düzenle"
+          >
+            <Edit2 size={14} />
+          </button>
+          {tag.id && (
+            <button 
+              type="button" 
+              className="action-btn-circle delete" 
+              onClick={() => handleDeleteGlobalTag(tag.name, tag.id)}
+              title="Etiketi Sil"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// Settings Tag Item Component
+function SortableSettingsTagItem({
+  tag,
+  isHidden,
+  toggleTagVisibility,
+  handleDeleteGlobalTag,
+  tagNoteCounts
+}) {
+  return (
+    <div 
+      className="settings-tags-list-item d-flex align-items-center justify-content-between p-2 rounded border mb-2"
+    >
+      <div className="d-flex align-items-center gap-2">
+        {/* Tag badge & Note count */}
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          <span style={getTagStyleByColor(tag.color || 'Blue')} className="fw-bold">
+            {tag.name}
+          </span>
+          <span className="text-muted small">({tagNoteCounts[tag.name] || 0} not)</span>
+        </div>
+      </div>
+
+      <div className="d-flex align-items-center gap-3">
+        {/* Hide / Show switch */}
+        <Form.Check 
+          type="switch" 
+          id={`tag-visibility-${tag.name.replace(/\s+/g, '-')}`}
+          checked={!isHidden}
+          onChange={() => toggleTagVisibility(tag.name)}
+          label={!isHidden ? "Göster" : "Gizle"}
+          className="fs-12 text-muted mb-0"
+          style={{ cursor: 'pointer' }}
+        />
+        
+        {/* Delete Tag */}
+        <Button 
+          variant="link" 
+          className="text-danger p-1 opacity-70 hover-opacity-100" 
+          onClick={() => handleDeleteGlobalTag(tag.name, tag.id)}
+          title="Etiketi Sil"
+        >
+          <Trash2 size={14} />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function TagsPage() {
   const { user } = useAuth();
   const { notes, noteTags: globalNoteTags, notesConfig } = useData();
@@ -170,6 +391,7 @@ export default function TagsPage() {
   const [tagNameInput, setTagNameInput] = useState('');
   const [tagColorInput, setTagColorInput] = useState('Blue');
   const [tagImageUrl, setTagImageUrl] = useState('');
+  const [tagUseCollageInput, setTagUseCollageInput] = useState(false);
 
   // Note editing state
   const [editingNote, setEditingNote] = useState(null);
@@ -180,6 +402,8 @@ export default function TagsPage() {
   const [tagInput, setTagInput] = useState('');
   const [noteColor, setNoteColor] = useState('blue');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const [showSimilarNotes, setShowSimilarNotes] = useState(false);
+  const [noteImageUrl, setNoteImageUrl] = useState('');
 
   // Expanded note modal state
   const [isExpanded, setIsExpanded] = useState(false);
@@ -243,6 +467,7 @@ export default function TagsPage() {
   const containerRef = useRef(null);
   const lastActiveTagRef = useRef(activeTagName);
   const hasInitialScrolledRef = useRef(false);
+  const noteFileInputRef = useRef(null);
 
   useEffect(() => {
     linkEditorShowRef.current = linkEditor.show;
@@ -261,8 +486,57 @@ export default function TagsPage() {
 
   // Extract all unique tags used in active notes
   const activeNotes = useMemo(() => {
-    return notes.filter(n => n.deleted !== true);
+    return [...notes]
+      .filter(n => n.deleted !== true)
+      .sort((a, b) => {
+        const dateA = a.date || '';
+        const dateB = b.date || '';
+        if (dateA !== dateB) {
+          return dateB.localeCompare(dateA);
+        }
+        const timeA = a.createdAt?.seconds || 0;
+        const timeB = b.createdAt?.seconds || 0;
+        return timeB - timeA;
+      });
   }, [notes]);
+
+  const lastNoteTimeText = useMemo(() => {
+    if (!activeNotes || activeNotes.length === 0) return null;
+    const latestNote = activeNotes[0];
+
+    let date;
+    if (latestNote.date) {
+      const [y, m, d] = latestNote.date.split('-').map(Number);
+      date = new Date(y, m - 1, d);
+    } else if (latestNote.createdAt) {
+      const createdAt = latestNote.createdAt;
+      if (typeof createdAt.toDate === 'function') {
+        date = createdAt.toDate();
+      } else if (createdAt.seconds) {
+        date = new Date(createdAt.seconds * 1000);
+      } else {
+        date = new Date(createdAt);
+      }
+    }
+
+    if (!date || isNaN(date.getTime())) return null;
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const compareDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+    const diffTime = today - compareDate;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      return 'Bugün';
+    } else if (diffDays === 1) {
+      return 'Dün';
+    } else if (diffDays > 1) {
+      return `${diffDays} gün önce`;
+    }
+    return 'Az önce';
+  }, [activeNotes]);
 
   const allTagNames = useMemo(() => {
     const tagsSet = new Set();
@@ -283,22 +557,93 @@ export default function TagsPage() {
     return combined;
   }, [globalNoteTags, allTagNames]);
 
-  // Sort tags based on order index
+  // Sort tags based on the recency of the last added note
   const sortedTags = useMemo(() => {
+    const getTagLatestNoteIndex = (tagName) => {
+      const idx = activeNotes.findIndex(note => Array.isArray(note.tags) && note.tags.includes(tagName));
+      return idx === -1 ? Infinity : idx;
+    };
+
     return [...tagsList].sort((a, b) => {
-      const orderA = a?.order ?? 999;
-      const orderB = b?.order ?? 999;
-      if (orderA !== orderB) return orderA - orderB;
+      const idxA = getTagLatestNoteIndex(a.name);
+      const idxB = getTagLatestNoteIndex(b.name);
+      
+      if (idxA !== idxB) {
+        return idxA - idxB;
+      }
+      
       const nameA = a?.name || '';
       const nameB = b?.name || '';
       return nameA.localeCompare(nameB);
     });
-  }, [tagsList]);
+  }, [tagsList, activeNotes]);
 
   // Filter out hidden tags
   const visibleTags = useMemo(() => {
     return sortedTags.filter(tag => !hiddenTags.includes(tag.name));
   }, [sortedTags, hiddenTags]);
+
+  const tagLastNoteTimes = useMemo(() => {
+    const map = {};
+    visibleTags.forEach(tag => {
+      const latestNote = activeNotes.find(note => Array.isArray(note.tags) && note.tags.includes(tag.name));
+      if (!latestNote) {
+        map[tag.name] = null;
+        return;
+      }
+
+      let date;
+      if (latestNote.date) {
+        const [y, m, d] = latestNote.date.split('-').map(Number);
+        date = new Date(y, m - 1, d);
+      } else if (latestNote.createdAt) {
+        const createdAt = latestNote.createdAt;
+        if (typeof createdAt.toDate === 'function') {
+          date = createdAt.toDate();
+        } else if (createdAt.seconds) {
+          date = new Date(createdAt.seconds * 1000);
+        } else {
+          date = new Date(createdAt);
+        }
+      }
+
+      if (!date || isNaN(date.getTime())) {
+        map[tag.name] = null;
+        return;
+      }
+
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const compareDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+      const diffTime = today - compareDate;
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 0) {
+        map[tag.name] = 'Bugün';
+      } else if (diffDays === 1) {
+        map[tag.name] = 'Dün';
+      } else if (diffDays > 1) {
+        map[tag.name] = `${diffDays} gün önce`;
+      } else {
+        map[tag.name] = 'Az önce';
+      }
+    });
+    return map;
+  }, [visibleTags, activeNotes]);
+
+  // Extract recent unique images used in active notes
+  const recentImages = useMemo(() => {
+    const images = [];
+    const seen = new Set();
+    notes.forEach(note => {
+      if (note.imageUrl && !seen.has(note.imageUrl) && !note.deleted) {
+        seen.add(note.imageUrl);
+        images.push(note.imageUrl);
+      }
+    });
+    return images.slice(0, 15);
+  }, [notes]);
 
   // Reset the initial scroll flag on layout mode changes
   useEffect(() => {
@@ -323,8 +668,10 @@ export default function TagsPage() {
               const containerRect = container.getBoundingClientRect();
               const elemRect = activeElement.getBoundingClientRect();
               
-              // Scroll active card to the left of the container (leaving some padding)
-              const scrollOffset = container.scrollLeft + (elemRect.left - containerRect.left) - 24;
+              // Center the active card in the container
+              const containerWidth = containerRect.width;
+              const elemWidth = elemRect.width;
+              const scrollOffset = container.scrollLeft + (elemRect.left - containerRect.left) - (containerWidth / 2) + (elemWidth / 2);
               
               container.scrollTo({
                 left: Math.max(0, scrollOffset),
@@ -352,6 +699,34 @@ export default function TagsPage() {
       }
     }
   }, [activeTagName, visibleTags, layoutMode]);
+
+  const scrollPrev = () => {
+    if (visibleTags.length === 0) return;
+    const activeIdx = visibleTags.findIndex(t => t.name === activeTagName);
+    let prevIdx = visibleTags.length - 1;
+    if (activeIdx !== -1) {
+      prevIdx = (activeIdx - 1 + visibleTags.length) % visibleTags.length;
+    }
+    const prevTag = visibleTags[prevIdx];
+    if (prevTag) {
+      setActiveTagName(prevTag.name);
+      localStorage.setItem('selected_tag_name', prevTag.name);
+    }
+  };
+
+  const scrollNext = () => {
+    if (visibleTags.length === 0) return;
+    const activeIdx = visibleTags.findIndex(t => t.name === activeTagName);
+    let nextIdx = 0;
+    if (activeIdx !== -1) {
+      nextIdx = (activeIdx + 1) % visibleTags.length;
+    }
+    const nextTag = visibleTags[nextIdx];
+    if (nextTag) {
+      setActiveTagName(nextTag.name);
+      localStorage.setItem('selected_tag_name', nextTag.name);
+    }
+  };
 
   // Persistent Active Tag initialization and validation
   useEffect(() => {
@@ -439,6 +814,15 @@ export default function TagsPage() {
     );
   }, [tagInput, allTagNames, noteTags]);
 
+  // Title suggestions in note editor (similar notes)
+  const similarNotes = useMemo(() => {
+    if (!noteTitle || noteTitle.trim().length < 1) return [];
+    return notes.filter(n => 
+      n.id !== editingNote?.id && 
+      n.title?.toLowerCase().includes(noteTitle.toLowerCase())
+    ).slice(0, 5);
+  }, [noteTitle, notes, editingNote]);
+
   // Visibility toggle
   const toggleTagVisibility = async (tagName) => {
     const nextHidden = hiddenTags.includes(tagName)
@@ -453,51 +837,7 @@ export default function TagsPage() {
     }
   };
 
-  // Drag-and-drop Reordering handlers
-  const handleDragStart = (e, idx, type) => {
-    setDraggedIndex(idx);
-    setDragType(type);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', idx);
-  };
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = async (e, targetIdx, type) => {
-    e.preventDefault();
-    if (draggedIndex === null || dragType !== type || draggedIndex === targetIdx) return;
-
-    const listToReorder = type === 'card' ? visibleTags : sortedTags;
-    const items = [...listToReorder];
-    const [draggedItem] = items.splice(draggedIndex, 1);
-    items.splice(targetIdx, 0, draggedItem);
-
-    setDraggedIndex(null);
-
-    // Save order fields to Firestore
-    if (user) {
-      try {
-        for (let i = 0; i < items.length; i++) {
-          const item = items[i];
-          if (item.id) {
-            await updateDoc(doc(db, `users/${user.uid}/noteTags`, item.id), { order: i });
-          } else {
-            // Convert unmanaged tag to managed tag to save its order
-            await addDoc(collection(db, `users/${user.uid}/noteTags`), {
-              name: item.name,
-              color: item.color || 'Blue',
-              order: i,
-              createdAt: serverTimestamp()
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Error saving tag order:', err);
-      }
-    }
-  };
 
   // Drag-and-drop Column Reordering handlers
   const handleColumnDragStart = (e, idx) => {
@@ -527,7 +867,7 @@ export default function TagsPage() {
     if (!user || !selectedDate || isSavingRef.current) return;
     
     // Prevent saving if empty and new
-    if (!editingNote && !noteTitle.trim() && !noteText.trim() && noteTags.length === 0) return;
+    if (!editingNote && !noteTitle.trim() && !noteText.trim() && noteTags.length === 0 && !noteImageUrl) return;
 
     // Verify change before saving
     const dateStr = selectedDate.toISOString().split('T')[0];
@@ -537,8 +877,9 @@ export default function TagsPage() {
       const isTagsSame = JSON.stringify(noteTags) === JSON.stringify(editingNote.tags || []);
       const isDateSame = dateStr === (editingNote.date || '');
       const isColorSame = noteColor === (editingNote.color || 'blue');
+      const isImageSame = noteImageUrl === (editingNote.imageUrl || '');
       
-      if (isTitleSame && isTextSame && isTagsSame && isDateSame && isColorSame) return;
+      if (isTitleSame && isTextSame && isTagsSame && isDateSame && isColorSame && isImageSame) return;
     }
 
     isSavingRef.current = true;
@@ -550,6 +891,7 @@ export default function TagsPage() {
       tags: noteTags,
       color: noteColor,
       date: dateStr,
+      imageUrl: noteImageUrl,
       updatedAt: serverTimestamp()
     };
 
@@ -581,7 +923,7 @@ export default function TagsPage() {
       handleAutoSave();
     }, 1500);
     return () => clearTimeout(timer);
-  }, [noteTitle, noteText, noteTags, selectedDate, noteColor, editingNote, showNoteModal]);
+  }, [noteTitle, noteText, noteTags, selectedDate, noteColor, noteImageUrl, editingNote, showNoteModal]);
 
   // Sync contentEditable text on open
   useEffect(() => {
@@ -601,6 +943,8 @@ export default function TagsPage() {
     setNoteText(note.text || '');
     setNoteTags(note.tags || []);
     setNoteColor(note.color || 'blue');
+    setNoteImageUrl(note.imageUrl || '');
+    setShowSimilarNotes(false);
     setShowNoteModal(true);
   };
 
@@ -611,7 +955,24 @@ export default function TagsPage() {
     setNoteText('');
     setNoteTags(activeTagName ? [activeTagName] : []);
     setNoteColor('blue');
+    setNoteImageUrl('');
+    setShowSimilarNotes(false);
     setShowNoteModal(true);
+  };
+
+  const handleTitleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (contentInputRef.current) {
+        contentInputRef.current.focus();
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.selectNodeContents(contentInputRef.current);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }
   };
 
   const handleDeleteNote = async (noteId, e) => {
@@ -630,26 +991,44 @@ export default function TagsPage() {
   };
 
   // Tag Cover Modal Action Handlers
+  const handleCreateTag = () => {
+    setEditingTag({ isNew: true });
+    setTagNameInput('');
+    setTagColorInput('Blue');
+    setTagImageUrl('');
+    setTagUseCollageInput(false);
+    setShowTagModal(true);
+  };
+
   const handleEditTagCover = (tag, e) => {
     if (e) e.stopPropagation();
     setEditingTag(tag);
     setTagNameInput(tag.name);
     setTagColorInput(tag.color || 'Blue');
     setTagImageUrl(tag.imageUrl || '');
+    setTagUseCollageInput(tag.useCollage || false);
     setShowTagModal(true);
   };
 
   const handleSaveTagProperties = async () => {
     if (!user) return;
     try {
+      // Find the minimum order index in sortedTags
+      const minOrder = sortedTags.reduce((min, t) => {
+        const o = t.order ?? 999;
+        return o < min ? o : min;
+      }, 0);
+      const newOrder = minOrder - 1;
+
       const tagData = {
         name: tagNameInput,
         color: tagColorInput,
         imageUrl: tagImageUrl,
+        useCollage: tagUseCollageInput,
         updatedAt: serverTimestamp()
       };
 
-      if (editingTag.id) {
+      if (editingTag?.id) {
         // Managed Tag: Update doc
         await updateDoc(doc(db, `users/${user.uid}/noteTags`, editingTag.id), tagData);
 
@@ -665,14 +1044,18 @@ export default function TagsPage() {
           }
         }
       } else {
-        // Unmanaged Tag: Create doc in Firestore
-        await addDoc(collection(db, `users/${user.uid}/noteTags`), {
+        // Unmanaged Tag OR Brand New Tag
+        const isBrandNew = editingTag?.isNew;
+        const newTagDoc = {
           ...tagData,
+          order: newOrder,
           createdAt: serverTimestamp()
-        });
+        };
+
+        await addDoc(collection(db, `users/${user.uid}/noteTags`), newTagDoc);
 
         // Update tag name in notes if name changed
-        if (editingTag.name !== tagNameInput) {
+        if (!isBrandNew && editingTag?.name && editingTag.name !== tagNameInput) {
           const notesToUpdate = notes.filter(n => n.tags?.includes(editingTag.name));
           for (const note of notesToUpdate) {
             const newTags = note.tags.map(t => t === editingTag.name ? tagNameInput : t);
@@ -745,6 +1128,38 @@ export default function TagsPage() {
     reader.readAsDataURL(file);
   };
 
+  // Note image upload compression base64
+  const handleNoteImageUploadChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 400;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+          height *= MAX_WIDTH / width;
+          width = MAX_WIDTH;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        setNoteImageUrl(compressedDataUrl);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Note editor tags methods
   const addTag = (tagToAdd) => {
     const t = tagToAdd || tagInput.trim();
@@ -777,11 +1192,66 @@ export default function TagsPage() {
     });
   };
 
+  const trimSelectionRange = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+
+    const range = selection.getRangeAt(0);
+    let startContainer = range.startContainer;
+    let startOffset = range.startOffset;
+    let endContainer = range.endContainer;
+    let endOffset = range.endOffset;
+    let rangeChanged = false;
+
+    if (startContainer === endContainer) {
+      if (startContainer.nodeType === Node.TEXT_NODE) {
+        const text = startContainer.textContent;
+        while (startOffset < endOffset && /\s/.test(text.charAt(startOffset))) {
+          startOffset++;
+          rangeChanged = true;
+        }
+        while (endOffset > startOffset && /\s/.test(text.charAt(endOffset - 1))) {
+          endOffset--;
+          rangeChanged = true;
+        }
+      }
+    } else {
+      if (startContainer.nodeType === Node.TEXT_NODE) {
+        const text = startContainer.textContent;
+        while (startOffset < text.length && /\s/.test(text.charAt(startOffset))) {
+          startOffset++;
+          rangeChanged = true;
+        }
+      }
+      if (endContainer.nodeType === Node.TEXT_NODE) {
+        const text = endContainer.textContent;
+        while (endOffset > 0 && /\s/.test(text.charAt(endOffset - 1))) {
+          endOffset--;
+          rangeChanged = true;
+        }
+      }
+    }
+
+    if (rangeChanged) {
+      const newRange = document.createRange();
+      newRange.setStart(startContainer, startOffset);
+      newRange.setEnd(endContainer, endOffset);
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+      return newRange;
+    }
+    return range;
+  };
+
   const applyFormatting = (type) => {
     const editor = contentInputRef.current;
     if (!editor) return;
 
     editor.focus();
+
+    if (['bold', 'italic', 'underline', 'strikethrough'].includes(type)) {
+      trimSelectionRange();
+    }
     
     switch (type) {
       case 'bold':
@@ -924,6 +1394,8 @@ export default function TagsPage() {
   const handleOpenLinkEditor = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    trimSelectionRange();
     
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
@@ -1068,6 +1540,122 @@ export default function TagsPage() {
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, [floatingToolbar.show, linkPopup.show]);
 
+  const renderTagCover = (tag) => {
+    if (tag.imageUrl && !tag.useCollage) {
+      return (
+        <img 
+          src={tag.imageUrl} 
+          alt={tag.name} 
+          className="tag-card-cover" 
+          style={{ objectFit: coverFitMode }}
+        />
+      );
+    }
+
+    const notesWithImages = activeNotes
+      .filter(n => n.tags?.includes(tag.name) && n.imageUrl)
+      .sort((a, b) => {
+        const dateA = a.date || '';
+        const dateB = b.date || '';
+        return dateB.localeCompare(dateA);
+      });
+
+    const noteImages = Array.from(
+      new Set(
+        notesWithImages.map(n => n.imageUrl)
+      )
+    );
+
+    if (noteImages.length === 0) {
+      return <div className={`tag-card-cover ${getTagGradientClass(tag.name)}`} />;
+    }
+
+    const imagesToShow = noteImages.slice(0, 9); // Limit to max 9 images
+    const count = imagesToShow.length;
+
+    if (count === 1) {
+      return (
+        <img 
+          src={imagesToShow[0]} 
+          alt={tag.name} 
+          className="tag-card-cover" 
+          style={{ objectFit: coverFitMode }}
+        />
+      );
+    }
+
+    // Determine sizes for multiple images (preserving 2:3 movie poster ratio)
+    const posterWidth = count === 2 ? '90px' : '65px';
+    const posterHeight = count === 2 ? '130px' : '95px';
+
+    return (
+      <div 
+        className="tag-card-cover"
+        style={{ 
+          position: 'relative',
+          height: '100%', 
+          width: '100%',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        {/* Blurred background using the first note's image */}
+        <div 
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            backgroundImage: `url(${imagesToShow[0]})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            filter: 'blur(15px) brightness(0.35)',
+            transform: 'scale(1.15)',
+            zIndex: 1
+          }}
+        />
+
+        {/* Mini posters container */}
+        <div 
+          style={{
+            position: 'relative',
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: count === 2 ? '16px' : '10px',
+            justifyContent: 'center',
+            alignItems: 'center',
+            alignContent: 'center',
+            padding: '12px',
+            height: '100%',
+            width: '100%',
+            zIndex: 2
+          }}
+        >
+          {imagesToShow.map((imgUrl, i) => (
+            <div 
+              key={i} 
+              style={{ 
+                width: posterWidth, 
+                height: posterHeight, 
+                backgroundImage: `url(${imgUrl})`, 
+                backgroundSize: 'cover', 
+                backgroundPosition: 'center', 
+                backgroundRepeat: 'no-repeat',
+                borderRadius: '0',
+                border: '1px solid rgba(255, 255, 255, 0.25)',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.45)',
+                transition: 'transform 0.2s ease'
+              }} 
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="container pt-3 pb-5">
       {/* Header */}
@@ -1078,6 +1666,11 @@ export default function TagsPage() {
             Etiketler
           </h1>
           <p className="text-muted small mb-0">Notlarınızı etiketlerine göre görsel bir biçimde inceleyin ve yönetin.</p>
+          {lastNoteTimeText && (
+            <span className="text-muted x-small mt-1 d-block text-lowercase" style={{ fontSize: '11px', opacity: 0.8 }}>
+              en son yeni not: {lastNoteTimeText.toLowerCase()}
+            </span>
+          )}
         </div>
 
         {/* Action Button Panel */}
@@ -1126,23 +1719,60 @@ export default function TagsPage() {
           >
             <Settings size={16} />
           </Button>
+
+          {/* New Tag Button */}
+          <Button 
+            variant="primary" 
+            size="sm" 
+            className="action-btn-circle" 
+            title="Yeni Etiket Ekle"
+            onClick={handleCreateTag}
+            style={{ color: 'white' }}
+          >
+            <Plus size={16} />
+          </Button>
         </div>
       </div>
 
       {/* Gallery vs Table Layout Toggles */}
-      <div className="view-tabs-container">
-        <button 
-          className={`view-tab-btn ${layoutMode === 'gallery' ? 'active' : ''}`}
-          onClick={() => changeLayoutMode('gallery')}
-        >
-          <FolderOpen size={16} /> Galeri
-        </button>
-        <button 
-          className={`view-tab-btn ${layoutMode === 'table' ? 'active' : ''}`}
-          onClick={() => changeLayoutMode('table')}
-        >
-          <TableIcon size={16} /> Tablo
-        </button>
+      <div className="view-tabs-container d-flex align-items-center justify-content-between">
+        <div className="d-flex">
+          <button 
+            className={`view-tab-btn ${layoutMode === 'gallery' ? 'active' : ''}`}
+            onClick={() => changeLayoutMode('gallery')}
+          >
+            <FolderOpen size={16} /> Galeri
+          </button>
+          <button 
+            className={`view-tab-btn ${layoutMode === 'table' ? 'active' : ''}`}
+            onClick={() => changeLayoutMode('table')}
+          >
+            <TableIcon size={16} /> Tablo
+          </button>
+        </div>
+
+        {layoutMode === 'gallery' && (
+          <div className="d-flex align-items-center gap-2 pe-2 pb-1">
+            <Button 
+              variant="light" 
+              size="sm" 
+              className="action-btn-circle" 
+              onClick={scrollPrev}
+              title="Geri"
+            >
+              <ChevronLeft size={16} />
+            </Button>
+            <Button 
+              variant="light" 
+              size="sm" 
+              className="action-btn-circle" 
+              onClick={scrollNext}
+              title="İleri"
+            >
+              <ChevronRight size={16} />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Tags List Section (Gallery Cards or Table Rows) */}
@@ -1161,77 +1791,20 @@ export default function TagsPage() {
                 </tr>
               </thead>
               <tbody>
-                {visibleTags.map((tag, idx) => {
-                  const count = tagNoteCounts[tag.name] || 0;
-                  const isSelected = activeTagName === tag.name;
-
-                  return (
-                    <tr 
-                      key={tag.name} 
-                      className={`${isSelected ? 'active' : ''} ${draggedIndex === idx && dragType === 'card' ? 'dragging' : ''}`}
-                      onClick={() => selectActiveTag(tag.name)}
-                      onDragOver={handleDragOver}
-                      onDrop={(e) => handleDrop(e, idx, 'card')}
-                    >
-                      <td>
-                        {/* Drag Handle & Thumb */}
-                        <div className="d-flex align-items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                          <div 
-                            style={{ cursor: 'grab' }}
-                            draggable="true"
-                            onDragStart={(e) => handleDragStart(e, idx, 'card')}
-                            className="text-muted opacity-40 hover-opacity-100"
-                          >
-                            <GripVertical size={16} />
-                          </div>
-                          {tag.imageUrl ? (
-                            <div 
-                              className="tag-table-cover-thumb" 
-                              style={{ backgroundImage: `url(${tag.imageUrl})`, backgroundSize: coverFitMode }}
-                            />
-                          ) : (
-                            <div 
-                              className={`tag-table-cover-thumb ${getTagGradientClass(tag.name)}`}
-                            />
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <span className="tag-card-badge" style={getTagStyleByColor(tag.color || 'Blue')}>
-                          {tag.name}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="text-muted fw-semibold fs-13">{tag.color || 'Blue'}</span>
-                      </td>
-                      <td>
-                        <span className="fw-bold fs-14">{count} Not</span>
-                      </td>
-                      <td className="text-end" onClick={(e) => e.stopPropagation()}>
-                        <div className="d-inline-flex gap-1">
-                          <button 
-                            type="button" 
-                            className="action-btn-circle edit" 
-                            onClick={(e) => handleEditTagCover(tag, e)}
-                            title="Görseli/Rengi Düzenle"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          {tag.id && (
-                            <button 
-                              type="button" 
-                              className="action-btn-circle delete" 
-                              onClick={() => handleDeleteGlobalTag(tag.name, tag.id)}
-                              title="Etiketi Sil"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {visibleTags.map((tag) => (
+                  <SortableTagRow
+                    key={tag.name}
+                    tag={tag}
+                    isSelected={activeTagName === tag.name}
+                    onClick={() => selectActiveTag(tag.name)}
+                    coverFitMode={coverFitMode}
+                    activeNotes={activeNotes}
+                    handleEditTagCover={handleEditTagCover}
+                    handleDeleteGlobalTag={handleDeleteGlobalTag}
+                    tagNoteCounts={tagNoteCounts}
+                    lastNoteTimeText={tagLastNoteTimes[tag.name]}
+                  />
+                ))}
               </tbody>
             </Table>
           </div>
@@ -1239,63 +1812,32 @@ export default function TagsPage() {
       ) : (
         /* Gallery Layout for Tags - Premium Overlay Design */
         <div ref={containerRef} className="tags-gallery-grid">
-          {visibleTags.map((tag, idx) => {
-            const count = tagNoteCounts[tag.name] || 0;
-            const isSelected = activeTagName === tag.name;
-
-            return (
-              <div 
-                key={tag.name} 
-                className={`tag-card glass-card ${isSelected ? 'active' : ''} ${draggedIndex === idx && dragType === 'card' ? 'dragging' : ''}`}
-                onClick={() => selectActiveTag(tag.name)}
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, idx, 'card')}
-              >
-                {/* Cover Image */}
-                <div className="tag-card-cover-container">
-                  {tag.imageUrl ? (
-                    <img 
-                      src={tag.imageUrl} 
-                      alt={tag.name} 
-                      className="tag-card-cover" 
-                      style={{ objectFit: coverFitMode }}
-                    />
-                  ) : (
-                    <div className={`tag-card-cover ${getTagGradientClass(tag.name)}`} />
-                  )}
-                </div>
-
-                {/* Info Overlay floating on top of cover */}
-                <div className="tag-card-info-overlay">
-                  <span className="tag-card-badge mb-1" style={getTagStyleByColor(tag.color || 'Blue')}>
-                    {tag.name}
-                  </span>
-                  <span className="tag-card-notes-count">{count} Not</span>
-                </div>
-                
-                {/* Controls in top-right */}
-                <div className="tag-card-controls" onClick={(e) => e.stopPropagation()}>
-                  <div 
-                    className="tag-card-btn" 
-                    draggable="true"
-                    onDragStart={(e) => handleDragStart(e, idx, 'card')}
-                    title="Sürükleyip Sırala"
-                    style={{ cursor: 'grab' }}
-                  >
-                    <GripVertical size={14} />
-                  </div>
-                  <button 
-                    type="button" 
-                    className="tag-card-btn"
-                    onClick={(e) => handleEditTagCover(tag, e)}
-                    title="Görseli Düzenle"
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          {(() => {
+            const activeIdx = visibleTags.findIndex(t => t.name === activeTagName);
+            return visibleTags.map((tag, idx) => {
+              let scale = 0.85;
+              if (activeIdx !== -1) {
+                const diff = Math.abs(idx - activeIdx);
+                if (diff === 0) scale = 1.0;
+                else if (diff === 1) scale = 0.9;
+              } else {
+                scale = 0.95;
+              }
+              return (
+                <SortableTagCard
+                  key={tag.name}
+                  tag={tag}
+                  isSelected={activeTagName === tag.name}
+                  onClick={() => selectActiveTag(tag.name)}
+                  renderTagCover={renderTagCover}
+                  tagNoteCounts={tagNoteCounts}
+                  handleEditTagCover={handleEditTagCover}
+                  scale={scale}
+                  lastNoteTimeText={tagLastNoteTimes[tag.name]}
+                />
+              );
+            });
+          })()}
         </div>
       )}
 
@@ -1466,6 +2008,13 @@ export default function TagsPage() {
                                     className="note-color-dot" 
                                     style={{ backgroundColor: NOTE_COLORS[note.color || 'blue'] }}
                                   />
+                                  {note.imageUrl && (
+                                    <img 
+                                      src={note.imageUrl} 
+                                      alt="" 
+                                      className="note-table-cover-thumb"
+                                    />
+                                  )}
                                   <a 
                                     href="#" 
                                     className="note-table-title-link text-truncate"
@@ -1598,6 +2147,8 @@ export default function TagsPage() {
         onHide={() => {
           setShowNoteModal(false);
           setIsExpanded(false);
+          setShowSimilarNotes(false);
+          setShowTagSuggestions(false);
         }} 
         centered={!isExpanded} 
         className={`notion-modal mobile-fullscreen-modal ${isExpanded ? 'is-expanded' : ''}`} 
@@ -1706,13 +2257,62 @@ export default function TagsPage() {
                 ))}
               </div>
             </div>
-            <Form.Control 
-              type="text"
-              placeholder="Not başlığı girin..."
-              className="notion-title-input border-0 bg-transparent p-0 fs-20 fw-bold w-100"
-              value={noteTitle}
-              onChange={(e) => setNoteTitle(e.target.value)}
-            />
+            <div className="position-relative w-100" style={{ zIndex: showSimilarNotes ? 101 : 1 }}>
+              <Form.Control 
+                type="text"
+                placeholder="Not başlığı girin..."
+                className="notion-title-input border-0 bg-transparent p-0 fs-20 fw-bold w-100"
+                value={noteTitle}
+                onChange={(e) => {
+                  setNoteTitle(e.target.value);
+                  setShowSimilarNotes(true);
+                }}
+                onFocus={() => setShowSimilarNotes(true)}
+                onBlur={() => setTimeout(() => setShowSimilarNotes(false), 200)}
+                onKeyDown={handleTitleKeyDown}
+              />
+              
+              {similarNotes.length > 0 && showSimilarNotes && (
+                <div 
+                  className="glass-card shadow-lg w-100 p-1 mt-2 animate-fade-in position-absolute" 
+                  style={{ 
+                    maxHeight: '300px', 
+                    overflowY: 'auto', 
+                    zIndex: 1060,
+                    top: '100%',
+                    left: 0
+                  }}
+                >
+                  <div className="text-muted x-small fw-bold px-3 py-2 opacity-50 border-bottom mb-1">VAROLAN BAŞLIKLAR</div>
+                  {similarNotes.map(note => (
+                    <div 
+                      key={note.id} 
+                      className="suggestion-item p-2 px-3 rounded cursor-pointer fs-13 d-flex align-items-center gap-3 border-0 bg-transparent" 
+                      onClick={() => {
+                        setNoteTitle(note.title);
+                        setNoteTags(note.tags || []);
+                        setNoteColor(note.color || 'blue');
+                        setShowSimilarNotes(false);
+                      }}
+                    >
+                      <div 
+                        style={{ 
+                          width: '8px', 
+                          height: '8px', 
+                          borderRadius: '50%', 
+                          backgroundColor: NOTE_COLORS[note.color || 'blue'],
+                          flexShrink: 0 
+                        }} 
+                      />
+                      <div className="d-flex flex-column min-width-0">
+                        <span className="fw-bold text-dark text-truncate" style={{ lineHeight: '1.2' }}>{note.title}</span>
+                        <span className="text-muted x-small opacity-75">{formatDisplayDate(note.date)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </Form.Group>
 
           {/* Tags */}
@@ -1721,7 +2321,10 @@ export default function TagsPage() {
               <TagIcon size={14} className="text-muted" />
               <Form.Label className="text-muted small fw-bold mb-0 uppercase-tracking">ETİKETLER</Form.Label>
             </div>
-            <div className="tags-input-container glass-card p-2 d-flex flex-wrap gap-2 align-items-center position-relative">
+            <div 
+              className="tags-input-container glass-card p-2 d-flex flex-wrap gap-2 align-items-center position-relative"
+              style={{ zIndex: showTagSuggestions ? 100 : 1 }}
+            >
               {noteTags.map((tag, idx) => {
                 const globalTag = globalNoteTags.find(gt => gt.name === tag);
                 return (
@@ -1781,6 +2384,139 @@ export default function TagsPage() {
                     })}
                   </div>
                 )}
+              </div>
+            </div>
+          </Form.Group>
+
+          {/* Görsel Ekleme */}
+          <Form.Group className="mb-4">
+            <Form.Label className="text-muted small fw-bold mb-2 uppercase-tracking d-block">NOT GÖRSELİ (URL VEYA DOSYA)</Form.Label>
+            <div className="glass-card p-3 d-flex align-items-stretch gap-3">
+              {/* Left side: Image preview or placeholder */}
+              <div 
+                className="border overflow-hidden shadow-sm flex-shrink-0 position-relative" 
+                style={{ 
+                  width: '100px', 
+                  height: '145px', 
+                  backgroundColor: 'var(--glass-bg, #f8f9fa)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center' 
+                }}
+              >
+                {noteImageUrl ? (
+                  <img 
+                    src={noteImageUrl} 
+                    alt="" 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                  />
+                ) : (
+                  <div className="text-muted text-center p-2" style={{ fontSize: '10px' }}>
+                    <Plus size={16} className="opacity-50 mb-1" />
+                    <div>Görsel Yok</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right side: URL Input & File Upload Button */}
+              <div className="d-flex flex-column justify-content-between flex-grow-1 py-1">
+                <div className="w-100">
+                  <div className="d-flex align-items-center justify-content-between mb-1.5">
+                    <Form.Label className="small fw-bold text-muted mb-0">SON EKLENEN GÖRSELLER</Form.Label>
+                    {noteImageUrl && (
+                      <Button 
+                        variant="link" 
+                        className="text-danger p-0 text-decoration-none x-small fw-bold border-0"
+                        onClick={() => setNoteImageUrl('')}
+                        style={{ fontSize: '11px' }}
+                      >
+                        Görseli Kaldır
+                      </Button>
+                    )}
+                  </div>
+                  {recentImages.length > 0 ? (
+                    <div 
+                      className="d-flex align-items-center gap-2 overflow-x-auto py-1.5 px-0.5" 
+                      style={{ 
+                        maxWidth: '100%',
+                        whiteSpace: 'nowrap',
+                        scrollbarWidth: 'none',
+                        msOverflowStyle: 'none'
+                      }}
+                    >
+                      {recentImages.map((imgUrl, idx) => {
+                        const isSelected = noteImageUrl === imgUrl;
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => setNoteImageUrl(imgUrl)}
+                            style={{
+                              width: '45px',
+                              height: '65px',
+                              flexShrink: 0,
+                              backgroundImage: `url(${imgUrl})`,
+                              backgroundSize: 'cover',
+                              backgroundPosition: 'center',
+                              borderRadius: '6px',
+                              border: isSelected ? '2.5px solid var(--bs-primary, #0d6efd)' : '1px solid rgba(0,0,0,0.12)',
+                              boxShadow: isSelected ? '0 2px 6px rgba(13, 110, 253, 0.4)' : 'none',
+                              cursor: 'pointer',
+                              transform: isSelected ? 'scale(1.05)' : 'none',
+                              transition: 'all 0.2s ease',
+                              position: 'relative'
+                            }}
+                            className="hover-scale-img"
+                            title="Görseli Seç"
+                          >
+                            {isSelected && (
+                              <div 
+                                style={{
+                                  position: 'absolute',
+                                  top: '2px',
+                                  right: '2px',
+                                  background: 'var(--bs-primary, #0d6efd)',
+                                  color: 'white',
+                                  borderRadius: '50%',
+                                  width: '12px',
+                                  height: '12px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '8px',
+                                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                }}
+                              >
+                                ✓
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-muted x-small py-2 px-1 italic">
+                      Henüz eklenmiş görsel bulunmuyor.
+                    </div>
+                  )}
+                </div>
+
+                <div className="w-100">
+                  <input 
+                    type="file" 
+                    ref={noteFileInputRef} 
+                    onChange={handleNoteImageUploadChange} 
+                    accept="image/*" 
+                    style={{ display: 'none' }} 
+                  />
+                  <Button 
+                    variant="outline-secondary" 
+                    size="sm" 
+                    className="d-flex align-items-center justify-content-center gap-2 fs-13 border w-100 py-2"
+                    onClick={() => noteFileInputRef.current?.click()}
+                  >
+                    <Upload size={14} /> Bilgisayardan Görsel Seç (Base64)
+                  </Button>
+                </div>
               </div>
             </div>
           </Form.Group>
@@ -1893,58 +2629,94 @@ export default function TagsPage() {
               </div>
             </Form.Group>
 
+            {/* Collage vs Custom Cover Switch */}
             <Form.Group className="mb-3">
-              <Form.Label className="small fw-bold text-muted d-flex align-items-center justify-content-between">
-                <span>KAPAK GÖRSELİ (URL VEYA DOSYA)</span>
-                {tagImageUrl && (
-                  <Button 
-                    variant="link" 
-                    className="text-danger p-0 text-decoration-none x-small fw-bold"
-                    onClick={() => setTagImageUrl('')}
-                  >
-                    Görseli Kaldır
-                  </Button>
-                )}
-              </Form.Label>
-              
-              {/* Image URL input */}
-              <div className="input-group mb-2">
-                <span className="input-group-text bg-light border-0"><Link2 size={14} className="text-muted" /></span>
-                <Form.Control 
-                  type="text" 
-                  placeholder="Görsel adresi girin (Unsplash, vb.)..."
-                  value={tagImageUrl.startsWith('data:') ? '' : tagImageUrl}
-                  onChange={(e) => setTagImageUrl(e.target.value)}
-                  className="bg-light border-0 fs-13"
-                />
-              </div>
+              <Form.Check 
+                type="switch" 
+                id="tag-use-collage-switch"
+                label={tagUseCollageInput ? "Notlardaki görselleri kapak kolajı olarak kullan" : "Ekli kapak görselini kullan"}
+                checked={tagUseCollageInput}
+                onChange={(e) => setTagUseCollageInput(e.target.checked)}
+                className="fw-bold small text-muted"
+                style={{ cursor: 'pointer' }}
+              />
+            </Form.Group>
 
-              {/* Local File Upload */}
-              <div className="d-grid mb-3">
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  onChange={handleImageUploadChange} 
-                  accept="image/*" 
-                  style={{ display: 'none' }} 
-                />
-                <Button 
-                  variant="outline-secondary" 
-                  size="sm" 
-                  className="d-flex align-items-center justify-content-center gap-2 fs-13"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload size={14} /> Bilgisayardan Görsel Seç (Base64)
-                </Button>
-              </div>
-
-              {/* Cover Preview */}
-              {tagImageUrl && (
+            <Form.Group className="mb-3">
+              <Form.Label className="small fw-bold text-muted mb-2">KAPAK GÖRSELİ (URL VEYA DOSYA)</Form.Label>
+              <div className="glass-card p-3 d-flex align-items-stretch gap-3">
+                {/* Left side: Image preview or placeholder */}
                 <div 
-                  className="rounded-3 border overflow-hidden mb-3" 
-                  style={{ height: '100px', backgroundImage: `url(${tagImageUrl})`, backgroundSize: coverFitMode, backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }} 
-                />
-              )}
+                  className="border overflow-hidden shadow-sm flex-shrink-0 position-relative" 
+                  style={{ 
+                    width: '100px', 
+                    height: '145px', 
+                    backgroundColor: 'var(--glass-bg, #f8f9fa)', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center' 
+                  }}
+                >
+                  {tagImageUrl ? (
+                    <img 
+                      src={tagImageUrl} 
+                      alt="" 
+                      style={{ width: '100%', height: '100%', objectFit: coverFitMode }} 
+                    />
+                  ) : (
+                    <div className="text-muted text-center p-2" style={{ fontSize: '10px' }}>
+                      <Upload size={16} className="opacity-50 mb-1" />
+                      <div>Görsel Yok</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right side: URL Input & File Upload Button */}
+                <div className="d-flex flex-column justify-content-between flex-grow-1 py-1">
+                  <div className="w-100">
+                    <div className="d-flex align-items-center justify-content-between mb-1">
+                      <Form.Label className="small fw-bold text-muted mb-0">GÖRSEL ADRESİ (URL)</Form.Label>
+                      {tagImageUrl && (
+                        <Button 
+                          variant="link" 
+                          className="text-danger p-0 text-decoration-none x-small fw-bold border-0"
+                          onClick={() => setTagImageUrl('')}
+                        >
+                          Görseli Kaldır
+                        </Button>
+                      )}
+                    </div>
+                    <div className="input-group">
+                      <span className="input-group-text bg-light border-0"><Link2 size={14} className="text-muted" /></span>
+                      <Form.Control 
+                        type="text" 
+                        placeholder="Görsel adresi yapıştırın..."
+                        value={tagImageUrl.startsWith('data:') ? '' : tagImageUrl}
+                        onChange={(e) => setTagImageUrl(e.target.value)}
+                        className="bg-light border-0 fs-13"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="w-100">
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleImageUploadChange} 
+                      accept="image/*" 
+                      style={{ display: 'none' }} 
+                    />
+                    <Button 
+                      variant="outline-secondary" 
+                      size="sm" 
+                      className="d-flex align-items-center justify-content-center gap-2 fs-13 border w-100 py-2"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Upload size={14} /> Bilgisayardan Görsel Seç (Base64)
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </Form.Group>
           </Form>
         </Modal.Body>
@@ -1965,62 +2737,18 @@ export default function TagsPage() {
           <Modal.Title className="fw-bold h5 text-dark">Etiket Ayarları</Modal.Title>
         </Modal.Header>
         <Modal.Body style={{ maxHeight: '450px', overflowY: 'auto' }}>
-          <p className="text-muted small mb-3">Etiketleri sürükleyerek sıralayabilir ve görünürlüklerini değiştirebilirsiniz.</p>
+          <p className="text-muted small mb-3">Etiketlerin görünürlüklerini değiştirebilir veya silebilirsiniz. Etiketler, en son not eklenme zamanına göre otomatik olarak sıralanır.</p>
           <div className="d-flex flex-column gap-1">
-            {sortedTags.map((tag, idx) => {
-              const isHidden = hiddenTags.includes(tag.name);
-              return (
-                <div 
-                  key={tag.name} 
-                  className={`settings-tags-list-item d-flex align-items-center justify-content-between p-2 rounded border mb-2 ${draggedIndex === idx && dragType === 'settings-list' ? 'dragging' : ''}`}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, idx, 'settings-list')}
-                >
-                  <div className="d-flex align-items-center gap-2">
-                    {/* Drag Handle */}
-                    <div 
-                      style={{ cursor: 'grab' }}
-                      draggable="true"
-                      onDragStart={(e) => handleDragStart(e, idx, 'settings-list')}
-                      className="text-muted opacity-50 hover-opacity-100 p-1"
-                    >
-                      <GripVertical size={16} />
-                    </div>
-                    
-                    {/* Tag badge & Note count */}
-                    <div className="d-flex align-items-center gap-2 flex-wrap">
-                      <span style={getTagStyleByColor(tag.color || 'Blue')} className="fw-bold">
-                        {tag.name}
-                      </span>
-                      <span className="text-muted small">({tagNoteCounts[tag.name] || 0} not)</span>
-                    </div>
-                  </div>
-
-                  <div className="d-flex align-items-center gap-3">
-                    {/* Hide / Show switch */}
-                    <Form.Check 
-                      type="switch" 
-                      id={`tag-visibility-${idx}`}
-                      checked={!isHidden}
-                      onChange={() => toggleTagVisibility(tag.name)}
-                      label={!isHidden ? "Göster" : "Gizle"}
-                      className="fs-12 text-muted mb-0"
-                      style={{ cursor: 'pointer' }}
-                    />
-                    
-                    {/* Delete Tag */}
-                    <Button 
-                      variant="link" 
-                      className="text-danger p-1 opacity-70 hover-opacity-100" 
-                      onClick={() => handleDeleteGlobalTag(tag.name, tag.id)}
-                      title="Etiketi Sil"
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+            {sortedTags.map((tag) => (
+              <SortableSettingsTagItem
+                key={tag.name}
+                tag={tag}
+                isHidden={hiddenTags.includes(tag.name)}
+                toggleTagVisibility={toggleTagVisibility}
+                handleDeleteGlobalTag={handleDeleteGlobalTag}
+                tagNoteCounts={tagNoteCounts}
+              />
+            ))}
           </div>
         </Modal.Body>
         <Modal.Footer className="border-0 pt-0">

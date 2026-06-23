@@ -662,10 +662,30 @@
   font-weight: 500 !important;
   cursor: pointer !important;
   transition: opacity 0.2s ease !important;
+  padding-right: 18px !important;
+  position: relative !important;
+  display: inline-block !important;
 }
 
-.notion-text-input a:hover {
+.notion-text-input a::after {
+  content: "" !important;
+  display: inline-block !important;
+  width: 11px !important;
+  height: 11px !important;
+  position: absolute !important;
+  right: 2px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%233e64ff' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'%3E%3C/path%3E%3Cpolyline points='15 3 21 3 21 9'%3E%3C/polyline%3E%3Cline x1='10' y1='14' x2='21' y2='3'%3E%3C/line%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
   opacity: 0.8 !important;
+  transition: opacity 0.2s ease !important;
+  pointer-events: auto !important;
+}
+
+.notion-text-input a:hover::after {
+  opacity: 1 !important;
 }
 
 .notion-text-input u {
@@ -1333,6 +1353,10 @@
   color: #748ffc !important;
 }
 
+[data-theme="dark"] .notion-text-input a::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23748ffc' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'%3E%3C/path%3E%3Cpolyline points='15 3 21 3 21 9'%3E%3C/polyline%3E%3Cline x1='10' y1='14' x2='21' y2='3'%3E%3C/line%3E%3C/svg%3E") !important;
+}
+
 .holiday-card {
   border-left: 4px solid #ffc107 !important;
   background: rgba(255, 193, 7, 0.05) !important;
@@ -1617,4 +1641,25 @@
     transform: none !important;
     border-radius: 8px !important;
   }
+}
+
+.filter-tags-scroll {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  max-height: 120px !important;
+  overflow-y: auto !important;
+  padding: 4px 2px !important;
+  width: 100% !important;
+}
+
+.filter-row .filter-group.flex-grow-1 {
+  flex: 1 1 100% !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.glass-card.dropdown-menu,
+.dropdown-menu {
+  z-index: 10050 !important;
 }

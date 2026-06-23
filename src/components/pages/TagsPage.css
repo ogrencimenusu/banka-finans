@@ -310,10 +310,20 @@
 .tag-table-cover-thumb {
   width: 32px;
   height: 48px;
-  border-radius: 4px;
+  border-radius: 0;
   background-size: cover;
   background-position: center;
   border: 1px solid var(--glass-border);
+}
+
+.note-table-cover-thumb {
+  width: 32px;
+  height: 48px;
+  border-radius: 0;
+  object-fit: cover;
+  border: 1px solid var(--glass-border);
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
 }
 
 /* Detail Section styling */
@@ -853,4 +863,15 @@ html[data-sidebar-collapsed="true"] .notion-modal.is-expanded .modal-dialog {
 [data-theme="dark"] .notes-modal-header-container { 
   background: #1a1a1a !important; 
   border-bottom-color: rgba(255,255,255,0.05) !important; 
+}
+
+/* Son Eklenen Görseller Listesi */
+.hover-scale-img:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Chrome, Safari ve Opera için scrollbar gizleme */
+.overflow-x-auto::-webkit-scrollbar {
+  display: none !important;
 }

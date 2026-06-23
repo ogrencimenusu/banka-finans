@@ -340,6 +340,78 @@ const BulkDateInput = ({ value, onSave, onClear }) => {
     </div>
   );
 };
+
+const BulkTitleInput = ({ value, onSave, onClear }) => {
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState('');
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    if (isEditing && ref.current) {
+      ref.current.focus();
+    }
+  }, [isEditing]);
+
+  const hasValue = value !== undefined;
+
+  return (
+    <div className="position-relative">
+      <div
+        className={`text-dark text-decoration-none py-1 px-2 hover-bg-light rounded-2 d-flex flex-column align-items-center justify-content-center cursor-pointer transition-all ${hasValue ? 'text-primary' : ' '}`}
+        style={{ minWidth: '90px', minHeight: '40px' }}
+        onClick={() => {
+          setDraft(value || '');
+          setIsEditing(true);
+        }}
+      >
+        <div className="d-flex align-items-center gap-1 opacity-50 w-100 justify-content-center" style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+          <Type size={10} /> İşlem Adı
+          {hasValue && (
+            <X
+              size={10}
+              className="ms-1 hover-text-danger transition-colors cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClear();
+              }}
+            />
+          )}
+        </div>
+        {hasValue && (
+          <div className="d-flex align-items-center gap-1 fw-bold mt-0.5" style={{ fontSize: '12px', fontStyle: value === '' ? 'italic' : 'normal', opacity: value === '' ? 0.6 : 1 }}>
+            {value === '' ? '(Boş bırak)' : value}
+          </div>
+        )}
+
+        {isEditing && (
+          <div className="position-absolute top-0 start-0 w-100 h-100 bg-white border shadow-sm rounded-2 px-1 d-flex align-items-center" style={{ zIndex: 100, minWidth: '150px' }}>
+            <Form.Control
+              ref={ref}
+              type="text"
+              value={draft}
+              placeholder="İşlem adı..."
+              className="border-0 bg-transparent p-0 small w-100"
+              style={{ boxShadow: 'none', fontSize: '12px' }}
+              onChange={e => setDraft(e.target.value)}
+              onBlur={() => {
+                onSave(draft);
+                setIsEditing(false);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  onSave(draft);
+                  setIsEditing(false);
+                }
+                if (e.key === 'Escape') setIsEditing(false);
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const OverlayCell = ({ isEditing, display, input }) => (
   <div style={{ position: 'relative', minHeight: '1.2em' }}>
     <span style={{ visibility: isEditing ? 'hidden' : 'visible' }}>{display}</span>
@@ -2832,6 +2904,17 @@ const BankTransactionsPage = () => {
                 onClear={() => setStagedChanges(prev => {
                   const newState = { ...prev };
                   delete newState.date;
+                  return newState;
+                })}
+              />
+
+              {/* Title Update */}
+              <BulkTitleInput
+                value={stagedChanges.title}
+                onSave={(val) => setStagedChanges(prev => ({ ...prev, title: val }))}
+                onClear={() => setStagedChanges(prev => {
+                  const newState = { ...prev };
+                  delete newState.title;
                   return newState;
                 })}
               />
