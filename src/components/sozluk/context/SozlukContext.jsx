@@ -73,7 +73,13 @@ export const SozlukProvider = ({ children }) => {
       setPracticeTests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (error) => console.error("Practice tests fetch error:", error));
 
-    // Custom Quick Tests are managed via localStorage now
+    // Fetch Custom Quick Tests
+    const unsubQuickTests = onSnapshot(query(collection(db, `users/${user.uid}/quick_tests`), orderBy('createdAt', 'desc')), (snap) => {
+      const tests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setCustomQuickTests(tests);
+      localStorage.setItem('local_custom_quick_tests', JSON.stringify(tests));
+    }, (error) => console.error("Quick tests fetch error:", error));
+
     // Fetch Daily Stats
     const today = new Date().toISOString().split('T')[0];
     const unsubDaily = onSnapshot(doc(db, `users/${user.uid}/daily_stats`, today), (docSnap) => {
@@ -89,6 +95,7 @@ export const SozlukProvider = ({ children }) => {
       unsubNotes();
       unsubLists();
       unsubPractice();
+      unsubQuickTests();
       unsubDaily();
     };
   }, [user]);

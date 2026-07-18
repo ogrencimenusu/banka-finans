@@ -11,10 +11,18 @@ const DictionaryLayout = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [initialWordToOpen, setInitialWordToOpen] = useState(null);
   const [initialPracticeConfig, setInitialPracticeConfig] = useState(null);
+  const [initialListId, setInitialListId] = useState(null);
 
   const navigateTo = (tabId, state = null) => {
     if (tabId === 'practice' && state?.config) {
       setInitialPracticeConfig(state.config);
+    }
+    if (tabId === 'dashboard') {
+      if (state?.listId) {
+        setInitialListId(state.listId);
+      } else {
+        setInitialListId(null);
+      }
     }
     setActiveTab(tabId);
   };
@@ -65,7 +73,15 @@ const DictionaryLayout = () => {
 
         {/* Content Area */}
         <div className="dictionary-content">
-          {activeTab === 'dashboard' && <DictionaryDashboard navigateTo={navigateTo} initialWordToOpen={initialWordToOpen} clearInitialWord={() => setInitialWordToOpen(null)} />}
+          {activeTab === 'dashboard' && (
+            <DictionaryDashboard 
+              navigateTo={navigateTo} 
+              initialWordToOpen={initialWordToOpen} 
+              clearInitialWord={() => setInitialWordToOpen(null)} 
+              initialListId={initialListId}
+              clearInitialListId={() => setInitialListId(null)}
+            />
+          )}
           {activeTab === 'add' && <AddWordForm onSave={() => navigateTo('dashboard')} />}
           {activeTab === 'practice' && <PracticeMode initialConfig={initialPracticeConfig} clearInitialConfig={() => setInitialPracticeConfig(null)} />}
           {activeTab === 'lists' && (

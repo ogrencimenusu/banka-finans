@@ -85,8 +85,7 @@ const CustomListsPage = ({ navigateTo }) => {
                     className="h-100 border-0 shadow-sm rounded-4 bg-body-tertiary transition-all glass-card hover-lift"
                     onClick={() => {
                       if (editingListId !== list.id) {
-                        // TODO: List details navigation
-                        if (navigateTo) navigateTo('dashboard'); // go back to dashboard for now
+                        if (navigateTo) navigateTo('dashboard', { listId: list.id });
                       }
                     }}
                     style={{ cursor: 'pointer', overflow: 'hidden' }}

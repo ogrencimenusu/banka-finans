@@ -13,7 +13,7 @@ import { doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, collection, query, 
 import { useAuth } from '../../context/AuthContext';
 import { playAudio } from './utils/audio';
 
-const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord }) => {
+const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord, initialListId, clearInitialListId }) => {
   const { words, customLists, stickyNotes, loading } = useSozluk();
   const { user } = useAuth();
   const { streakCount, isGoalReached, remaining, todayProgress, dailyStats, todayStr } = useStreak();
@@ -68,6 +68,13 @@ const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord }
       if (clearInitialWord) clearInitialWord();
     }
   }, [initialWordToOpen, clearInitialWord]);
+
+  useEffect(() => {
+    if (initialListId) {
+      setSelectedListFilter(initialListId);
+      if (clearInitialListId) clearInitialListId();
+    }
+  }, [initialListId, clearInitialListId]);
 
   const handleAddWordsToList = async (listId, wordIds) => {
     try {
@@ -168,7 +175,16 @@ const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord }
 
   const uniqueLanguages = [...new Set(words.map(w => w.language).filter(Boolean))];
 
-  const recentWords = [...words].sort((a, b) => b.createdAt?.seconds - a.createdAt?.seconds).slice(0, 5);
+  const recentWords = [...words].sort((a, b) => {
+    const getMs = (val) => {
+      if (!val) return 0;
+      if (typeof val.toDate === 'function') return val.toDate().getTime();
+      if (typeof val.seconds === 'number') return val.seconds * 1000;
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? 0 : d.getTime();
+    };
+    return getMs(b.createdAt) - getMs(a.createdAt);
+  }).slice(0, 5);
 
   const filteredWords = words.filter(w => {
     const matchesSearch = w.term?.toLowerCase().includes(searchTerm.toLowerCase()) || 

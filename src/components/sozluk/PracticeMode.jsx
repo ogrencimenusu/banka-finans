@@ -91,42 +91,77 @@ const PracticeMode = ({ initialConfig, clearInitialConfig }) => {
     }
   };
 
-  // --- Handlers for Quick Tests (LocalStorage) ---
+  // --- Handlers for Quick Tests (Firestore & LocalStorage fallback) ---
   const handleSaveQuickTest = async (id, name, config) => {
+    if (!user) {
+      try {
+        let resultId = id;
+        setCustomQuickTests(prev => {
+          let updated;
+          if (id) {
+            updated = prev.map(t => {
+              if (t.id === id) {
+                return { ...t, name: name !== null && name !== undefined ? name : t.name, config: config !== null && config !== undefined ? config : t.config, updatedAt: new Date().toISOString() };
+              }
+              return t;
+            });
+          } else {
+            resultId = `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            updated = [{ id: resultId, name, config, createdAt: new Date().toISOString() }, ...prev];
+          }
+          localStorage.setItem('local_custom_quick_tests', JSON.stringify(updated));
+          return updated;
+        });
+        return resultId;
+      } catch (err) {
+        console.error("Save quick test error (local)", err);
+        throw err;
+      }
+    }
+
     try {
-      let resultId = id;
-      setCustomQuickTests(prev => {
-        let updated;
-        if (id) {
-          updated = prev.map(t => {
-            if (t.id === id) {
-              return { ...t, name: name !== null && name !== undefined ? name : t.name, config: config !== null && config !== undefined ? config : t.config, updatedAt: new Date().toISOString() };
-            }
-            return t;
-          });
-        } else {
-          resultId = `custom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          updated = [{ id: resultId, name, config, createdAt: new Date().toISOString() }, ...prev];
-        }
-        localStorage.setItem('local_custom_quick_tests', JSON.stringify(updated));
-        return updated;
-      });
-      return resultId;
+      if (id) {
+        const docRef = doc(db, `users/${user.uid}/quick_tests`, id);
+        const updates = {};
+        if (name !== null && name !== undefined) updates.name = name;
+        if (config !== null && config !== undefined) updates.config = config;
+        updates.updatedAt = serverTimestamp();
+        await updateDoc(docRef, updates);
+        return id;
+      } else {
+        const docRef = await addDoc(collection(db, `users/${user.uid}/quick_tests`), {
+          name,
+          config,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        return docRef.id;
+      }
     } catch (err) {
-      console.error("Save quick test error", err);
+      console.error("Save quick test error (Firestore)", err);
       throw err;
     }
   };
 
   const handleDeleteQuickTest = async (id) => {
+    if (!user) {
+      try {
+        setCustomQuickTests(prev => {
+          const updated = prev.filter(t => t.id !== id);
+          localStorage.setItem('local_custom_quick_tests', JSON.stringify(updated));
+          return updated;
+        });
+        return;
+      } catch (err) {
+        console.error("Delete quick test error (local)", err);
+        throw err;
+      }
+    }
+
     try {
-      setCustomQuickTests(prev => {
-        const updated = prev.filter(t => t.id !== id);
-        localStorage.setItem('local_custom_quick_tests', JSON.stringify(updated));
-        return updated;
-      });
+      await deleteDoc(doc(db, `users/${user.uid}/quick_tests`, id));
     } catch (err) {
-      console.error("Delete quick test error", err);
+      console.error("Delete quick test error (Firestore)", err);
       throw err;
     }
   };
