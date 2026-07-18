@@ -21,16 +21,19 @@ import {
   Calendar,
   NotebookPen,
   X,
-  Tag
+  Tag,
+  BookOpen
 } from 'lucide-react';
 import logo from '../../assets/logo.svg';
 import logoIcon from '../../assets/logo-icon.svg';
+import { useStreak } from '../sozluk/hooks/useStreak';
 
 const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
+  const { streakCount, isGoalReached, remaining } = useStreak();
 
   const handleLogout = async () => {
     await logout();
@@ -80,6 +83,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
     { name: 'Finans İşlemleri', path: '/finance', icon: PieChart },
     { name: 'Notlar', path: '/notes', icon: Calendar },
     { name: 'Etiketler', path: '/tags', icon: Tag },
+    { name: 'Sözlük', path: '/sozluk', icon: BookOpen },
     { name: 'Son Silinenler', path: '/trash', icon: Trash2 },
   ];
 
@@ -124,13 +128,36 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
             <Link
               key={item.path}
               to={item.path}
-              className={`sidebar-menu-item ${isActive ? 'active' : ''} ${isCollapsed ? 'collapsed' : ''}`}
+              className={`sidebar-menu-item ${isActive ? 'active' : ''} ${isCollapsed ? 'collapsed' : ''} d-flex justify-content-between align-items-center`}
               title={isCollapsed ? item.name : ''}
+              style={{ textDecoration: 'none' }}
             >
-              <div className="menu-icon-wrapper">
-                <Icon size={20} className="menu-icon" />
+              <div className="d-flex align-items-center flex-grow-1" style={{ minWidth: 0 }}>
+                <div className="menu-icon-wrapper flex-shrink-0">
+                  <Icon size={20} className="menu-icon" />
+                </div>
+                {!isCollapsed && <span className="menu-text text-truncate">{item.name}</span>}
               </div>
-              {!isCollapsed && <span className="menu-text">{item.name}</span>}
+              
+              {!isCollapsed && item.name === 'Sözlük' && (
+                <div 
+                  className="flex-shrink-0 d-flex align-items-center justify-content-center px-2 py-1 rounded-pill text-body-secondary"
+                  style={{ fontSize: '11px', fontWeight: 'bold', border: isGoalReached ? '1px dashed var(--bs-danger)' : '1px dashed var(--bs-secondary)' }}
+                  title={isGoalReached ? "Günlük Hedef Tamamlandı!" : "Günlük Hedef: 100 Soru"}
+                >
+                  {isGoalReached ? (
+                    <>
+                      <i className="bi bi-fire text-danger me-1"></i>
+                      {streakCount}
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-fire opacity-50 me-1"></i>
+                      {remaining}
+                    </>
+                  )}
+                </div>
+              )}
             </Link>
           );
         })}
@@ -150,7 +177,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
             <div className="overflow-hidden">
               <div className="fw-bold small d-flex align-items-center justify-content-between w-100">
                 <span className="text-truncate">{user?.displayName}</span>
-                <span className="text-muted smaller opacity-50 fw-normal ms-2" style={{ fontSize: '11px' }}>v1.0.10</span>
+                <span className="text-muted smaller opacity-50 fw-normal ms-2" style={{ fontSize: '11px' }}>v2.0.0</span>
               </div>
               <div className="text-truncate text-muted smaller" style={{ fontSize: '11px' }}>{user?.email}</div>
             </div>

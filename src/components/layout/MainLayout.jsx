@@ -4,7 +4,16 @@ import Sidebar from './Sidebar';
 import { Menu } from 'lucide-react';
 
 const MainLayout = ({ children }) => {
-  const [isCollapsed, setIsCollapsed] = useState(window.innerWidth < 992);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    // If it's a mobile device, always start collapsed
+    if (window.innerWidth < 992) return true;
+    // Otherwise check local storage
+    const saved = localStorage.getItem('sidebarCollapsed');
+    if (saved !== null) {
+      return JSON.parse(saved);
+    }
+    return false; // default expanded on desktop
+  });
   const location = useLocation();
 
   useEffect(() => {
@@ -24,6 +33,13 @@ const MainLayout = ({ children }) => {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Save state to localStorage whenever it changes (only on desktop)
+  useEffect(() => {
+    if (window.innerWidth >= 992) {
+      localStorage.setItem('sidebarCollapsed', JSON.stringify(isCollapsed));
+    }
+  }, [isCollapsed]);
 
   useEffect(() => {
     // Mobil görünümde sidebar açıkken arka plan kaydırmasını tamamen engelle

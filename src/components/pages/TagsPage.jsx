@@ -2419,7 +2419,7 @@ export default function TagsPage() {
               </div>
 
               {/* Right side: URL Input & File Upload Button */}
-              <div className="d-flex flex-column justify-content-between flex-grow-1 py-1">
+              <div className="d-flex flex-column justify-content-between flex-grow-1 py-1" style={{ minWidth: 0 }}>
                 <div className="w-100">
                   <div className="d-flex align-items-center justify-content-between mb-1.5">
                     <Form.Label className="small fw-bold text-muted mb-0">SON EKLENEN GÖRSELLER</Form.Label>

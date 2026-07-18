@@ -10,6 +10,7 @@ import MainLayout from './components/layout/MainLayout';
 import TrashPage from './components/pages/TrashPage';
 import NotesPage from './components/pages/NotesPage';
 import TagsPage from './components/pages/TagsPage';
+import DictionaryLayout from './components/sozluk/DictionaryLayout';
 import { LayoutDashboard, Wallet, PieChart, Settings, ArrowRight, Landmark, Calendar, Clock, StickyNote, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db } from './firebase';
@@ -761,6 +762,7 @@ function App() {
                       <Route path="/notes" element={<NotesPage />} />
                       <Route path="/tags" element={<TagsPage />} />
                       <Route path="/trash" element={<TrashPage />} />
+                      <Route path="/sozluk" element={<DictionaryLayout />} />
                     </Routes>
                   </MainLayout>
                 </ProtectedRoute>

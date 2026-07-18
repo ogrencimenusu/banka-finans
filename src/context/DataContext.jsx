@@ -42,6 +42,9 @@ export const DataProvider = ({ children }) => {
 
     setLoading(true);
 
+    /* 
+      --- AKTİF EDİLDİ ---
+    */  
     // --- BANK LISTENERS ---
     const unsubBanks = onSnapshot(collection(db, `users/${user.uid}/banks`), (snap) => {
       setBanks(snap.docs.map(d => ({ id: d.id, ...d.data(), source: 'banks' })));
@@ -108,7 +111,7 @@ export const DataProvider = ({ children }) => {
     const unsubNotesConfig = onSnapshot(doc(db, `users/${user.uid}/config`, 'notesSettings'), (snap) => {
       setNotesConfig(snap.exists() ? snap.data() : {});
     });
-
+    // End of listeners
     // Fetch holidays once per user session
     const fetchHolidays = async () => {
       try {
@@ -175,6 +178,7 @@ export const DataProvider = ({ children }) => {
     setLoading(false);
 
     return () => {
+      // Cleanup listeners
       unsubBanks();
       unsubBankTrans();
       unsubBankConfig();
@@ -191,6 +195,7 @@ export const DataProvider = ({ children }) => {
       unsubNotes();
       unsubNoteTags();
       unsubNotesConfig();
+      // End cleanup
     };
   }, [user]);
 
