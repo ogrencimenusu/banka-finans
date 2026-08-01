@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { clearIndexedDbPersistence } from 'firebase/firestore';
+import { db } from '../../firebase';
 import {
   ChevronLeft,
   ChevronRight,
@@ -43,6 +45,13 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
   const handleClearCache = async () => {
     if (window.confirm('Tüm önbellek, çerezler ve yerel veriler temizlenecek. Bu işlem sonrası sayfa tamamen sıfırlanacaktır. Devam edilsin mi?')) {
       try {
+        // 0. Firestore IndexedDB Persistence Clear
+        try {
+          await clearIndexedDbPersistence(db);
+        } catch (e) {
+          console.warn("Firestore cache clear notice:", e);
+        }
+
         // 1. Local & Session Storage
         localStorage.clear();
         sessionStorage.clear();
@@ -177,7 +186,7 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
             <div className="overflow-hidden">
               <div className="fw-bold small d-flex align-items-center justify-content-between w-100">
                 <span className="text-truncate">{user?.displayName}</span>
-                <span className="text-muted smaller opacity-50 fw-normal ms-2" style={{ fontSize: '11px' }}>v2.0.1</span>
+                <span className="text-muted smaller opacity-50 fw-normal ms-2" style={{ fontSize: '11px' }}>v2.0.2</span>
               </div>
               <div className="text-truncate text-muted smaller" style={{ fontSize: '11px' }}>{user?.email}</div>
             </div>

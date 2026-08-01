@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { updateStockPortfolioSummary, resyncAllFinanceSummaries, parseAmt } from '../../utils/accountSummaryHelper';
 import {
   collection,
   addDoc,
@@ -916,6 +917,8 @@ const FinanceTransactionsPage = () => {
   }, [financeBulkHistory]);
 
 
+  const isAlis = (val) => (val?.type || val || '').toString().trim().toUpperCase().startsWith('AL');
+
   const processedTransactions = useMemo(() => {
 
     const sorted = [...transactions].sort((a, b) => {
@@ -923,7 +926,7 @@ const FinanceTransactionsPage = () => {
       if (dateCmp !== 0) return dateCmp;
       
       // If dates are same, prioritize ALIŞ (Buy) over SATIŞ (Sell)
-      const typeScore = (t) => t.type === 'ALIŞ' ? 0 : 1;
+      const typeScore = (t) => isAlis(t) ? 0 : 1;
       const typeCmp = typeScore(a) - typeScore(b);
       if (typeCmp !== 0) return typeCmp;
 
@@ -943,7 +946,7 @@ const FinanceTransactionsPage = () => {
 
       if (!runningBalances[storageKey]) runningBalances[storageKey] = 0;
 
-      if (t.type === 'ALIŞ') {
+      if (isAlis(t)) {
         if (!buyLots[storageKey]) buyLots[storageKey] = [];
         const lotIndex = buyLots[storageKey].length;
         const newLot = { originalQty: q, remaining: q, price: p, taxRate: tr, date: t.date };
@@ -1038,7 +1041,7 @@ const FinanceTransactionsPage = () => {
   const stockRemainingQuantities = useMemo(() => {
     const quantities = {};
     processedTransactions.forEach(t => {
-      if (t.type === 'ALIŞ' && (t.calculatedRemaining || 0) > 0) {
+      if (isAlis(t) && (t.calculatedRemaining || 0) > 0) {
         quantities[t.stockId] = (quantities[t.stockId] || 0) + t.calculatedRemaining;
       }
     });
@@ -1055,10 +1058,7 @@ const FinanceTransactionsPage = () => {
       const instId = t.institutionId;
       if (!stats[instId]) return;
 
-      if (t.type === 'SATIŞ') {
-        stats[instId].realizedGross += (t.grossProfit || 0);
-        stats[instId].realizedNet += (t.totalProfit || 0);
-      } else if (t.type === 'ALIŞ') {
+      if (isAlis(t)) {
         const remaining = t.calculatedRemaining || 0;
         if (remaining > 0) {
           const sInfo = getStockInfo(t.stockId);
@@ -1076,11 +1076,21 @@ const FinanceTransactionsPage = () => {
           const dChange = parseFloat(sInfo.dailyChange) || 0;
           stats[instId].dailyGain += currentVal * (dChange / (100 + dChange));
         }
+      } else {
+        stats[instId].realizedGross += (t.grossProfit || 0);
+        stats[instId].realizedNet += (t.totalProfit || 0);
       }
     });
 
     return stats;
   }, [institutions, processedTransactions, stocks]);
+
+  // Auto-sync finance summaries (totalStockPortfolio, totalStockTax, institutionBalances) to Firestore users/{uid}/summaries/overview
+  useEffect(() => {
+    if (user?.uid && (processedTransactions.length > 0 || institutions.length > 0)) {
+      resyncAllFinanceSummaries(user.uid, processedTransactions, stocks, institutions);
+    }
+  }, [user?.uid, processedTransactions, stocks, institutions]);
 
   const handleBulkImport = async (data) => {
     if (!user) return;
@@ -1239,7 +1249,7 @@ const FinanceTransactionsPage = () => {
         };
       }
       
-      if (t.type === 'ALIŞ' && (t.calculatedRemaining || 0) > 0) {
+      if (isAlis(t) && (t.calculatedRemaining || 0) > 0) {
         portfolio[t.stockId].quantity += t.calculatedRemaining;
         portfolio[t.stockId].totalCost += t.calculatedRemaining * t.price;
         
@@ -1263,7 +1273,7 @@ const FinanceTransactionsPage = () => {
         let potentialTax = 0;
         if (item.currentPrice > 0) {
           processedTransactions.forEach(t => {
-            if (t.stockId === item.id && t.type === 'ALIŞ' && (t.calculatedRemaining || 0) > 0) {
+            if (t.stockId === item.id && isAlis(t) && (t.calculatedRemaining || 0) > 0) {
               const lotProfit = (item.currentPrice - t.price) * t.calculatedRemaining;
               if (lotProfit > 0 && t.taxRate > 0) {
                 potentialTax += lotProfit * (t.taxRate / 100);
@@ -1377,6 +1387,11 @@ const FinanceTransactionsPage = () => {
       const newRef = doc(collection(db, `users/${user.uid}/financeTransactions`));
       batch.set(newRef, { institutionId: formInstitutionId, stockId: formStockId, type, quantity: qty, remainingQuantity: type === 'ALIŞ' ? qty : portfolioRemainingQty, price: prc, date, taxRate: tax, createdAt: serverTimestamp(), deleted: false });
       await batch.commit();
+      
+      const portfolioDelta = type === 'ALIŞ' ? (qty * prc) : -(qty * prc);
+      const taxDelta = calculatedTaxDeduction || 0;
+      updateStockPortfolioSummary(user.uid, portfolioDelta, taxDelta);
+      
       setQuantity(''); setPrice(''); setTaxRate('0'); setShowTransactionModal(false);
     } catch (error) { console.error(error); }
   };
@@ -1495,6 +1510,11 @@ const FinanceTransactionsPage = () => {
     }
     
     await updateDoc(doc(db, `users/${user.uid}/financeTransactions`, transId), updates);
+    if (user?.uid) {
+      setTimeout(() => {
+        resyncAllFinanceSummaries(user.uid, globalFinanceTransactions, globalStocks);
+      }, 500);
+    }
     setEditingCell(prev => {
       if (prev && prev.transId === transId && prev.propId === propId) {
         setCellDraft(null);
@@ -1910,10 +1930,6 @@ const FinanceTransactionsPage = () => {
                   <th className="sticky-top bg-white" style={{ top: 0, zIndex: 11, borderBottom: '1px solid #eee', color: '#666', whiteSpace: 'nowrap' }}>YATIRILAN PARA</th>
                   <th className="sticky-top bg-white" style={{ top: 0, zIndex: 11, borderBottom: '1px solid #eee', color: '#666', whiteSpace: 'nowrap' }}>NET KAZANÇ</th>
                   <th className="sticky-top bg-white" style={{ top: 0, zIndex: 11, borderBottom: '1px solid #eee', color: '#666', whiteSpace: 'nowrap' }}>BANKA</th>
-                  <th className="sticky-top bg-white" style={{ top: 0, zIndex: 11, borderBottom: '1px solid #eee', color: '#666', whiteSpace: 'nowrap' }}>DÖVİZ</th>
-                  <th className="sticky-top bg-white" style={{ top: 0, zIndex: 11, borderBottom: '1px solid #eee', color: '#666', whiteSpace: 'nowrap' }}>GİRİŞ TARİHİ</th>
-                  <th className="sticky-top bg-white" style={{ top: 0, zIndex: 11, borderBottom: '1px solid #eee', color: '#666', whiteSpace: 'nowrap' }}>GÜN</th>
-                  <th className="sticky-top bg-white" style={{ top: 0, zIndex: 11, borderBottom: '1px solid #eee', color: '#666', whiteSpace: 'nowrap' }}>ADET</th>
                   <th className="sticky-top bg-white" style={{ top: 0, zIndex: 11, borderBottom: '1px solid #eee', color: '#666', whiteSpace: 'nowrap' }}>GİRİŞ KURU</th>
                   <th className="sticky-top bg-white" style={{ top: 0, zIndex: 11, borderBottom: '1px solid #eee', color: '#666', whiteSpace: 'nowrap' }}>MEVCUT FİYAT</th>
                 </tr>
@@ -1921,7 +1937,7 @@ const FinanceTransactionsPage = () => {
               <tbody>
                 {(() => {
                   const activeLots = processedTransactions
-                    .filter(t => t.type === 'ALIŞ' && (t.calculatedRemaining || 0) > 0)
+                    .filter(t => isAlis(t) && (t.calculatedRemaining || 0) > 0)
                     .sort((a, b) => new Date(a.date) - new Date(b.date));
                   
                   const groups = {};

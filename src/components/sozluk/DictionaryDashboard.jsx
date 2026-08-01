@@ -9,7 +9,7 @@ import DailyStatsModal from './components/DailyStatsModal';
 import BulkActionModal from './BulkActionModal';
 import EditWordModal from './EditWordModal';
 import { db } from '../../firebase';
-import { doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, collection, query, where, getDocs, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, deleteDoc, arrayUnion, arrayRemove, collection, query, where, getDocs, setDoc, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { playAudio } from './utils/audio';
 
@@ -18,12 +18,27 @@ const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord, 
   const { user } = useAuth();
   const { streakCount, isGoalReached, remaining, todayProgress, dailyStats, todayStr } = useStreak();
   
-  const [searchTerm, setSearchTerm] = useState('');
-  const [activeLanguageFilter, setActiveLanguageFilter] = useState('');
-  const [selectedListFilter, setSelectedListFilter] = useState('');
-  const [showOnlyStarred, setShowOnlyStarred] = useState(false);
+  const [searchTerm, setSearchTerm] = useState(() => {
+    return localStorage.getItem('dictionary_searchQuery') || '';
+  });
+  const [activeLanguageFilter, setActiveLanguageFilter] = useState(() => {
+    return localStorage.getItem('activeLanguageFilter') || '';
+  });
+  const [selectedListFilter, setSelectedListFilter] = useState(() => {
+    return localStorage.getItem('dictionary_selectedListFilter') || '';
+  });
+  const [showOnlyStarred, setShowOnlyStarred] = useState(() => {
+    try {
+      const saved = localStorage.getItem('showOnlyStarred');
+      return saved ? JSON.parse(saved) : false;
+    } catch {
+      return false;
+    }
+  });
   const [showDailyStatsModal, setShowDailyStatsModal] = useState(false);
-  const [quickStatusFilter, setQuickStatusFilter] = useState('');
+  const [quickStatusFilter, setQuickStatusFilter] = useState(() => {
+    return localStorage.getItem('quickStatusFilter') || '';
+  });
   
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedWords, setSelectedWords] = useState([]);
@@ -31,7 +46,14 @@ const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord, 
   const [showSortModal, setShowSortModal] = useState(false);
   
   const [editingWord, setEditingWord] = useState(null);
-  const [sortRules, setSortRules] = useState([]);
+  const [sortRules, setSortRules] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dictionary_sortRules');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Infinite scroll
   const [visibleCount, setVisibleCount] = useState(12);
@@ -53,6 +75,100 @@ const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord, 
   useEffect(() => {
     setVisibleCount(12);
   }, [searchTerm, activeLanguageFilter, selectedListFilter, showOnlyStarred, quickStatusFilter, sortRules]);
+
+  const isRemoteUpdateRef = useRef(false);
+  const settingsLoaded = useRef(false);
+
+  // Load settings from Firestore in real-time
+  useEffect(() => {
+    if (!user) {
+      settingsLoaded.current = true;
+      return;
+    }
+
+    const settingsDocRef = doc(db, 'users', user.uid, 'settings', 'app');
+    const unsubscribe = onSnapshot(settingsDocRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        isRemoteUpdateRef.current = true;
+
+        if (data.sortRules) {
+          try { localStorage.setItem('dictionary_sortRules', JSON.stringify(data.sortRules)); } catch(e){}
+          setSortRules(prev => JSON.stringify(prev) !== JSON.stringify(data.sortRules) ? data.sortRules : prev);
+        }
+        if (data.searchQuery !== undefined) {
+          try { localStorage.setItem('dictionary_searchQuery', data.searchQuery); } catch(e){}
+          setSearchTerm(prev => prev !== data.searchQuery ? data.searchQuery : prev);
+        }
+        if (data.filterLanguage !== undefined || data.activeLanguageFilter !== undefined) {
+          const rawLang = data.filterLanguage !== undefined ? data.filterLanguage : data.activeLanguageFilter;
+          const normLang = rawLang === 'all' ? '' : rawLang;
+          try { localStorage.setItem('activeLanguageFilter', normLang); } catch(e){}
+          setActiveLanguageFilter(prev => prev !== normLang ? normLang : prev);
+        }
+        if (data.filterStarredOnly !== undefined || data.showOnlyStarred !== undefined) {
+          const starredVal = data.filterStarredOnly !== undefined ? data.filterStarredOnly : data.showOnlyStarred;
+          try { localStorage.setItem('showOnlyStarred', JSON.stringify(starredVal)); } catch(e){}
+          setShowOnlyStarred(prev => prev !== starredVal ? starredVal : prev);
+        }
+        if (data.filterStatus !== undefined || data.quickStatusFilter !== undefined) {
+          const statusVal = data.filterStatus !== undefined ? data.filterStatus : data.quickStatusFilter;
+          let normStatus = '';
+          const lower = (statusVal || '').toLowerCase();
+          if (lower === 'yeni') normStatus = 'Yeni';
+          else if (lower === 'ogreniyor' || lower === 'öğreniyor') normStatus = 'Öğreniyor';
+          else if (lower === 'ogrendi' || lower === 'öğrendi') normStatus = 'Öğrendi';
+          try { localStorage.setItem('quickStatusFilter', normStatus); } catch(e){}
+          setQuickStatusFilter(prev => prev !== normStatus ? normStatus : prev);
+        }
+        if (data.filterListId !== undefined) {
+          try { localStorage.setItem('dictionary_selectedListFilter', data.filterListId); } catch(e){}
+          setSelectedListFilter(prev => prev !== data.filterListId ? data.filterListId : prev);
+        }
+
+        setTimeout(() => {
+          isRemoteUpdateRef.current = false;
+        }, 500);
+      }
+      settingsLoaded.current = true;
+    }, (err) => {
+      console.warn('Dashboard ayarları dinlenemedi:', err);
+      settingsLoaded.current = true;
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Save changes to Firestore and localStorage when user updates filters
+  useEffect(() => {
+    if (user && settingsLoaded.current) {
+      try {
+        localStorage.setItem('dictionary_searchQuery', searchTerm);
+        localStorage.setItem('activeLanguageFilter', activeLanguageFilter);
+        localStorage.setItem('dictionary_selectedListFilter', selectedListFilter);
+        localStorage.setItem('showOnlyStarred', JSON.stringify(showOnlyStarred));
+        localStorage.setItem('quickStatusFilter', quickStatusFilter);
+        localStorage.setItem('dictionary_sortRules', JSON.stringify(sortRules));
+      } catch (e) {}
+
+      if (isRemoteUpdateRef.current) return;
+
+      const iosStatus = quickStatusFilter === 'Yeni' ? 'yeni' : (quickStatusFilter === 'Öğreniyor' ? 'ogreniyor' : (quickStatusFilter === 'Öğrendi' ? 'ogrendi' : 'all'));
+      const payload = {
+        sortRules,
+        activeLanguageFilter,
+        filterLanguage: activeLanguageFilter || 'all',
+        showOnlyStarred,
+        filterStarredOnly: showOnlyStarred,
+        quickStatusFilter,
+        filterStatus: iosStatus,
+        searchQuery: searchTerm,
+        filterListId: selectedListFilter
+      };
+
+      setDoc(doc(db, 'users', user.uid, 'settings', 'app'), payload, { merge: true }).catch(() => {});
+    }
+  }, [searchTerm, activeLanguageFilter, selectedListFilter, showOnlyStarred, quickStatusFilter, sortRules, user]);
   const [showDuplicates, setShowDuplicates] = useState(false);
 
   const handleSelectAll = (e) => {
@@ -173,9 +289,9 @@ const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord, 
     return '🌐';
   };
 
-  const uniqueLanguages = [...new Set(words.map(w => w.language).filter(Boolean))];
+  const uniqueLanguages = [...new Set(words.map(w => w.language).filter(Boolean))].sort();
 
-  const recentWords = [...words].sort((a, b) => {
+  const recentWords = words.slice().sort((a, b) => {
     const getMs = (val) => {
       if (!val) return 0;
       if (typeof val.toDate === 'function') return val.toDate().getTime();
@@ -183,7 +299,10 @@ const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord, 
       const d = new Date(val);
       return isNaN(d.getTime()) ? 0 : d.getTime();
     };
-    return getMs(b.createdAt) - getMs(a.createdAt);
+    const timeA = getMs(a.createdAt);
+    const timeB = getMs(b.createdAt);
+    if (timeA !== timeB) return timeB - timeA;
+    return (a.term || '').localeCompare(b.term || '', 'tr');
   }).slice(0, 5);
 
   const filteredWords = words.filter(w => {
@@ -211,10 +330,15 @@ const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord, 
         let bVal = b[rule.field];
 
         if (rule.field === 'createdAt') {
-          const aDate = aVal?.toDate ? aVal.toDate() : 0;
-          const bDate = bVal?.toDate ? bVal.toDate() : 0;
-          aVal = aDate ? aDate.getTime() : 0;
-          bVal = bDate ? bDate.getTime() : 0;
+          const getMs = (val) => {
+            if (!val) return 0;
+            if (typeof val.toDate === 'function') return val.toDate().getTime();
+            if (typeof val.seconds === 'number') return val.seconds * 1000;
+            const d = new Date(val);
+            return isNaN(d.getTime()) ? 0 : d.getTime();
+          };
+          aVal = getMs(aVal);
+          bVal = getMs(bVal);
         } else if (rule.field === 'learningStage') {
           aVal = aVal ?? 0;
           bVal = bVal ?? 0;
@@ -222,25 +346,75 @@ const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord, 
           aVal = aVal ? 1 : 0;
           bVal = bVal ? 1 : 0;
         } else if (typeof aVal === 'string') {
-          aVal = aVal.toLowerCase();
+          aVal = (aVal || '').toLowerCase();
           bVal = (bVal || '').toLowerCase();
         }
 
         if (aVal < bVal) return rule.direction === 'asc' ? -1 : 1;
         if (aVal > bVal) return rule.direction === 'asc' ? 1 : -1;
       }
-      return 0;
+      return (a.term || '').localeCompare(b.term || '', 'tr');
+    });
+  } else {
+    filteredWords.sort((a, b) => {
+      const getMs = (val) => {
+        if (!val) return 0;
+        if (typeof val.toDate === 'function') return val.toDate().getTime();
+        if (typeof val.seconds === 'number') return val.seconds * 1000;
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? 0 : d.getTime();
+      };
+      const timeA = getMs(a.createdAt);
+      const timeB = getMs(b.createdAt);
+      if (timeA !== timeB) return timeB - timeA;
+      return (a.term || '').localeCompare(b.term || '', 'tr');
     });
   }
 
   const handleToggleStar = async (e, word) => {
-    e.stopPropagation();
+    if (e && e.stopPropagation) e.stopPropagation();
+    const targetWord = word || (e && e.id ? e : null);
+    if (!targetWord || !targetWord.id) return;
+    
+    const newStarred = !targetWord.isStarred;
+
+    if (selectedWord && String(selectedWord.id) === String(targetWord.id)) {
+      setSelectedWord(prev => prev ? ({ ...prev, isStarred: newStarred }) : null);
+    }
+    
     try {
-      await updateDoc(doc(db, `users/${user.uid}/words`, word.id), {
-        isStarred: !word.isStarred
-      });
+      if (user) {
+        await updateDoc(doc(db, `users/${user.uid}/words`, targetWord.id), {
+          isStarred: newStarred
+        });
+      }
     } catch (error) {
       console.error("Yıldız güncellenemedi:", error);
+    }
+  };
+
+  const handleUpdateStatus = async (wordId, newStatus) => {
+    if (!wordId) return;
+    const stageMap = {
+      'Yeni': 0,
+      'Öğreniyor': 1,
+      'Öğrendi': 10
+    };
+    const newStage = stageMap[newStatus] ?? 0;
+
+    if (selectedWord && String(selectedWord.id) === String(wordId)) {
+      setSelectedWord(prev => prev ? ({ ...prev, learningStatus: newStatus, learningStage: newStage }) : null);
+    }
+
+    try {
+      if (user) {
+        await updateDoc(doc(db, `users/${user.uid}/words`, wordId), {
+          learningStatus: newStatus,
+          learningStage: newStage
+        });
+      }
+    } catch (error) {
+      console.error("Durum güncellenemedi:", error);
     }
   };
 
@@ -859,14 +1033,18 @@ const DictionaryDashboard = ({ navigateTo, initialWordToOpen, clearInitialWord, 
           onUpdate={handleUpdateNote} 
           onAddNote={handleAddNote}
           onEdit={(w) => setEditingWord(w)}
-          onToggleStar={(w) => handleToggleStar({stopPropagation:()=>{}}, w)}
+          onToggleStar={(e, w) => {
+            const wordToToggle = w || e;
+            handleToggleStar(e, wordToToggle);
+          }}
+          onUpdateStatus={handleUpdateStatus}
           allWords={words}
           onNext={() => {
-             const idx = filteredWords.findIndex(w => w.id === selectedWord.id);
+             const idx = filteredWords.findIndex(w => String(w.id) === String(selectedWord.id));
              if (idx >= 0 && idx < filteredWords.length - 1) setSelectedWord(filteredWords[idx + 1]);
           }}
           onPrev={() => {
-             const idx = filteredWords.findIndex(w => w.id === selectedWord.id);
+             const idx = filteredWords.findIndex(w => String(w.id) === String(selectedWord.id));
              if (idx > 0) setSelectedWord(filteredWords[idx - 1]);
           }}
           customLists={customLists}

@@ -11,7 +11,8 @@ export const DataProvider = ({ children }) => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
 
-  // Bank States
+  // Summary State
+  const [summaryOverview, setSummaryOverview] = useState(null);
   const [banks, setBanks] = useState([]);
   const [bankTransactions, setBankTransactions] = useState([]);
   const [bankConfig, setBankConfig] = useState(null);
@@ -45,12 +46,16 @@ export const DataProvider = ({ children }) => {
     /* 
       --- AKTİF EDİLDİ ---
     */  
-    // --- BANK LISTENERS ---
+    const unsubSummary = onSnapshot(doc(db, `users/${user.uid}/summaries`, 'overview'), (snap) => {
+      if (snap.exists()) setSummaryOverview(snap.data());
+      else setSummaryOverview(null);
+    });
+
     const unsubBanks = onSnapshot(collection(db, `users/${user.uid}/banks`), (snap) => {
       setBanks(snap.docs.map(d => ({ id: d.id, ...d.data(), source: 'banks' })));
     });
 
-    const unsubBankTrans = onSnapshot(query(collection(db, `users/${user.uid}/bankTransactions`), orderBy('createdAt', 'desc')), (snap) => {
+    const unsubBankTrans = onSnapshot(collection(db, `users/${user.uid}/bankTransactions`), (snap) => {
       setBankTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
@@ -87,7 +92,7 @@ export const DataProvider = ({ children }) => {
       setStocks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    const unsubFinTrans = onSnapshot(query(collection(db, `users/${user.uid}/financeTransactions`), orderBy('date', 'desc'), orderBy('createdAt', 'desc')), (snap) => {
+    const unsubFinTrans = onSnapshot(collection(db, `users/${user.uid}/financeTransactions`), (snap) => {
       setFinanceTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
@@ -179,6 +184,7 @@ export const DataProvider = ({ children }) => {
 
     return () => {
       // Cleanup listeners
+      unsubSummary();
       unsubBanks();
       unsubBankTrans();
       unsubBankConfig();
@@ -201,6 +207,7 @@ export const DataProvider = ({ children }) => {
 
   const value = {
     loading,
+    summaryOverview,
     banks,
     bankTransactions,
     bankConfig,

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { updateBankTransactionSummary, resyncAllBankSummaries, parseAmt } from '../../utils/accountSummaryHelper';
 import {
   collection,
   addDoc,
@@ -1127,6 +1128,7 @@ const BankTransactionsPage = () => {
   const [showVisibilitySubmenu, setShowVisibilitySubmenu] = useState(false);
 
   const { 
+    summaryOverview,
     banks: globalBanks, 
     bankTransactions: globalTransactions,
     bankConfig,
@@ -1329,18 +1331,27 @@ const BankTransactionsPage = () => {
     return () => observer.disconnect();
   }, [sortedTransactions.length, limitCount]);
 
+  // Automatically sync summaries if missing any bank IDs in summaryOverview
+  useEffect(() => {
+    if (user?.uid && globalBanks.length > 0 && globalTransactions.length > 0) {
+      const overviewBalances = summaryOverview?.bankBalances || {};
+      const missingAnyBank = globalBanks.some(b => b.id && overviewBalances[b.id] === undefined);
+      if (!summaryOverview || missingAnyBank) {
+        resyncAllBankSummaries(user.uid, globalBanks, globalTransactions);
+      }
+    }
+  }, [user?.uid, globalBanks, globalTransactions, summaryOverview]);
+
   const bankBalances = useMemo(() => {
     const balances = {};
     transactions.forEach(t => {
-      // Don't include credit card transactions (ID: Eyv0oZlOuCPWJbmRkv0h) in bank totals
-      if (t.type === 'Eyv0oZlOuCPWJbmRkv0h') return;
+      if (t.deleted === true || t.type === 'Eyv0oZlOuCPWJbmRkv0h') return;
 
       const bId = t.bankId;
-      let amt = t.amount;
-      if (typeof amt === 'string') {
-        amt = parseFloat(amt.replace(/\./g, '').replace(',', '.'));
-      }
-      balances[bId] = (balances[bId] || 0) + (amt || 0);
+      if (!bId) return;
+
+      const amt = parseAmt(t.amount);
+      balances[bId] = (balances[bId] || 0) + amt;
     });
     return balances;
   }, [transactions]);
@@ -1348,7 +1359,7 @@ const BankTransactionsPage = () => {
   const calculateBalance = (bankId) => bankBalances[bankId] || 0;
   const totalBalance = useMemo(() => {
     return banks
-      .filter(bank => bank.visible !== false)
+      .filter(bank => bank.visible !== false && bank.visible !== 'false')
       .reduce((acc, bank) => acc + (bankBalances[bank.id] || 0), 0);
   }, [bankBalances, banks]);
 
@@ -1407,6 +1418,12 @@ const BankTransactionsPage = () => {
       createdAt: new Date(),
       deleted: false
     });
+    
+    const numAmt = parseAmt(amount);
+    if (numAmt) {
+      updateBankTransactionSummary(user.uid, formBankId, numAmt);
+    }
+    
     setTitle(''); setSelectedQuickActions([]); setSelectedType(''); setAmount(''); setReceiptUrl(''); setFormBankId('');
     setShowTransactionModal(false);
   };
@@ -1580,6 +1597,11 @@ const BankTransactionsPage = () => {
     }
 
     await batch.commit();
+    if (user?.uid) {
+      setTimeout(() => {
+        resyncAllBankSummaries(user.uid, globalBanks, globalTransactions);
+      }, 500);
+    }
   };
 
   const handleAddBank = async (e) => {
@@ -1613,17 +1635,49 @@ const BankTransactionsPage = () => {
 
   const handleDeleteTransaction = async (id) => {
     if (window.confirm('Bu işlemi silmek istediğinize emin misiniz?')) {
+      const targetTrans = transactions.find(t => t.id === id);
       await updateDoc(doc(db, `users/${user.uid}/bankTransactions`, id), { deleted: true });
+      if (targetTrans?.bankId) {
+        const amt = parseAmt(targetTrans.amount);
+        if (amt) {
+          updateBankTransactionSummary(user.uid, targetTrans.bankId, -amt);
+        }
+      }
     }
   };
 
   const saveCell = async (transId, propId, value) => {
     let finalValue = value;
+    const targetTrans = transactions.find(t => t.id === transId);
+
     if (propId === 'amount') {
       const cleanValue = value.toString().replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
       finalValue = parseFloat(cleanValue) || 0;
     }
+
     await updateDoc(doc(db, `users/${user.uid}/bankTransactions`, transId), { [propId]: finalValue });
+
+    if (targetTrans && user?.uid) {
+      if (propId === 'amount') {
+        const oldAmt = parseAmt(targetTrans.amount);
+        const newAmt = parseAmt(finalValue);
+        const delta = newAmt - oldAmt;
+        if (delta !== 0 && targetTrans.bankId) {
+          updateBankTransactionSummary(user.uid, targetTrans.bankId, delta);
+        }
+      } else if (propId === 'bankId' && targetTrans.bankId !== finalValue) {
+        const amt = parseAmt(targetTrans.amount);
+        if (amt) {
+          if (targetTrans.bankId) {
+            updateBankTransactionSummary(user.uid, targetTrans.bankId, -amt);
+          }
+          if (finalValue) {
+            updateBankTransactionSummary(user.uid, finalValue, amt);
+          }
+        }
+      }
+    }
+
     setEditingCell(prev => {
       if (prev && prev.transId === transId && prev.propId === propId) {
         setCellDraft(null);

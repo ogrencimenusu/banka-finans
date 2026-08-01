@@ -17,6 +17,8 @@ import { db } from './firebase';
 import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
 
 import { DataProvider, useData } from './context/DataContext';
+import { SozlukProvider } from './components/sozluk/context/SozlukContext';
+import { parseAmt } from './utils/accountSummaryHelper';
 
 const getNoteColorStyles = (color, itemType) => {
   let col = color || 'blue';
@@ -73,6 +75,7 @@ const getNoteColorStyles = (color, itemType) => {
 const Dashboard = () => {
   const { user } = useAuth();
   const { 
+    summaryOverview,
     banks: globalBanks, 
     bankTransactions: globalTransactions,
     institutions: globalInstitutions,
@@ -110,22 +113,18 @@ const Dashboard = () => {
   };
 
   const bankBalances = banks.map(bank => {
-    const bankTransactions = transactions.filter(t => t.bankId === bank.id);
+    const bankTransactions = transactions.filter(t => t.bankId === bank.id && t.deleted !== true);
     const balance = bankTransactions.reduce((sum, t) => {
-      // Don't include credit card transactions (ID: Eyv0oZlOuCPWJbmRkv0h) in bank totals
       if (t.type === 'Eyv0oZlOuCPWJbmRkv0h') return sum;
-
-      let amt = t.amount;
-      if (typeof amt === 'string') {
-        // Turkish format: dot is thousands separator, comma is decimal
-        amt = parseFloat(amt.replace(/\./g, '').replace(',', '.'));
-      }
+      const amt = parseAmt(t.amount);
       return sum + (isNaN(amt) ? 0 : amt);
     }, 0);
     return { ...bank, balance };
   });
 
-  const totalBalance = bankBalances.reduce((sum, b) => sum + b.balance, 0);
+  const totalBalance = bankBalances
+    .filter(b => b.visible !== false && b.visible !== 'false')
+    .reduce((sum, b) => sum + b.balance, 0);
   const visibleBankBalances = bankBalances.filter(b => b.visible !== false && b.visible !== 'false');
 
   // Finance Calculations (Lot-based FIFO)
@@ -161,7 +160,8 @@ const Dashboard = () => {
       const instId = t.institutionId || 'MISSING';
       const key = `${sId}_${instId}`;
 
-      if (t.type === 'ALIŞ') {
+      const isAlis = (t.type || '').toString().trim().toUpperCase().startsWith('AL');
+      if (isAlis) {
         if (!buyLots[key]) buyLots[key] = [];
         buyLots[key].push({ remaining: q, price: p, taxRate: tr, date: t.date });
         intermediateResults.push({ ...t, quantity: q, price: p, taxRate: tr, calculatedRemaining: q });
@@ -336,7 +336,7 @@ const Dashboard = () => {
                     >
                       {item.itemType === 'note' && <Calendar size={14} />}
                       {item.itemType === 'bank' && <Landmark size={14} />}
-                      {item.itemType === 'finance' && (item.type === 'ALIŞ' ? <TrendingDown size={14} /> : <TrendingUp size={14} />)}
+                      {item.itemType === 'finance' && ((item.type || '').toString().trim().toUpperCase().startsWith('AL') ? <TrendingDown size={14} /> : <TrendingUp size={14} />)}
                       {item.itemType === 'holiday' && <Calendar size={14} className="text-warning" />}
                       <span className="text-truncate" style={{ maxWidth: '200px' }}>{item.title}</span>
                     </Link>
@@ -747,29 +747,31 @@ function App() {
   return (
     <AuthProvider>
       <DataProvider>
-        <Router>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route
-              path="/*"
-              element={
-                <ProtectedRoute>
-                  <MainLayout>
-                    <Routes>
-                      <Route path="/" element={<Dashboard />} />
-                      <Route path="/bank-transactions" element={<BankTransactionsPage />} />
-                      <Route path="/finance" element={<FinanceTransactionsPage />} />
-                      <Route path="/notes" element={<NotesPage />} />
-                      <Route path="/tags" element={<TagsPage />} />
-                      <Route path="/trash" element={<TrashPage />} />
-                      <Route path="/sozluk" element={<DictionaryLayout />} />
-                    </Routes>
-                  </MainLayout>
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </Router>
+        <SozlukProvider>
+          <Router>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route
+                path="/*"
+                element={
+                  <ProtectedRoute>
+                    <MainLayout>
+                      <Routes>
+                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/bank-transactions" element={<BankTransactionsPage />} />
+                        <Route path="/finance" element={<FinanceTransactionsPage />} />
+                        <Route path="/notes" element={<NotesPage />} />
+                        <Route path="/tags" element={<TagsPage />} />
+                        <Route path="/trash" element={<TrashPage />} />
+                        <Route path="/sozluk" element={<DictionaryLayout />} />
+                      </Routes>
+                    </MainLayout>
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </Router>
+        </SozlukProvider>
       </DataProvider>
     </AuthProvider>
   );

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { updateBankTransactionSummary, resyncAllFinanceSummaries, parseAmt } from '../../utils/accountSummaryHelper';
 import { 
   collection, 
   onSnapshot, 
@@ -134,6 +135,14 @@ const TrashPage = () => {
     try {
       const ref = doc(db, `users/${user.uid}/${item.collection}`, item.id);
       await updateDoc(ref, { deleted: false });
+      if (item.collection === 'bankTransactions' && item.bankId) {
+        const amt = parseAmt(item.amount);
+        if (amt) {
+          updateBankTransactionSummary(user.uid, item.bankId, amt);
+        }
+      } else if (item.collection === 'financeTransactions') {
+        resyncAllFinanceSummaries(user.uid, financeItems, stocks);
+      }
     } catch (error) {
       console.error("Restore error:", error);
     }

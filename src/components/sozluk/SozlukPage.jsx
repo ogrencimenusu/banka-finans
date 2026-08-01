@@ -1114,7 +1114,13 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
     const id = setInterval(() => setRelativeTick(t => t + 1), 30000);
     return () => clearInterval(id);
   }, []);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => {
+    return localStorage.getItem('dictionary_searchQuery') || '';
+  });
+
+  useEffect(() => {
+    safeSetItem('dictionary_searchQuery', searchQuery);
+  }, [searchQuery, safeSetItem]);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [showSameRoots, setShowSameRoots] = useState(false);
   const [showFamilyMatches, setShowFamilyMatches] = useState(false);
@@ -1534,20 +1540,30 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
   }, [termText]);
 
   const todayISO = new Date().toISOString().split('T')[0];
-  const [filters, setFilters] = useState({
-    status: {
-      Yeni: false,
-      Öğreniyor: false,
-      Öğrendi: false
-    },
-    starred: {
-      starred: false,
-      unstarred: false
-    },
-    startDate: '',
-    endDate: '',
-    listId: ''
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dictionary_filters');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {
+      status: {
+        Yeni: false,
+        Öğreniyor: false,
+        Öğrendi: false
+      },
+      starred: {
+        starred: false,
+        unstarred: false
+      },
+      startDate: '',
+      endDate: '',
+      listId: ''
+    };
   });
+
+  useEffect(() => {
+    safeSetItem('dictionary_filters', JSON.stringify(filters));
+  }, [filters, safeSetItem]);
 
   const [showOnlyStarred, setShowOnlyStarred] = useState(() => {
     try {
@@ -1588,7 +1604,14 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
     return Array.from(langs).sort();
   }, [words]);
 
-  const [sortRules, setSortRules] = useState([]);
+  const [sortRules, setSortRules] = useState(() => {
+    try {
+      const saved = localStorage.getItem('dictionary_sortRules');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [bulkActionType, setBulkActionType] = useState('status'); // 'status', 'star', 'date', 'delete', 'practice'
   const [bulkStatusValue, setBulkStatusValue] = useState('Yeni');
@@ -1687,6 +1710,7 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
 
   // Flag to prevent saving before settings are loaded from Firestore
   const settingsLoaded = React.useRef(false);
+  const isRemoteUpdateRef = React.useRef(false);
 
   // Load settings from Firestore in real-time when authUser changes
   useEffect(() => {
@@ -1699,9 +1723,11 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
     const unsubscribe = onSnapshot(settingsDocRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
+        isRemoteUpdateRef.current = true;
         
         // Deep comparison checks to prevent state-update loops
         if (data.sortRules) {
+          safeSetItem('dictionary_sortRules', JSON.stringify(data.sortRules));
           setSortRules(prev => {
             if (JSON.stringify(prev) !== JSON.stringify(data.sortRules)) {
               return data.sortRules;
@@ -1710,9 +1736,45 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
           });
         }
         if (data.filters) {
+          safeSetItem('dictionary_filters', JSON.stringify(data.filters));
           setFilters(prev => {
             if (JSON.stringify(prev) !== JSON.stringify(data.filters)) {
               return data.filters;
+            }
+            return prev;
+          });
+        }
+        if (data.searchQuery !== undefined) {
+          safeSetItem('dictionary_searchQuery', data.searchQuery);
+          setSearchQuery(prev => prev !== data.searchQuery ? data.searchQuery : prev);
+        }
+        if (data.filterLanguage !== undefined || data.activeLanguageFilter !== undefined) {
+          const rawLang = data.filterLanguage !== undefined ? data.filterLanguage : data.activeLanguageFilter;
+          const normLang = rawLang === 'all' ? '' : rawLang;
+          safeSetItem('activeLanguageFilter', normLang);
+          setActiveLanguageFilter(prev => prev !== normLang ? normLang : prev);
+        }
+        if (data.filterStarredOnly !== undefined || data.showOnlyStarred !== undefined) {
+          const starredVal = data.filterStarredOnly !== undefined ? data.filterStarredOnly : data.showOnlyStarred;
+          safeSetItem('showOnlyStarred', JSON.stringify(starredVal));
+          setShowOnlyStarred(prev => prev !== starredVal ? starredVal : prev);
+        }
+        if (data.filterStatus !== undefined || data.quickStatusFilter !== undefined) {
+          const statusVal = data.filterStatus !== undefined ? data.filterStatus : data.quickStatusFilter;
+          let normStatus = '';
+          const lower = (statusVal || '').toLowerCase();
+          if (lower === 'yeni') normStatus = 'Yeni';
+          else if (lower === 'ogreniyor' || lower === 'öğreniyor') normStatus = 'Öğreniyor';
+          else if (lower === 'ogrendi' || lower === 'öğrendi') normStatus = 'Öğrendi';
+          safeSetItem('quickStatusFilter', normStatus);
+          setQuickStatusFilter(prev => prev !== normStatus ? normStatus : prev);
+        }
+        if (data.filterListId !== undefined) {
+          setFilters(prev => {
+            if (prev.listId !== data.filterListId) {
+              const updated = { ...prev, listId: data.filterListId };
+              safeSetItem('dictionary_filters', JSON.stringify(updated));
+              return updated;
             }
             return prev;
           });
@@ -1745,6 +1807,10 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
         } else {
           setPracticeOptions(prev => prev || {});
         }
+
+        setTimeout(() => {
+          isRemoteUpdateRef.current = false;
+        }, 500);
       } else {
         setPracticeOptions(prev => prev || {});
       }
@@ -1824,21 +1890,35 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
     }
   }, [wordsPerPage, safeSetItem]);
 
-  // Save sortRules to Firestore when they change
+  // Save sortRules, filters and active dictionary states to Firestore when they change
   useEffect(() => {
     if (!isConfigMissing && settingsLoaded.current && authUser) {
-      setDoc(doc(db, 'users', authUser.uid, 'settings', 'app'), { sortRules }, { merge: true }).catch(() => { });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortRules]);
+      if (isRemoteUpdateRef.current) {
+        return;
+      }
+      safeSetItem('dictionary_sortRules', JSON.stringify(sortRules));
+      safeSetItem('dictionary_filters', JSON.stringify(filters));
+      safeSetItem('dictionary_searchQuery', searchQuery);
+      safeSetItem('activeLanguageFilter', activeLanguageFilter);
+      safeSetItem('showOnlyStarred', JSON.stringify(showOnlyStarred));
+      safeSetItem('quickStatusFilter', quickStatusFilter);
 
-  // Save filters to Firestore when they change
-  useEffect(() => {
-    if (!isConfigMissing && settingsLoaded.current && authUser) {
-      setDoc(doc(db, 'users', authUser.uid, 'settings', 'app'), { filters }, { merge: true }).catch(() => { });
+      const iosStatus = quickStatusFilter === 'Yeni' ? 'yeni' : (quickStatusFilter === 'Öğreniyor' ? 'ogreniyor' : (quickStatusFilter === 'Öğrendi' ? 'ogrendi' : 'all'));
+      const payload = {
+        filters,
+        sortRules,
+        activeLanguageFilter,
+        filterLanguage: activeLanguageFilter || 'all',
+        showOnlyStarred,
+        filterStarredOnly: showOnlyStarred,
+        quickStatusFilter,
+        filterStatus: iosStatus,
+        searchQuery,
+        filterListId: filters.listId || ''
+      };
+      setDoc(doc(db, 'users', authUser.uid, 'settings', 'app'), payload, { merge: true }).catch(() => { });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters]);
+  }, [sortRules, filters, activeLanguageFilter, showOnlyStarred, quickStatusFilter, searchQuery, authUser, safeSetItem]);
 
   // Save practiceOptions to Firestore when they change
   useEffect(() => {
@@ -1978,9 +2058,12 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
       const qWords = query(collection(db, 'words'), where('userId', '==', user.uid));
       const snapWords = await getDocs(qWords);
       const fetchedWords = snapWords.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => {
-        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-        return dateB - dateA;
+        const dateA = parseDate(a.createdAt);
+        const dateB = parseDate(b.createdAt);
+        const timeA = dateA ? dateA.getTime() : 0;
+        const timeB = dateB ? dateB.getTime() : 0;
+        if (timeA !== timeB) return timeB - timeA;
+        return (a.term || '').localeCompare(b.term || '', 'tr');
       });
       const finalWords = forceOverwrite 
         ? fetchedWords 
@@ -2727,9 +2810,12 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
           const qWords = query(collection(db, 'words'), where('userId', '==', authUser.uid));
           const snapWords = await getDocs(qWords);
           remoteWords = snapWords.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => {
-            const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-            const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-            return dateB - dateA;
+            const dateA = parseDate(a.createdAt);
+            const dateB = parseDate(b.createdAt);
+            const timeA = dateA ? dateA.getTime() : 0;
+            const timeB = dateB ? dateB.getTime() : 0;
+            if (timeA !== timeB) return timeB - timeA;
+            return (a.term || '').localeCompare(b.term || '', 'tr');
           });
         }
         
@@ -4574,14 +4660,24 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
           aVal = aVal ? 1 : 0;
           bVal = bVal ? 1 : 0;
         } else if (typeof aVal === 'string') {
-          aVal = aVal.toLowerCase();
+          aVal = (aVal || '').toLowerCase();
           bVal = (bVal || '').toLowerCase();
         }
 
         if (aVal < bVal) return rule.direction === 'asc' ? -1 : 1;
         if (aVal > bVal) return rule.direction === 'asc' ? 1 : -1;
       }
-      return 0;
+      return (a.term || '').localeCompare(b.term || '', 'tr');
+    });
+  } else {
+    // Default sorting when sortRules is empty: createdAt desc, then term asc
+    processedWords.sort((a, b) => {
+      const aDate = parseDate(a.createdAt);
+      const bDate = parseDate(b.createdAt);
+      const aTime = aDate ? aDate.getTime() : 0;
+      const bTime = bDate ? bDate.getTime() : 0;
+      if (aTime !== bTime) return bTime - aTime;
+      return (a.term || '').localeCompare(b.term || '', 'tr');
     });
   }
 
@@ -4604,9 +4700,12 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
     return words
       .filter(w => w._status !== 'deleted' && w.createdAt)
       .sort((a, b) => {
-        const dateA = parseDate(a.createdAt) || 0;
-        const dateB = parseDate(b.createdAt) || 0;
-        return dateB - dateA;
+        const dateA = parseDate(a.createdAt);
+        const dateB = parseDate(b.createdAt);
+        const timeA = dateA ? dateA.getTime() : 0;
+        const timeB = dateB ? dateB.getTime() : 0;
+        if (timeA !== timeB) return timeB - timeA;
+        return (a.term || '').localeCompare(b.term || '', 'tr');
       })
       .slice(0, 5);
   }, [words]);

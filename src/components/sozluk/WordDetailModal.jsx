@@ -518,6 +518,11 @@ function WordDetailModal({
                                             eventKey={status.key}
                                             active={word.learningStatus === status.key || (!word.learningStatus && status.key === 'Yeni')}
                                             className="d-flex align-items-center gap-3 py-2 px-3 transition-all"
+                                            onClick={() => {
+                                                if (onUpdateStatus && word) {
+                                                    onUpdateStatus(word.id, status.key);
+                                                }
+                                            }}
                                         >
                                             <div className={`rounded-circle bg-${status.bg} bg-opacity-10 d-flex align-items-center justify-content-center`} style={{ width: '28px', height: '28px' }}>
                                                 <i className={`bi ${status.icon} text-${status.bg}`}></i>
