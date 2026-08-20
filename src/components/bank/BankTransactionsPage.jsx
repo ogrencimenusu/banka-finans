@@ -68,7 +68,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Layers,
-  Sigma
+  Sigma,
+  FileSpreadsheet,
+  ExternalLink
 } from 'lucide-react';
 
 // Dnd Kit Imports
@@ -540,57 +542,922 @@ const LocalTextInput = ({ value, onSave, onCancel, suggestions = [], ...props })
   );
 };
 
-const ImportModal = ({ show, onHide, onImport }) => {
+// ── BANKA EXPORT MODAL ──────────────────────────────────────────
+const BANK_EXPORT_PROPERTIES = [
+  { id: 'date', label: 'Tarih' },
+  { id: 'title', label: 'İşlem Adı' },
+  { id: 'quickActions', label: 'Hızlı İşlemler' },
+  { id: 'type', label: 'İşlem Türü' },
+  { id: 'amount', label: 'Tutar' },
+  { id: 'receiptUrl', label: 'Dekont Linki' },
+  { id: 'bankId', label: 'Banka' },
+];
+
+const BankMultiSelect = ({ options, selectedIds, onChange, allLabel = 'Tümü', placeholder = 'Ara...' }) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [search, setSearch] = React.useState('');
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) { setIsOpen(false); setSearch(''); } };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = React.useMemo(() => !search.trim() ? options : options.filter(o => (o.name || '').toLowerCase().includes(search.toLowerCase())), [options, search]);
+  const toggle = (id) => onChange(selectedIds.includes(id) ? selectedIds.filter(v => v !== id) : [...selectedIds, id]);
+  const displayText = React.useMemo(() => {
+    if (selectedIds.length === 0) return `${allLabel} (${options.length})`;
+    if (selectedIds.length === 1) { const item = options.find(o => o.id === selectedIds[0]); return item ? item.name : allLabel; }
+    return `${selectedIds.length} seçildi`;
+  }, [selectedIds, options, allLabel]);
+
+  return (
+    <div style={{ position: 'relative' }} ref={ref}>
+      <button type="button" onClick={() => setIsOpen(v => !v)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left', background: selectedIds.length > 0 ? '#ede9fe' : '#f4f4f5', color: selectedIds.length > 0 ? '#5b21b6' : '#71717a', border: `1px solid ${selectedIds.length > 0 ? '#c4b5fd' : '#e4e4e7'}`, fontSize: '12px', fontWeight: selectedIds.length > 0 ? 600 : 400, transition: 'all 0.12s' }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '6px' }}>{displayText}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+          {selectedIds.length > 0 && <span onClick={e => { e.stopPropagation(); onChange([]); }} style={{ width: '15px', height: '15px', borderRadius: '50%', background: '#c4b5fd', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><X size={9} color="#5b21b6" strokeWidth={3} /></span>}
+          <ChevronDown size={12} color="#71717a" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+        </div>
+      </button>
+      {isOpen && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 10055, background: '#fff', borderRadius: '10px', border: '1px solid #e4e4e7', boxShadow: '0 12px 28px -4px rgba(0,0,0,0.10)' }}>
+          <div style={{ padding: '8px 8px 6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', background: '#f4f4f5', borderRadius: '6px', padding: '5px 8px' }}>
+              <Search size={11} color="#a1a1aa" style={{ marginRight: '6px', flexShrink: 0 }} />
+              <input autoFocus type="text" placeholder={placeholder} value={search} onChange={e => setSearch(e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', color: '#18181b' }} />
+              {search && <X size={10} color="#a1a1aa" style={{ cursor: 'pointer' }} onClick={() => setSearch('')} />}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', padding: '0 2px', fontSize: '10.5px' }}>
+              <span style={{ color: '#6366f1', cursor: 'pointer' }} onClick={() => onChange([])}>Tümü ({options.length})</span>
+              {selectedIds.length > 0 && <span style={{ color: '#ef4444', cursor: 'pointer' }} onClick={() => onChange([])}>Temizle</span>}
+            </div>
+          </div>
+          <div style={{ maxHeight: '165px', overflowY: 'auto', borderTop: '1px solid #e4e4e7' }}>
+            {filtered.length === 0 ? <div style={{ padding: '16px', textAlign: 'center', color: '#a1a1aa', fontSize: '12px' }}>Sonuç bulunamadı</div>
+              : filtered.map(opt => {
+                const isSel = selectedIds.includes(opt.id);
+                return (
+                  <div key={opt.id} onClick={() => toggle(opt.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', cursor: 'pointer', fontSize: '12px', background: isSel ? '#ede9fe' : 'transparent', color: isSel ? '#5b21b6' : '#374151', fontWeight: isSel ? 600 : 400, borderBottom: '1px solid #f4f4f5', transition: 'background 0.1s' }}>
+                    <span>{opt.name}</span>
+                    <div style={{ width: '13px', height: '13px', borderRadius: '3px', border: isSel ? 'none' : '1.5px solid #d1d5db', background: isSel ? '#7c3aed' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {isSel && <Check size={9} color="white" strokeWidth={3.5} />}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const BankExportModal = ({ show, onHide, transactions, banks, typeTags, quickActionTags, config }) => {
+  const [selectedFields, setSelectedFields] = React.useState(BANK_EXPORT_PROPERTIES.map(p => p.id));
+  const [startDate, setStartDate] = React.useState('');
+  const [endDate, setEndDate] = React.useState('');
+  const [selectedBanks, setSelectedBanks] = React.useState([]);
+  const [selectedTypes, setSelectedTypes] = React.useState([]);
+  const [selectedQuickActions, setSelectedQuickActions] = React.useState([]);
+  const [activePreset, setActivePreset] = React.useState('all');
+  const [delimiter, setDelimiter] = React.useState(';');
+  const [copied, setCopied] = React.useState(false);
+
+  React.useEffect(() => { if (show) setCopied(false); }, [show]);
+
+  const applyDatePreset = (preset) => {
+    setActivePreset(preset);
+    const today = new Date();
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const todayStr = fmt(today);
+    if (preset === 'all') { setStartDate(''); setEndDate(''); }
+    else if (preset === 'thisMonth') { setStartDate(fmt(new Date(today.getFullYear(), today.getMonth(), 1))); setEndDate(todayStr); }
+    else if (preset === 'thisYear') { setStartDate(fmt(new Date(today.getFullYear(), 0, 1))); setEndDate(todayStr); }
+    else if (preset === 'last30') { const d = new Date(); d.setDate(today.getDate() - 30); setStartDate(fmt(d)); setEndDate(todayStr); }
+    else if (preset === 'last90') { const d = new Date(); d.setDate(today.getDate() - 90); setStartDate(fmt(d)); setEndDate(todayStr); }
+  };
+
+  const typeTagOptions = React.useMemo(() => (typeTags || []).map(t => ({ id: t.id, name: t.name })), [typeTags]);
+  const quickActionOptions = React.useMemo(() => (quickActionTags || []).map(t => ({ id: t.id, name: t.name })), [quickActionTags]);
+
+  const filteredData = React.useMemo(() => {
+    if (!transactions || !Array.isArray(transactions)) return [];
+    const filtered = transactions.filter(t => {
+      if (startDate && t.date && t.date < startDate) return false;
+      if (endDate && t.date && t.date > endDate) return false;
+      if (selectedBanks.length > 0 && !selectedBanks.includes(t.bankId)) return false;
+      if (selectedTypes.length > 0 && !selectedTypes.includes(t.type)) return false;
+      if (selectedQuickActions.length > 0) {
+        const tQAs = Array.isArray(t.quickActions) ? t.quickActions : (t.quickActions ? [t.quickActions] : []);
+        if (!tQAs.some(id => selectedQuickActions.includes(id))) return false;
+      }
+      return true;
+    });
+    return filtered.sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return b.date.localeCompare(a.date);
+    });
+  }, [transactions, startDate, endDate, selectedBanks, selectedTypes, selectedQuickActions]);
+
+  const getPropLabel = (id) => BANK_EXPORT_PROPERTIES.find(p => p.id === id)?.label || id;
+
+  const formatTrDate = (dateStr) => {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    return `${d?.padStart(2,'0')}.${m?.padStart(2,'0')}.${y}`;
+  };
+
+  const formatTrAmount = (val) => {
+    if (val === undefined || val === null || val === '') return '0,00';
+    let num = typeof val === 'number' ? val : parseFloat((val.toString().replace(/\./g,'').replace(',','.')));
+    if (isNaN(num)) return '0,00';
+    return num.toFixed(2).replace('.', ',');
+  };
+
+  const getFieldValue = (t, id) => {
+    switch (id) {
+      case 'date': return formatTrDate(t.date);
+      case 'title': return t.title || '';
+      case 'quickActions': {
+        const ids = Array.isArray(t.quickActions) ? t.quickActions : (t.quickActions ? [t.quickActions] : []);
+        return ids.map(id => (quickActionTags || []).find(tag => tag.id === id || tag.name === id)?.name || id).filter(Boolean).join(', ');
+      }
+      case 'type': { const tag = (typeTags || []).find(tt => tt.id === t.type || tt.name === t.type); return tag ? tag.name : (t.type || ''); }
+      case 'amount': return formatTrAmount(t.amount);
+      case 'receiptUrl': return t.receiptUrl || '';
+      case 'bankId': { const bank = (banks || []).find(b => b.id === t.bankId); return bank ? bank.name : (t.bankId || ''); }
+      default: return t[id] ?? '';
+    }
+  };
+
+  const generateCSV = () => {
+    const sep = delimiter;
+    const header = selectedFields.map(id => `"${getPropLabel(id).replace(/"/g,'""')}"`).join(sep);
+    const rows = filteredData.map(t => selectedFields.map(id => `"${(getFieldValue(t, id) ?? '').toString().replace(/"/g,'""')}"`).join(sep));
+    return '\uFEFF' + [header, ...rows].join('\r\n');
+  };
+
+  const generateTSV = () => {
+    const header = selectedFields.map(id => getPropLabel(id)).join('\t');
+    const rows = filteredData.map(t => selectedFields.map(id => (getFieldValue(t, id) ?? '').toString()).join('\t'));
+    return [header, ...rows].join('\n');
+  };
+
+  const handleDownload = () => {
+    if (!filteredData.length || !selectedFields.length) return;
+    const blob = new Blob([generateCSV()], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `banka_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  const handleCopy = async () => {
+    if (!filteredData.length || !selectedFields.length) return;
+    try { await navigator.clipboard.writeText(generateTSV()); setCopied(true); setTimeout(() => setCopied(false), 3500); }
+    catch (err) { console.error(err); }
+  };
+
+  const previewData = filteredData.slice(0, 5);
+  const btnDisabled = !filteredData.length || !selectedFields.length;
+  const PRESETS = [{ id: 'all', label: 'Tümü' }, { id: 'thisMonth', label: 'Bu Ay' }, { id: 'thisYear', label: 'Bu Yıl' }, { id: 'last30', label: 'Son 30G' }, { id: 'last90', label: 'Son 90G' }];
+
+  const SB = '#ffffff'; const SBB = '#f4f4f5'; const SBT = '#18181b'; const SBM = '#71717a'; const SBC = '#e4e4e7';
+
+  return (
+    <Modal show={show} onHide={onHide} size="xl" centered>
+      <div style={{ display: 'flex', height: '86vh', maxHeight: '700px', borderRadius: '16px', overflow: 'hidden', background: '#fff' }}>
+        {/* SIDEBAR */}
+        <div style={{ width: '252px', flexShrink: 0, background: SB, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${SBC}` }}>
+          <div style={{ padding: '18px 18px 14px', borderBottom: `1px solid ${SBC}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '9px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <FileSpreadsheet size={17} color="#fff" />
+              </div>
+              <div>
+                <div style={{ fontSize: '13.5px', fontWeight: 700, color: SBT, lineHeight: 1.2 }}>Dışa Aktar</div>
+                <div style={{ fontSize: '10.5px', color: SBM, marginTop: '1px' }}>Filtrele & İndir</div>
+              </div>
+            </div>
+            <div style={{ padding: '10px 12px', background: filteredData.length > 0 ? '#ede9fe' : SBB, borderRadius: '10px', border: `1px solid ${filteredData.length > 0 ? '#c4b5fd' : SBC}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '11px', color: SBM }}>Eşleşen kayıt</div>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: filteredData.length > 0 ? '#6d28d9' : '#a1a1aa', lineHeight: 1 }}>{filteredData.length}</div>
+            </div>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 700, color: SBM, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: '7px' }}>Tarih Aralığı</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '7px' }}>
+                <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setActivePreset('custom'); }} style={{ width: '100%', background: SBB, color: startDate ? SBT : SBM, border: `1px solid ${SBC}`, borderRadius: '7px', padding: '6px 10px', fontSize: '12px', outline: 'none' }} />
+                <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setActivePreset('custom'); }} style={{ width: '100%', background: SBB, color: endDate ? SBT : SBM, border: `1px solid ${SBC}`, borderRadius: '7px', padding: '6px 10px', fontSize: '12px', outline: 'none' }} />
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                {PRESETS.map(p => { const isActive = activePreset === p.id && (p.id !== 'all' || (!startDate && !endDate)); return (<button key={p.id} type="button" onClick={() => applyDatePreset(p.id)} style={{ fontSize: '10.5px', padding: '3px 9px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: isActive ? 700 : 400, background: isActive ? '#4f46e5' : SBB, color: isActive ? '#fff' : SBM, transition: 'all 0.12s' }}>{p.label}</button>); })}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 700, color: SBM, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: '7px' }}>Bankalar</div>
+              <BankMultiSelect options={banks || []} selectedIds={selectedBanks} onChange={setSelectedBanks} allLabel="Tüm Bankalar" placeholder="Banka ara..." />
+            </div>
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 700, color: SBM, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: '7px' }}>İşlem Türü</div>
+              <BankMultiSelect options={typeTagOptions} selectedIds={selectedTypes} onChange={setSelectedTypes} allLabel="Tüm Türler" placeholder="Tür ara..." />
+            </div>
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 700, color: SBM, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: '7px' }}>Hızlı İşlemler</div>
+              <BankMultiSelect options={quickActionOptions} selectedIds={selectedQuickActions} onChange={setSelectedQuickActions} allLabel="Tüm Hızlı İşlemler" placeholder="Hızlı işlem ara..." />
+            </div>
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 700, color: SBM, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: '7px' }}>CSV Ayırıcı</div>
+              <select value={delimiter} onChange={e => setDelimiter(e.target.value)} style={{ width: '100%', background: SBB, color: SBT, border: `1px solid ${SBC}`, borderRadius: '7px', padding: '6px 10px', fontSize: '12px', outline: 'none', cursor: 'pointer' }}>
+                <option value=";">Noktalı Virgül (;) — Excel / TR</option>
+                <option value=",">Virgül (,) — Standart CSV</option>
+                <option value={"\t"}>Sekme (Tab) — TSV</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* MAIN PANEL */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 22px 14px', borderBottom: '1.5px solid #f3f4f6', flexShrink: 0 }}>
+            <div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>Banka İşlemlerini Dışa Aktar</div>
+              <div style={{ fontSize: '11.5px', color: '#9ca3af', marginTop: '1px' }}>Excel & Google E-Tablo · Tarih: Gün.Ay.Yıl · Sayı: virgüllü ondalık</div>
+            </div>
+            <button type="button" onClick={onHide} style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6b7280', flexShrink: 0 }}><X size={15} /></button>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 22px' }}>
+            {copied && (
+              <div style={{ marginBottom: '14px', padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <CheckCircle2 size={16} color="#16a34a" />
+                  <span style={{ fontSize: '12.5px', color: '#15803d', fontWeight: 600 }}>Panoya kopyalandı — Google E-Tablo'da <kbd style={{ background: '#16a34a', color: '#fff', padding: '1px 5px', borderRadius: '4px', fontSize: '11px' }}>Ctrl+V</kbd></span>
+                </div>
+                <a href="https://sheets.new" target="_blank" rel="noreferrer" style={{ fontSize: '11.5px', fontWeight: 600, color: '#16a34a', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}><ExternalLink size={12} /> sheets.new</a>
+              </div>
+            )}
+
+            {/* Column Picker */}
+            <div style={{ marginBottom: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827' }}>Dışa Aktarılacak Sütunlar</span>
+                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 9px', borderRadius: '20px', background: '#ede9fe', color: '#6d28d9' }}>{selectedFields.length}/{BANK_EXPORT_PROPERTIES.length}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  {[{ label: 'Tümünü Seç', fn: () => setSelectedFields(BANK_EXPORT_PROPERTIES.map(p => p.id)) }, { label: 'Temizle', fn: () => setSelectedFields([]) }].map(b => (
+                    <button key={b.label} type="button" onClick={b.fn} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11.5px', color: '#6366f1', fontWeight: 500, padding: 0 }}>{b.label}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {BANK_EXPORT_PROPERTIES.map(prop => {
+                  const isSel = selectedFields.includes(prop.id);
+                  return (
+                    <button key={prop.id} type="button" onClick={() => setSelectedFields(prev => prev.includes(prop.id) ? prev.filter(f => f !== prop.id) : [...prev, prop.id])}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 11px', borderRadius: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: isSel ? 600 : 400, background: isSel ? '#ede9fe' : '#f9fafb', color: isSel ? '#5b21b6' : '#9ca3af', border: `1.5px solid ${isSel ? '#c4b5fd' : '#f3f4f6'}`, transition: 'all 0.12s' }}>
+                      <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: isSel ? '#7c3aed' : '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {isSel && <Check size={8} color="white" strokeWidth={4} />}
+                      </div>
+                      {prop.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827' }}>Önizleme</span>
+                <span style={{ fontSize: '12px', color: '#9ca3af' }}>{filteredData.length > 0 ? `${filteredData.length} kayıttan ilk 5 · Yatay kaydırma desteklenir` : 'Kayıt bulunamadı'}</span>
+              </div>
+              <div style={{ border: '1px solid #f3f4f6', borderRadius: '12px', overflow: 'hidden' }}>
+                <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '210px', cursor: 'grab' }}
+                  onMouseDown={e => {
+                    const el = e.currentTarget; el.style.cursor = 'grabbing';
+                    const startX = e.clientX + el.scrollLeft;
+                    const onMove = (me) => { el.scrollLeft = startX - me.clientX; };
+                    const onUp = () => { el.style.cursor = 'grab'; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+                    document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
+                  }}>
+                  {filteredData.length === 0 ? (
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>Seçilen filtrelere uygun kayıt bulunamadı.</div>
+                  ) : selectedFields.length === 0 ? (
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>En az bir sütun seçiniz.</div>
+                  ) : (
+                    <table style={{ borderCollapse: 'collapse', width: 'max-content', minWidth: '100%', fontVariantNumeric: 'tabular-nums' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #f1f5f9' }}>
+                          <th style={{ padding: '9px 14px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#f8fafc' }}>#</th>
+                          {selectedFields.map(id => <th key={id} style={{ padding: '9px 14px', textAlign: id === 'amount' ? 'right' : 'left', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#f8fafc' }}>{getPropLabel(id)}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewData.map((t, idx) => (
+                          <tr key={t.id || idx} style={{ borderBottom: '1px solid #f8fafc', background: '#fff' }}>
+                            <td style={{ padding: '8px 14px', color: '#cbd5e1', fontSize: '12px', fontWeight: 500 }}>{idx + 1}</td>
+                            {selectedFields.map(id => {
+                              const val = getFieldValue(t, id);
+                              let cell;
+                              if (id === 'amount') {
+                                const n = parseFloat(val.replace(',', '.'));
+                                cell = <span style={{ fontWeight: 700, fontSize: '12.5px', color: n >= 0 ? '#16a34a' : '#dc2626' }}>{val} ₺</span>;
+                              } else if (id === 'type') {
+                                cell = <span style={{ display: 'inline-flex', padding: '2px 9px', borderRadius: '20px', fontSize: '11.5px', fontWeight: 600, background: '#f3f4f6', color: '#374151' }}>{val}</span>;
+                              } else if (id === 'quickActions') {
+                                cell = val ? <span style={{ display: 'inline-flex', padding: '2px 9px', borderRadius: '20px', fontSize: '11.5px', fontWeight: 500, background: '#ede9fe', color: '#6d28d9', whiteSpace: 'nowrap' }}>{val}</span> : <span style={{ color: '#cbd5e1' }}>—</span>;
+                              } else if (id === 'receiptUrl') {
+                                cell = val ? (
+                                  <a href={val} target="_blank" rel="noreferrer" style={{ fontSize: '11.5px', color: '#2563eb', textDecoration: 'none', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block', verticalAlign: 'middle' }}>
+                                    {val}
+                                  </a>
+                                ) : <span style={{ color: '#cbd5e1' }}>—</span>;
+                              } else if (id === 'date') {
+                                cell = <span style={{ fontSize: '12px', color: '#6b7280', fontFamily: 'monospace' }}>{val}</span>;
+                              } else if (id === 'bankId') {
+                                cell = <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#4f46e5' }}>{val}</span>;
+                              } else {
+                                cell = <span style={{ fontSize: '12.5px', color: '#374151' }}>{val}</span>;
+                              }
+                              return <td key={id} style={{ padding: '8px 14px', textAlign: id === 'amount' ? 'right' : 'left', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>{cell}</td>;
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 22px', borderTop: '1.5px solid #f3f4f6', flexShrink: 0 }}>
+            <a href="https://sheets.new" target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: '#9ca3af', textDecoration: 'none', fontWeight: 500 }}><ExternalLink size={13} color="#22c55e" /> sheets.new Aç</a>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button type="button" onClick={onHide} style={{ padding: '8px 18px', borderRadius: '9px', border: '1px solid #e5e7eb', background: '#fff', fontSize: '13px', color: '#374151', fontWeight: 500, cursor: 'pointer' }}>Kapat</button>
+              <button type="button" onClick={handleCopy} disabled={btnDisabled} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', borderRadius: '9px', border: 'none', background: btnDisabled ? '#e5e7eb' : '#4f46e5', color: btnDisabled ? '#9ca3af' : '#fff', fontSize: '13px', fontWeight: 600, cursor: btnDisabled ? 'not-allowed' : 'pointer', transition: 'all 0.12s' }}>
+                <Copy size={13} /> Kopyala ({filteredData.length})
+              </button>
+              <button type="button" onClick={handleDownload} disabled={btnDisabled} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', borderRadius: '9px', border: 'none', background: btnDisabled ? '#e5e7eb' : '#059669', color: btnDisabled ? '#9ca3af' : '#fff', fontSize: '13px', fontWeight: 600, cursor: btnDisabled ? 'not-allowed' : 'pointer', transition: 'all 0.12s' }}>
+                <FileSpreadsheet size={14} /> CSV İndir ({filteredData.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+// ────────────────────────────────────────────────────────────────
+
+const normalizeHeaderKey = (h) => {
+  return (h || '')
+    .toLocaleLowerCase('tr-TR')
+    .replace(/i̇/g, 'i')
+    .replace(/ı/g, 'i')
+    .replace(/ş/g, 's')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/[^a-z0-9]/g, '');
+};
+
+const mapHeaderToField = (normalized) => {
+  if (/^(tarih|date|zaman|tarihi)$/.test(normalized)) return 'date';
+  if (/^(islemadi|isleminadi|islem|baslik|aciklama|title|description|name)$/.test(normalized)) return 'title';
+  if (/^(hizliislemler|hizliislem|etiket|etiketler|quickactions|tags|tag)$/.test(normalized)) return 'quickActions';
+  if (/^(islemturu|islemtur|tur|turu|kategori|type|transactiontype)$/.test(normalized)) return 'typeName';
+  if (/^(tutar|miktar|amount|fiyat|bakiye|tutari|toplam)$/.test(normalized)) return 'amount';
+  if (/^(dekontlinki|dekontlink|dekonturl|dekont|receipt|receipturl|link|url)$/.test(normalized)) return 'receiptUrl';
+  if (/^(banka|bankaadi|bank|kurum|bankalar)$/.test(normalized)) return 'bankName';
+  return null;
+};
+
+const normalizeImportDate = (val) => {
+  if (!val) return '';
+  const s = val.trim();
+  const dmyMatch = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3].length === 2 ? '20' + dmyMatch[3] : dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  const ymdMatch = s.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = ymdMatch[2].padStart(2, '0');
+    const day = ymdMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return s;
+};
+
+const normalizeImportAmount = (val) => {
+  if (val === undefined || val === null || val === '') return '0,00';
+  let s = val.toString().trim()
+    .replace(/₺/g, '')
+    .replace(/TL/gi, '')
+    .replace(/\s/g, '');
+  if (!s) return '0,00';
+
+  if (s.includes(',') && s.includes('.')) {
+    if (s.indexOf('.') < s.indexOf(',')) {
+      s = s.replace(/\./g, '');
+    } else {
+      s = s.replace(/,/g, '').replace('.', ',');
+    }
+  } else if (s.includes('.')) {
+    const parts = s.split('.');
+    if (parts.length === 2 && parts[1].length <= 2) {
+      s = parts[0] + ',' + parts[1];
+    } else {
+      s = s.replace(/\./g, '');
+    }
+  }
+  return s;
+};
+
+const normalizeImportQuickActions = (val) => {
+  if (!val) return [];
+  if (Array.isArray(val)) return val.map(v => (v || '').trim()).filter(Boolean);
+  return val.toString().split(/[,;]/).map(v => v.trim()).filter(Boolean);
+};
+
+const processImportMatrix = (matrix, formatName) => {
+  if (!matrix || matrix.length === 0) return { items: [], format: formatName, detectedHeaders: [], hasHeaderRow: false };
+
+  const firstRow = matrix[0];
+  const headerMap = [];
+  let headerMatchCount = 0;
+
+  firstRow.forEach((col, idx) => {
+    const norm = normalizeHeaderKey(col);
+    const field = mapHeaderToField(norm);
+    if (field) {
+      headerMap[idx] = field;
+      headerMatchCount++;
+    }
+  });
+
+  const hasHeaderRow = headerMatchCount >= 2 || (firstRow.length <= 3 && headerMatchCount >= 1);
+  const dataRows = hasHeaderRow ? matrix.slice(1) : matrix;
+
+  const effectiveMap = hasHeaderRow ? headerMap : [];
+  if (!hasHeaderRow) {
+    const colCount = Math.max(...matrix.map(r => r.length));
+    if (colCount >= 7) {
+      ['date', 'title', 'quickActions', 'typeName', 'amount', 'receiptUrl', 'bankName'].forEach((f, idx) => {
+        effectiveMap[idx] = f;
+      });
+    } else if (colCount === 6) {
+      ['date', 'title', 'typeName', 'amount', 'receiptUrl', 'bankName'].forEach((f, idx) => {
+        effectiveMap[idx] = f;
+      });
+    } else if (colCount === 5) {
+      ['date', 'title', 'typeName', 'amount', 'bankName'].forEach((f, idx) => {
+        effectiveMap[idx] = f;
+      });
+    } else if (colCount === 4) {
+      ['date', 'title', 'typeName', 'amount'].forEach((f, idx) => {
+        effectiveMap[idx] = f;
+      });
+    } else {
+      ['date', 'title', 'amount'].forEach((f, idx) => {
+        effectiveMap[idx] = f;
+      });
+    }
+  }
+
+  const items = dataRows.map((row) => {
+    const item = {
+      date: '',
+      title: '',
+      quickActions: [],
+      typeName: '',
+      amount: '',
+      receiptUrl: '',
+      bankName: ''
+    };
+
+    row.forEach((val, idx) => {
+      const field = effectiveMap[idx];
+      if (!field) return;
+      if (field === 'date') item.date = normalizeImportDate(val);
+      else if (field === 'amount') item.amount = normalizeImportAmount(val);
+      else if (field === 'quickActions') item.quickActions = normalizeImportQuickActions(val);
+      else if (field === 'typeName') item.typeName = (val || '').trim();
+      else if (field === 'bankName') item.bankName = (val || '').trim();
+      else if (field === 'receiptUrl') item.receiptUrl = (val || '').trim();
+      else if (field === 'title') item.title = (val || '').trim();
+    });
+
+    if (!item.date) item.date = new Date().toISOString().split('T')[0];
+
+    const hasContent = item.title || item.amount || item.bankName || item.typeName;
+    return hasContent ? item : null;
+  }).filter(Boolean);
+
+  const detectedHeaders = effectiveMap.filter(Boolean);
+  return { items, format: formatName, detectedHeaders, hasHeaderRow };
+};
+
+const parseBankImportText = (rawText) => {
+  if (!rawText || !rawText.trim()) return { items: [], format: '', detectedHeaders: [], hasHeaderRow: false };
+
+  const text = rawText.trim();
+
+  // 1. HTML tablosu kontrolü
+  if (text.includes('<tr') || text.includes('<td')) {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(`<table>${text}</table>`, 'text/html');
+      const trs = Array.from(doc.querySelectorAll('tr'));
+      if (trs.length > 0) {
+        const matrix = trs.map(tr => {
+          const cells = Array.from(tr.querySelectorAll('th, td'));
+          return cells.map(td => {
+            const link = td.querySelector('a');
+            return link ? (link.href || td.innerText.trim()) : td.innerText.trim();
+          });
+        }).filter(r => r.length > 0);
+
+        if (matrix.length > 0) {
+          return processImportMatrix(matrix, 'HTML Tablo');
+        }
+      }
+    } catch (e) {
+      console.warn('HTML parse error, text parsing devrede', e);
+    }
+  }
+
+  // 2. Metin ayrıştırma (TSV / CSV)
+  const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+  if (lines.length === 0) return { items: [], format: '', detectedHeaders: [], hasHeaderRow: false };
+
+  let tabCount = 0;
+  let semiCount = 0;
+  let commaCount = 0;
+  const sampleLines = lines.slice(0, 5);
+  sampleLines.forEach(l => {
+    tabCount += (l.match(/\t/g) || []).length;
+    semiCount += (l.match(/;/g) || []).length;
+    commaCount += (l.match(/,/g) || []).length;
+  });
+
+  let delimiter = '\t';
+  let formatName = 'Google E-Tablo / Excel (TSV)';
+  if (tabCount === 0) {
+    if (semiCount >= commaCount && semiCount > 0) {
+      delimiter = ';';
+      formatName = 'CSV (Noktalı Virgül)';
+    } else if (commaCount > 0) {
+      delimiter = ',';
+      formatName = 'CSV (Virgül)';
+    }
+  }
+
+  const parseLine = (line, delim) => {
+    if (delim === '\t') {
+      return line.split('\t').map(c => c.replace(/^"|"$/g, '').trim());
+    }
+    const result = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === delim && !inQuotes) {
+        result.push(cur.trim());
+        cur = '';
+      } else {
+        cur += char;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const matrix = lines.map(l => parseLine(l, delimiter)).filter(r => r.length > 0 && r.some(c => c.length > 0));
+  return processImportMatrix(matrix, formatName);
+};
+
+const FIELD_LABEL_MAP = {
+  date: 'Tarih',
+  title: 'İşlem Adı',
+  quickActions: 'Hızlı İşlemler',
+  typeName: 'İşlem Türü',
+  amount: 'Tutar',
+  receiptUrl: 'Dekont Linki',
+  bankName: 'Banka'
+};
+
+const ImportModal = ({ show, onHide, onImport, banks = [], typeTags = [], quickActionTags = [] }) => {
   const [text, setText] = React.useState('');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState('');
 
-  const handleProcess = () => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(`<table>${text}</table>`, 'text/html');
-    const rows = doc.querySelectorAll('tr');
+  const parsed = React.useMemo(() => parseBankImportText(text), [text]);
+  const { items, format, detectedHeaders } = parsed;
 
-    const results = Array.from(rows).map(row => {
-      const tds = row.querySelectorAll('td');
-      if (tds.length < 6) return null;
+  const handlePasteClipboard = async () => {
+    try {
+      const clipText = await navigator.clipboard.readText();
+      if (clipText) {
+        setText(clipText);
+        setErrorMessage('');
+      }
+    } catch (e) {
+      console.warn('Clipboard read error', e);
+    }
+  };
 
-      const dateStr = tds[0].innerText.trim();
-      const [d, m, y] = dateStr.split('.');
-      const formattedDate = `${y}-${m}-${d}`;
-
-      const amountStr = tds[1].innerText.trim()
-        .replace('₺', '')
-        .replace(/\./g, ''); // Sadece noktaları kaldır, virgül kalsın
-
-      const bankName = tds[2].innerText.trim();
-      const typeName = tds[3].innerText.trim();
-      const receiptUrl = tds[4].querySelector('a')?.href || '';
-      const title = tds[5].innerText.trim();
-
-      return { date: formattedDate, amount: amountStr, bankName, typeName, receiptUrl, title };
-    }).filter(Boolean);
-
-    onImport(results);
+  const handleClear = () => {
     setText('');
-    onHide();
+    setErrorMessage('');
+  };
+
+  const handleProcess = async () => {
+    if (!items || items.length === 0) {
+      setErrorMessage('İçe aktarılacak geçerli bir veri bulunamadı.');
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage('');
+    try {
+      await onImport(items);
+      setText('');
+      onHide();
+    } catch (err) {
+      console.error('Import error', err);
+      setErrorMessage('İçe aktarılırken bir hata oluştu: ' + (err.message || err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const formatDisplayDate = (dStr) => {
+    if (!dStr) return '';
+    const parts = dStr.split('-');
+    if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
+    return dStr;
   };
 
   return (
-    <Modal show={show} onHide={onHide} size="lg" className="glass-card">
-      <Modal.Header closeButton className="border-0">
-        <Modal.Title className="fw-bold">HTML Import</Modal.Title>
-      </Modal.Header>
-      <Modal.Body className="p-4">
-        <Form.Control
-          as="textarea"
-          rows={10}
-          className="glass-card p-3"
-          placeholder="Paste <tr>...</tr> rows here..."
-          value={text}
-          onChange={e => setText(e.target.value)}
-        />
-        <Button className="mt-3 w-100 rounded-pill py-2 fw-bold" onClick={handleProcess}>
-          Import Transactions
-        </Button>
-      </Modal.Body>
+    <Modal show={show} onHide={onHide} size="xl" centered>
+      <div style={{ background: '#fff', borderRadius: '16px', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
+        
+        {/* HEADER */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 22px 14px', borderBottom: '1.5px solid #f3f4f6', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Upload size={18} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: '#111827', lineHeight: 1.2 }}>Banka İşlemlerini İçe Aktar</div>
+              <div style={{ fontSize: '11.5px', color: '#9ca3af', marginTop: '2px' }}>
+                Google E-Tablolar, Excel, TSV, CSV veya HTML formatındaki verileri yapıştırın
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onHide}
+            style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6b7280', flexShrink: 0 }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* BODY */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          
+          {/* TEXTAREA CONTAINER */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#374151' }}>Veri Giriş Alanı</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={handlePasteClipboard}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: '11.5px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  <Clipboard size={12} /> Panodan Yapıştır
+                </button>
+                {text && (
+                  <button
+                    type="button"
+                    onClick={handleClear}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #e5e7eb', background: '#fff', color: '#ef4444', fontSize: '11.5px', fontWeight: 500, cursor: 'pointer' }}
+                  >
+                    <Trash2 size={12} /> Temizle
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <textarea
+              rows={5}
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder={`Örnek (Başlık satırlı veya başlıksız yapıştırabilirsiniz):\nTarih\tİşlem Adı\tHızlı İşlemler\tİşlem Türü\tTutar\tDekont Linki\tBanka\n20.08.2026\tMaaş Ödemesi\tMaaş, Birikim\tGelir\t45.000,00\thttps://...\tGaranti BBVA\n19.08.2026\tKira Ödemesi\tEv, Kira\tGider\t15.000,00\t\tİş Bankası`}
+              style={{
+                width: '100%',
+                borderRadius: '10px',
+                border: '1.5px solid #e5e7eb',
+                padding: '10px 12px',
+                fontSize: '12px',
+                fontFamily: 'monospace',
+                lineHeight: 1.5,
+                background: '#fafafa',
+                outline: 'none',
+                resize: 'vertical',
+                minHeight: '90px'
+              }}
+            />
+          </div>
+
+          {/* DETECTED INFO BAR */}
+          {items.length > 0 && (
+            <div style={{ padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 10px', borderRadius: '20px', background: '#16a34a', color: '#fff', fontSize: '11.5px', fontWeight: 700 }}>
+                  <CheckCircle2 size={12} /> {items.length} İşlem Algılandı
+                </span>
+                <span style={{ padding: '3px 9px', borderRadius: '20px', background: '#e0e7ff', color: '#3730a3', fontSize: '11px', fontWeight: 600 }}>
+                  Format: {format}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', color: '#15803d', fontWeight: 600 }}>Eşleşen Sütunlar:</span>
+                {detectedHeaders.map((h, i) => (
+                  <span key={i} style={{ fontSize: '10.5px', padding: '2px 7px', borderRadius: '6px', background: '#dcfce7', color: '#166534', fontWeight: 600 }}>
+                    {FIELD_LABEL_MAP[h] || h}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ERROR ALERT */}
+          {errorMessage && (
+            <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626', fontSize: '12px' }}>
+              <AlertCircle size={15} />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* PREVIEW TABLE */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827' }}>İçe Aktarılacak Veri Önizlemesi</span>
+                <span style={{ fontSize: '11.5px', color: '#9ca3af' }}>
+                  {items.length > 0 ? `${items.length} kaydın tümü listeleniyor` : 'Henüz veri girilmedi'}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ border: '1px solid #f3f4f6', borderRadius: '12px', overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '230px' }}>
+                {items.length === 0 ? (
+                  <div style={{ padding: '36px 16px', textAlign: 'center', color: '#9ca3af', fontSize: '12.5px' }}>
+                    Yukarıdaki metin alanına verilerinizi yapıştırın. Önizleme burada anında görünecektir.
+                  </div>
+                ) : (
+                  <table style={{ borderCollapse: 'collapse', width: 'max-content', minWidth: '100%', fontVariantNumeric: 'tabular-nums', fontSize: '12px' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #f1f5f9' }}>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>#</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Tarih</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>İşlem Adı</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Hızlı İşlemler</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>İşlem Türü</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', textAlign: 'right', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Tutar</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Dekont</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Banka</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((item, idx) => {
+                        const amtNum = parseFloat((item.amount || '0').replace(/\./g, '').replace(',', '.'));
+                        const isIncome = item.typeName === 'Gelir' || (!item.typeName && amtNum >= 0);
+                        const isExpense = item.typeName === 'Gider' || amtNum < 0;
+
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid #f8fafc', background: idx % 2 === 0 ? '#fff' : '#fcfcfd' }}>
+                            <td style={{ padding: '7px 12px', color: '#cbd5e1', fontWeight: 500 }}>{idx + 1}</td>
+                            <td style={{ padding: '7px 12px', color: '#6b7280', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                              {formatDisplayDate(item.date)}
+                            </td>
+                            <td style={{ padding: '7px 12px', color: '#111827', fontWeight: 500, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {item.title || <span style={{ color: '#cbd5e1', fontStyle: 'italic' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                              {Array.isArray(item.quickActions) && item.quickActions.length > 0 ? (
+                                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                  {item.quickActions.map((qa, qi) => (
+                                    <span key={qi} style={{ padding: '1px 7px', borderRadius: '12px', background: '#ede9fe', color: '#6d28d9', fontSize: '11px', fontWeight: 600 }}>
+                                      {qa}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                              {item.typeName ? (
+                                <span style={{
+                                  padding: '2px 8px',
+                                  borderRadius: '20px',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  background: isIncome ? '#dcfce7' : isExpense ? '#fee2e2' : '#f3f4f6',
+                                  color: isIncome ? '#15803d' : isExpense ? '#b91c1c' : '#374151'
+                                }}>
+                                  {item.typeName}
+                                </span>
+                              ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap', color: amtNum >= 0 ? '#16a34a' : '#dc2626' }}>
+                              {item.amount || '0,00'} ₺
+                            </td>
+                            <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                              {item.receiptUrl ? (
+                                <a href={item.receiptUrl} target="_blank" rel="noreferrer" style={{ fontSize: '11.5px', color: '#2563eb', textDecoration: 'none', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-block' }}>
+                                  {item.receiptUrl}
+                                </a>
+                              ) : <span style={{ color: '#cbd5e1' }}>—</span>}
+                            </td>
+                            <td style={{ padding: '7px 12px', color: '#4f46e5', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                              {item.bankName || <span style={{ color: '#9ca3af', fontWeight: 400 }}>Varsayılan</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* FOOTER */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 22px', borderTop: '1.5px solid #f3f4f6', flexShrink: 0, background: '#fafafa' }}>
+          <div style={{ fontSize: '11.5px', color: '#9ca3af' }}>
+            💡 Excel veya Google E-Tablolardan doğrudan kopyalayıp (Ctrl+V) yapıştırabilirsiniz.
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={onHide}
+              disabled={isSubmitting}
+              style={{ padding: '8px 18px', borderRadius: '9px', border: '1px solid #e5e7eb', background: '#fff', fontSize: '13px', color: '#374151', fontWeight: 500, cursor: 'pointer' }}
+            >
+              Vazgeç
+            </button>
+            <button
+              type="button"
+              onClick={handleProcess}
+              disabled={items.length === 0 || isSubmitting}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 20px',
+                borderRadius: '9px',
+                border: 'none',
+                background: items.length === 0 || isSubmitting ? '#e5e7eb' : '#4f46e5',
+                color: items.length === 0 || isSubmitting ? '#9ca3af' : '#fff',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: items.length === 0 || isSubmitting ? 'not-allowed' : 'pointer',
+                transition: 'all 0.12s'
+              }}
+            >
+              <Upload size={14} />
+              {isSubmitting ? 'İçe Aktarılıyor...' : `İçe Aktar (${items.length} Kayıt)`}
+            </button>
+          </div>
+        </div>
+      </div>
     </Modal>
   );
 };
@@ -1118,6 +1985,7 @@ const BankTransactionsPage = () => {
   const [showTagModal, setShowTagModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [activeTagType, setActiveTagType] = useState('');
   const [newTagName, setNewTagName] = useState('');
   const [tagSearch, setTagSearch] = useState('');
@@ -1231,11 +2099,24 @@ const BankTransactionsPage = () => {
     });
   };
 
+  const getCreatedTime = (item) => {
+    if (!item || !item.createdAt) return Date.now();
+    const c = item.createdAt;
+    if (typeof c.seconds === 'number') return c.seconds * 1000 + (c.nanoseconds || 0) / 1000000;
+    if (c instanceof Date) return c.getTime();
+    if (typeof c === 'number') return c;
+    if (typeof c === 'string') {
+      const t = new Date(c).getTime();
+      return isNaN(t) ? Date.now() : t;
+    }
+    return Date.now();
+  };
+
   const applySort = (data, sortConfig) => {
     return [...data].sort((a, b) => {
       if (!sortConfig) {
-        const timeA = a.createdAt?.seconds || 0;
-        const timeB = b.createdAt?.seconds || 0;
+        const timeA = getCreatedTime(a);
+        const timeB = getCreatedTime(b);
         if (timeB !== timeA) return timeB - timeA;
         return (a.order || 0) - (b.order || 0);
       }
@@ -1260,7 +2141,11 @@ const BankTransactionsPage = () => {
 
       if (valA < valB) return direction === 'asc' ? -1 : 1;
       if (valA > valB) return direction === 'asc' ? 1 : -1;
-      return 0;
+
+      const timeA = getCreatedTime(a);
+      const timeB = getCreatedTime(b);
+      if (timeB !== timeA) return timeB - timeA;
+      return (a.order || 0) - (b.order || 0);
     });
   };
 
@@ -1529,74 +2414,115 @@ const BankTransactionsPage = () => {
   };
 
   const handleBulkImport = async (parsedData) => {
-    const batch = writeBatch(db);
+    if (!parsedData || parsedData.length === 0 || !user?.uid) return;
 
     const normalize = (s) => (s || '').toLocaleLowerCase('tr-TR').trim()
       .replace(/i̇/g, 'i')
       .replace(/ı/g, 'i');
 
-    // Mevcut banka ve etiketlerin kopyalarını alalım (döngü içinde yeni oluşturulanları takip etmek için)
     let currentBanks = [...banks];
     let currentTypes = [...typeTags];
+    let currentQuickActions = [...quickActionTags];
+
+    const operations = [];
 
     for (const item of parsedData) {
       // --- Banka Eşleştirme/Oluşturma ---
       let bankId = '';
-      const normalizedItemBank = normalize(item.bankName);
-      const matchedBank = currentBanks.find(b => {
-        const nb = normalize(b.name);
-        return nb.includes(normalizedItemBank) || normalizedItemBank.includes(nb);
-      });
+      const rawBankName = (item.bankName || '').trim();
+      const normalizedItemBank = normalize(rawBankName);
 
-      if (matchedBank) {
-        bankId = matchedBank.id;
-      } else if (item.bankName) {
-        // Banka bulunamadı, yeni oluştur
-        const newBankRef = await addDoc(collection(db, `users/${user.uid}/banks`), {
-          name: item.bankName,
-          logo: '',
-          createdAt: new Date(),
-          deleted: false,
-          order: currentBanks.length
+      if (normalizedItemBank) {
+        const matchedBank = currentBanks.find(b => {
+          const nb = normalize(b.name);
+          return nb === normalizedItemBank || nb.includes(normalizedItemBank) || normalizedItemBank.includes(nb);
         });
-        bankId = newBankRef.id;
-        currentBanks.push({ id: bankId, name: item.bankName });
+
+        if (matchedBank) {
+          bankId = matchedBank.id;
+        } else {
+          const newBankRef = await addDoc(collection(db, `users/${user.uid}/banks`), {
+            name: rawBankName,
+            logo: '',
+            createdAt: new Date(),
+            deleted: false,
+            order: currentBanks.length
+          });
+          bankId = newBankRef.id;
+          currentBanks.push({ id: bankId, name: rawBankName });
+        }
       } else {
         bankId = banks[0]?.id || '';
       }
 
       // --- İşlem Türü Eşleştirme/Oluşturma ---
       let typeId = '';
-      const normalizedItemType = normalize(item.typeName);
-      const matchedType = currentTypes.find(t => normalize(t.name) === normalizedItemType);
+      const rawTypeName = (item.typeName || '').trim();
+      const normalizedItemType = normalize(rawTypeName);
 
-      if (matchedType) {
-        typeId = matchedType.id;
-      } else if (item.typeName) {
-        const newDoc = await addDoc(collection(db, `users/${user.uid}/transactionTypes`), {
-          name: item.typeName, color: 'Gray', order: currentTypes.length, createdAt: new Date()
-        });
-        typeId = newDoc.id;
-        currentTypes.push({ id: typeId, name: item.typeName, color: 'Gray' });
+      if (normalizedItemType) {
+        const matchedType = currentTypes.find(t => normalize(t.name) === normalizedItemType);
+
+        if (matchedType) {
+          typeId = matchedType.id;
+        } else {
+          const newDoc = await addDoc(collection(db, `users/${user.uid}/transactionTypes`), {
+            name: rawTypeName, color: 'Gray', order: currentTypes.length, createdAt: new Date()
+          });
+          typeId = newDoc.id;
+          currentTypes.push({ id: typeId, name: rawTypeName, color: 'Gray' });
+        }
       }
 
-      const amountValue = item.amount; // Virgüllü string formatını koru
+      // --- Hızlı İşlemler Eşleştirme/Oluşturma ---
+      const quickActionIds = [];
+      const rawQAs = Array.isArray(item.quickActions) ? item.quickActions : (item.quickActions ? [item.quickActions] : []);
+      for (const rawQA of rawQAs) {
+        const cleanQA = (rawQA || '').trim();
+        if (!cleanQA) continue;
+        const normalizedQA = normalize(cleanQA);
+        const matchedQA = currentQuickActions.find(q => normalize(q.name) === normalizedQA);
+        if (matchedQA) {
+          quickActionIds.push(matchedQA.id);
+        } else {
+          const newDoc = await addDoc(collection(db, `users/${user.uid}/quickActions`), {
+            name: cleanQA, color: 'Gray', order: currentQuickActions.length, createdAt: new Date()
+          });
+          currentQuickActions.push({ id: newDoc.id, name: cleanQA, color: 'Gray' });
+          quickActionIds.push(newDoc.id);
+        }
+      }
+
+      const amountValue = item.amount || '';
 
       const docRef = doc(collection(db, `users/${user.uid}/bankTransactions`));
-      batch.set(docRef, {
-        bankId,
-        title: item.title,
-        quickActions: [],
-        type: typeId,
-        amount: amountValue,
-        receiptUrl: item.receiptUrl,
-        date: item.date,
-        createdAt: new Date(),
-        deleted: false
+      operations.push({
+        ref: docRef,
+        data: {
+          bankId,
+          title: item.title || '',
+          quickActions: quickActionIds,
+          type: typeId,
+          amount: amountValue,
+          receiptUrl: item.receiptUrl || '',
+          date: item.date || new Date().toISOString().split('T')[0],
+          createdAt: new Date(),
+          deleted: false
+        }
       });
     }
 
-    await batch.commit();
+    // Firestore batch limit is 500 operations (use chunks of 400)
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < operations.length; i += CHUNK_SIZE) {
+      const batch = writeBatch(db);
+      const chunk = operations.slice(i, i + CHUNK_SIZE);
+      chunk.forEach(op => {
+        batch.set(op.ref, op.data);
+      });
+      await batch.commit();
+    }
+
     if (user?.uid) {
       setTimeout(() => {
         resyncAllBankSummaries(user.uid, globalBanks, globalTransactions);
@@ -2914,6 +3840,14 @@ const BankTransactionsPage = () => {
             className="d-flex align-items-center gap-2 rounded-pill px-3 shadow-sm border glass-card"
           >
             <Upload size={14} /> <span className="d-none d-md-inline">Import</span>
+          </Button>
+          <Button
+            variant="light"
+            size="sm"
+            onClick={() => setShowExportModal(true)}
+            className="d-flex align-items-center gap-2 rounded-pill px-3 shadow-sm border glass-card"
+          >
+            <FileSpreadsheet size={14} /> <span className="d-none d-md-inline">Export</span>
           </Button>
           <div className="d-flex align-items-center shadow-sm rounded-pill overflow-hidden" style={{ background: '#0d6efd' }}>
             <Button
@@ -4639,6 +5573,18 @@ const BankTransactionsPage = () => {
         show={showImportModal}
         onHide={() => setShowImportModal(false)}
         onImport={handleBulkImport}
+        banks={banks}
+        typeTags={typeTags}
+        quickActionTags={quickActionTags}
+      />
+      <BankExportModal
+        show={showExportModal}
+        onHide={() => setShowExportModal(false)}
+        transactions={transactions}
+        banks={banks}
+        typeTags={typeTags}
+        quickActionTags={quickActionTags}
+        config={config}
       />
     </div>
   );

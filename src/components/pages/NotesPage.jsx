@@ -2008,6 +2008,19 @@ const NotesPage = () => {
       data = data.filter(item => item.itemType === 'note' && item.color === filters.color);
     }
 
+    const getCreatedTime = (item) => {
+      if (!item || !item.createdAt) return Date.now();
+      const c = item.createdAt;
+      if (typeof c.seconds === 'number') return c.seconds * 1000 + (c.nanoseconds || 0) / 1000000;
+      if (c instanceof Date) return c.getTime();
+      if (typeof c === 'number') return c;
+      if (typeof c === 'string') {
+        const t = new Date(c).getTime();
+        return isNaN(t) ? Date.now() : t;
+      }
+      return Date.now();
+    };
+
     // Apply Sorting
     data.sort((a, b) => {
       let valA = a[noteConfig.sortConfig.propId];
@@ -2027,14 +2040,22 @@ const NotesPage = () => {
       valB = (valB || '').toString().toLowerCase();
       
       if (noteConfig.sortConfig.propId === 'date') {
-        return noteConfig.sortConfig.direction === 'asc' 
+        const diff = noteConfig.sortConfig.direction === 'asc' 
           ? new Date(a.date) - new Date(b.date)
           : new Date(b.date) - new Date(a.date);
+        if (diff !== 0) return diff;
+        const timeA = getCreatedTime(a);
+        const timeB = getCreatedTime(b);
+        return timeB - timeA;
       }
 
-      return noteConfig.sortConfig.direction === 'asc'
+      const cmp = noteConfig.sortConfig.direction === 'asc'
         ? valA.localeCompare(valB)
         : valB.localeCompare(valA);
+      if (cmp !== 0) return cmp;
+      const timeA = getCreatedTime(a);
+      const timeB = getCreatedTime(b);
+      return timeB - timeA;
     });
 
     return data;

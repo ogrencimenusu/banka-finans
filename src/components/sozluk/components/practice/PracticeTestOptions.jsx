@@ -113,7 +113,8 @@ function PracticeTestOptions({ words, maxQuestions, onStart, onCancel, savedOpti
     const [testHelps, setTestHelps] = useState({
         showLetterCounter: true,
         colorOnLengthMatch: true,
-        colorOnExactMatch: true
+        colorOnExactMatch: true,
+        maxAllowedTypoLetters: 2
     });
 
     const [deleteAllStatus, setDeleteAllStatus] = useState('idle');
@@ -1403,6 +1404,25 @@ function PracticeTestOptions({ words, maxQuestions, onStart, onCancel, savedOpti
                                             checked={testHelps.colorOnExactMatch}
                                             onChange={(e) => setTestHelps(prev => ({ ...prev, colorOnExactMatch: e.target.checked }))}
                                         />
+                                    </div>
+                                    <div className="p-3 bg-white border border-secondary border-opacity-25 rounded-3 mt-1">
+                                        <div className="d-flex justify-content-between align-items-center mb-2">
+                                            <span className="fw-semibold text-body small">Yazım Hatası Toleransı</span>
+                                            <Badge bg="warning" className="text-dark fw-bold fs-7">
+                                                {testHelps.maxAllowedTypoLetters !== undefined ? testHelps.maxAllowedTypoLetters : 2} Harf
+                                            </Badge>
+                                        </div>
+                                        <Form.Range
+                                            min={0}
+                                            max={5}
+                                            step={1}
+                                            value={testHelps.maxAllowedTypoLetters !== undefined ? testHelps.maxAllowedTypoLetters : 2}
+                                            onChange={(e) => setTestHelps(prev => ({ ...prev, maxAllowedTypoLetters: parseInt(e.target.value, 10) }))}
+                                        />
+                                        <div className="d-flex justify-content-between text-muted small mt-1" style={{ fontSize: '0.75rem' }}>
+                                            <span>0 (Tam Eşleşme)</span>
+                                            <span>Maks. 5 Harf</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

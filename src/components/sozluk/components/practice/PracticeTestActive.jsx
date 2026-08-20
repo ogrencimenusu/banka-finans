@@ -558,8 +558,9 @@ function PracticeTestActive({ questions, words, onClose, onHome, onFinish, onUpd
                 if (isNlpMatch) {
                     isCorrect = true;
                 } else {
+                    const maxAllowedTypoLetters = testHelps?.maxAllowedTypoLetters !== undefined ? testHelps.maxAllowedTypoLetters : 2;
                     const distance = levenshteinDistance(typed, correct);
-                    if (distance <= 3) isCorrect = true;
+                    if (maxAllowedTypoLetters > 0 && distance <= maxAllowedTypoLetters) isCorrect = true;
                 }
             }
         }
@@ -912,9 +913,9 @@ function PracticeTestActive({ questions, words, onClose, onHome, onFinish, onUpd
                                 isCorrect = true;
                             } else {
                                 // Check Levenshtein distance
+                                const maxAllowedTypoLetters = testHelps?.maxAllowedTypoLetters !== undefined ? testHelps.maxAllowedTypoLetters : 2;
                                 const distance = levenshteinDistance(typed.toLowerCase(), correct.toLowerCase());
-                                // Allow up to 3 typos
-                                if (distance <= 3) {
+                                if (maxAllowedTypoLetters > 0 && distance <= maxAllowedTypoLetters) {
                                     isCorrect = true;
                                     hasTypo = true;
                                 }
@@ -935,8 +936,9 @@ function PracticeTestActive({ questions, words, onClose, onHome, onFinish, onUpd
                     if (compareAnswers(typed, correct, wordObj)) {
                         finalAnswers[idx].selected.isCorrect = true;
                     } else if (typed.toLowerCase() !== correct.toLowerCase()) {
+                        const maxAllowedTypoLetters = testHelps?.maxAllowedTypoLetters !== undefined ? testHelps.maxAllowedTypoLetters : 2;
                         const distance = levenshteinDistance(typed.toLowerCase(), correct.toLowerCase());
-                        if (distance <= 3) {
+                        if (maxAllowedTypoLetters > 0 && distance <= maxAllowedTypoLetters) {
                             finalAnswers[idx].selected.hasTypo = true;
                             finalAnswers[idx].selected.correctText = correct;
                         }
@@ -1002,7 +1004,7 @@ function PracticeTestActive({ questions, words, onClose, onHome, onFinish, onUpd
         }
 
         if (onLogTestResults) {
-            await onLogTestResults(correctCountLocal - incorrectCountLocal, wordStats);
+            await onLogTestResults(correctCountLocal, wordStats);
         }
 
         // Scroll to top to see results summary

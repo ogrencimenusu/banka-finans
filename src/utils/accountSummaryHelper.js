@@ -86,22 +86,59 @@ export async function resyncAllFinanceSummaries(userUid, processedTransactions =
       if (inst?.id) institutionBalancesMap[inst.id] = 0;
     });
 
+    const stockSummariesMap = {};
+
     const activeTrans = (processedTransactions || []).filter(t => t.deleted !== true);
     
     activeTrans.forEach(t => {
       const isAlisType = (t.type || '').toString().trim().toUpperCase().startsWith('AL');
       if (isAlisType) {
         const qty = t.calculatedRemaining !== undefined ? t.calculatedRemaining : (t.remainingQuantity || 0);
-        const stockPrc = stockMap.get(t.stockId);
+        const sId = t.stockId;
+        const instId = t.institutionId;
+        const stockPrc = stockMap.get(sId);
         const prc = stockPrc > 0 ? stockPrc : parseAmt(t.price);
+        const buyPrice = parseAmt(t.price);
+        const taxRate = parseAmt(t.taxRate);
+        const date = t.date || '';
+
         if (qty > 0) {
           const itemVal = qty * prc;
           totalPortfolioVal += itemVal;
-          if (t.institutionId) {
-            institutionBalancesMap[t.institutionId] = (institutionBalancesMap[t.institutionId] || 0) + itemVal;
+          if (instId) {
+            institutionBalancesMap[instId] = (institutionBalancesMap[instId] || 0) + itemVal;
           }
           if (t.calculatedTaxDeduction) {
             totalTaxVal += parseAmt(t.calculatedTaxDeduction);
+          }
+
+          if (sId) {
+            if (!stockSummariesMap[sId]) {
+              stockSummariesMap[sId] = {
+                stockId: sId,
+                quantity: 0,
+                totalCost: 0,
+                firstPurchaseDate: date,
+                institutionBreakdown: {},
+                activeLots: []
+              };
+            }
+            const sSum = stockSummariesMap[sId];
+            sSum.quantity += qty;
+            sSum.totalCost += qty * buyPrice;
+            if (instId) {
+              sSum.institutionBreakdown[instId] = (sSum.institutionBreakdown[instId] || 0) + qty;
+            }
+            if (date && (!sSum.firstPurchaseDate || date < sSum.firstPurchaseDate)) {
+              sSum.firstPurchaseDate = date;
+            }
+            sSum.activeLots.push({
+              remaining: qty,
+              price: buyPrice,
+              taxRate: taxRate,
+              date: date,
+              institutionId: instId || ''
+            });
           }
         }
       }
@@ -110,12 +147,13 @@ export async function resyncAllFinanceSummaries(userUid, processedTransactions =
     const summaryRef = doc(db, `users/${userUid}/summaries/overview`);
     await setDoc(summaryRef, {
       institutionBalances: institutionBalancesMap,
+      stockSummaries: stockSummariesMap,
       totalStockPortfolio: totalPortfolioVal,
       totalStockTax: totalTaxVal,
       lastUpdated: serverTimestamp()
     }, { merge: true });
 
-    console.log("Finance summaries resynced to Firestore:", { institutionBalances: institutionBalancesMap, totalStockPortfolio: totalPortfolioVal, totalStockTax: totalTaxVal });
+    console.log("Finance summaries resynced to Firestore:", { institutionBalances: institutionBalancesMap, stockSummaries: stockSummariesMap, totalStockPortfolio: totalPortfolioVal, totalStockTax: totalTaxVal });
   } catch (error) {
     console.error("Error resyncing finance summaries:", error);
   }

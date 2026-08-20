@@ -786,7 +786,7 @@ const mergeStats = (localStats, remoteStats) => {
       
       merged[key] = {
         ...remote,
-        correctCount: Math.max(local.correctCount || 0, remote.correctCount || 0),
+        correctCount: remote.correctCount !== undefined ? remote.correctCount : (local.correctCount || 0),
         words: mergedWords,
         _status: local._status || remote._status
       };
@@ -2106,13 +2106,13 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
       safeSetItem('local_practice_tests', JSON.stringify(compactObj(getOptimizedTests(finalTests))));
 
       // 4. Daily Stats
-      const qStats = query(collection(db, 'daily_stats'), where('userId', '==', user.uid));
+      const qStats = collection(db, `users/${user.uid}/daily_stats`);
       const snapStats = await getDocs(qStats);
       const fetchedStats = {};
       snapStats.forEach(docSnap => {
         const data = docSnap.data();
         const key = data.date || docSnap.id;
-        fetchedStats[key] = data;
+        fetchedStats[key] = { date: key, ...data };
       });
       const finalStats = forceOverwrite 
         ? fetchedStats 
@@ -2508,12 +2508,12 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
       Object.keys(dailyStats).forEach(key => {
         const item = dailyStats[key];
         if (!item || typeof item !== 'object') return;
-        const statsDocId = `${item.date || key}_${authUser.uid}`;
+        const docDate = item.date || key;
         if (item._status === 'created' || item._status === 'updated') {
           const cleanItem = { ...item };
           delete cleanItem._status;
           cleanItem.userId = authUser.uid; // Force correct userId to prevent disappearing
-          batch.set(doc(db, 'daily_stats', statsDocId), cleanItem, { merge: true });
+          batch.set(doc(db, `users/${authUser.uid}/daily_stats`, docDate), cleanItem, { merge: true });
           delete updatedStats[key]._status;
           updatedStats[key] = { ...cleanItem, userId: authUser.uid };
           hasChanges = true;
@@ -2974,12 +2974,12 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
         Object.keys(dailyStats).forEach(key => {
           const item = dailyStats[key];
           if (!item || typeof item !== 'object') return;
-          const statsDocId = `${item.date || key}_${authUser.uid}`;
+          const docDate = item.date || key;
           if (item._status === 'created' || item._status === 'updated') {
             const cleanItem = { ...item };
             delete cleanItem._status;
             cleanItem.userId = authUser.uid; // Force correct userId to prevent disappearing
-            batch.set(doc(db, 'daily_stats', statsDocId), cleanItem, { merge: true });
+            batch.set(doc(db, `users/${authUser.uid}/daily_stats`, docDate), cleanItem, { merge: true });
             delete updatedStats[key]._status;
             updatedStats[key] = { ...cleanItem, userId: authUser.uid };
             hasChanges = true;
@@ -3007,13 +3007,13 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
         const needPullStats = isFirstSync || isLocalStatsEmpty;
         
         if (needPullStats) {
-          const qStats = query(collection(db, 'daily_stats'), where('userId', '==', authUser.uid));
+          const qStats = collection(db, `users/${authUser.uid}/daily_stats`);
           const snapStats = await getDocs(qStats);
           remoteStats = {};
           snapStats.forEach(docSnap => {
             const data = docSnap.data();
             const key = data.date || docSnap.id;
-            remoteStats[key] = data;
+            remoteStats[key] = { date: key, ...data };
           });
         }
         
@@ -3326,7 +3326,7 @@ agitate | Verb / Adjective | B2 | huzursuz, çalkalanmış | agitate (huzursuz e
       const { onComplete, onError } = e.detail || {};
       try {
         if (authUser) {
-          const qStats = query(collection(db, 'daily_stats'), where('userId', '==', authUser.uid));
+          const qStats = collection(db, `users/${authUser.uid}/daily_stats`);
           const snapStats = await getDocs(qStats);
           const batch = writeBatch(db);
           snapStats.forEach(docSnap => {

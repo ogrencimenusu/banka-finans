@@ -62,6 +62,9 @@ import {
   Clipboard,
   Copy,
   Upload,
+  Download,
+  FileSpreadsheet,
+  ExternalLink,
   Filter,
   Tag,
   RotateCcw,
@@ -354,55 +357,1122 @@ const SimulationCalculatorCard = ({
   );
 };
 
-const ImportModal = ({ show, onHide, onImport }) => {
-  const [text, setText] = React.useState('');
-  const [isProcessing, setIsProcessing] = React.useState(false);
+const normalizeFinanceHeaderKey = (h) => {
+  return (h || '')
+    .toLocaleLowerCase('tr-TR')
+    .replace(/i̇/g, 'i')
+    .replace(/ı/g, 'i')
+    .replace(/ş/g, 's')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/[^a-z0-9]/g, '');
+};
 
-  React.useEffect(() => {
-    if (show) {
-      setIsProcessing(false);
+const mapFinanceHeaderToField = (norm) => {
+  if (/^(tarih|date|zaman|tarihi)$/.test(norm)) return 'date';
+  if (/^(aracikurum|aracikurumu|kurum|institution|araci|banka|broker)$/.test(norm)) return 'institutionName';
+  if (/^(hisse|hisseler|stock|sembol|ticker|kod|hissekodu|hisseadi|symbol|sembolborsa)$/.test(norm)) return 'stockName';
+  if (/^(islemturu|islemtur|tur|turu|durum|type|action|alissatis)$/.test(norm)) return 'typeName';
+  if (/^(adet|miktar|lot|quantity|qty|sayi)$/.test(norm)) return 'quantity';
+  if (/^(fiyat|price|birimfiyat|fiyati|alisveyafiyat|fiyatı)$/.test(norm)) return 'price';
+  if (/^(stopaj|stopajorani|stopajyuzde|taxrate|tax|komisyon)$/.test(norm)) return 'taxRate';
+  if (/^(brutkazanc|brutkar|grossprofit|brut)$/.test(norm)) return 'grossProfit';
+  if (/^(netkazanc|netkar|totalprofit|net|kazanc|kar)$/.test(norm)) return 'totalProfit';
+  if (/^(stopajkesintisi|vergi|taxdeduction)$/.test(norm)) return 'taxDeduction';
+  if (/^(ortalamalis|ortalamaalisfiyati|avgbuyprice|maliyet)$/.test(norm)) return 'avgBuyPrice';
+  return null;
+};
+
+const normalizeFinanceDate = (val) => {
+  if (!val) return '';
+  const s = val.trim();
+  const dmyMatch = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3].length === 2 ? '20' + dmyMatch[3] : dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  const ymdMatch = s.match(/^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = ymdMatch[2].padStart(2, '0');
+    const day = ymdMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return s;
+};
+
+const normalizeFinanceNumber = (val) => {
+  if (val === undefined || val === null || val === '') return 0;
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  const str = String(val).trim()
+    .replace(/₺/g, '')
+    .replace(/TL/gi, '')
+    .replace(/%/g, '')
+    .replace(/\s/g, '');
+  if (!str) return 0;
+
+  if (str.includes(',') && str.includes('.')) {
+    if (str.indexOf('.') < str.indexOf(',')) {
+      return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+    } else {
+      return parseFloat(str.replace(/,/g, '')) || 0;
     }
-  }, [show]);
+  } else if (str.includes(',')) {
+    return parseFloat(str.replace(',', '.')) || 0;
+  }
+  return parseFloat(str) || 0;
+};
+
+const normalizeFinanceType = (val) => {
+  if (!val) return 'ALIŞ';
+  const s = val.toString().trim().toLocaleUpperCase('tr-TR');
+  if (s.includes('SAT') || s.includes('SELL') || s === 'S' || s === '-') return 'SATIŞ';
+  return 'ALIŞ';
+};
+
+const processFinanceImportMatrix = (matrix, formatName) => {
+  if (!matrix || matrix.length === 0) return { items: [], format: formatName, detectedHeaders: [], hasHeaderRow: false };
+
+  const firstRow = matrix[0];
+  const headerMap = [];
+  let headerMatchCount = 0;
+
+  firstRow.forEach((col, idx) => {
+    const norm = normalizeFinanceHeaderKey(col);
+    const field = mapFinanceHeaderToField(norm);
+    if (field) {
+      headerMap[idx] = field;
+      headerMatchCount++;
+    }
+  });
+
+  const hasHeaderRow = headerMatchCount >= 2 || (firstRow.length <= 3 && headerMatchCount >= 1);
+  const dataRows = hasHeaderRow ? matrix.slice(1) : matrix;
+
+  const effectiveMap = hasHeaderRow ? headerMap : [];
+  if (!hasHeaderRow) {
+    const colCount = Math.max(...matrix.map(r => r.length));
+    if (colCount >= 11) {
+      effectiveMap[0] = 'institutionName';
+      effectiveMap[2] = 'stockName';
+      effectiveMap[3] = 'typeName';
+      effectiveMap[4] = 'quantity';
+      effectiveMap[5] = 'price';
+      effectiveMap[6] = 'taxRate';
+      effectiveMap[10] = 'date';
+    } else if (colCount >= 7) {
+      ['date', 'institutionName', 'stockName', 'typeName', 'quantity', 'price', 'taxRate'].forEach((f, idx) => {
+        effectiveMap[idx] = f;
+      });
+    } else if (colCount === 6) {
+      ['date', 'institutionName', 'stockName', 'typeName', 'quantity', 'price'].forEach((f, idx) => {
+        effectiveMap[idx] = f;
+      });
+    } else if (colCount === 5) {
+      ['date', 'stockName', 'typeName', 'quantity', 'price'].forEach((f, idx) => {
+        effectiveMap[idx] = f;
+      });
+    } else if (colCount === 4) {
+      ['date', 'stockName', 'quantity', 'price'].forEach((f, idx) => {
+        effectiveMap[idx] = f;
+      });
+    } else {
+      ['stockName', 'quantity', 'price'].forEach((f, idx) => {
+        effectiveMap[idx] = f;
+      });
+    }
+  }
+
+  const items = dataRows.map((row) => {
+    const item = {
+      date: '',
+      institutionName: '',
+      stockName: '',
+      typeName: 'ALIŞ',
+      quantity: 0,
+      price: 0,
+      taxRate: 0,
+      grossProfit: 0,
+      totalProfit: 0,
+      taxDeduction: 0,
+      avgBuyPrice: 0
+    };
+
+    row.forEach((val, idx) => {
+      const field = effectiveMap[idx];
+      if (!field) return;
+      if (field === 'date') item.date = normalizeFinanceDate(val);
+      else if (field === 'institutionName') item.institutionName = (val || '').trim();
+      else if (field === 'stockName') item.stockName = (val || '').trim().toUpperCase();
+      else if (field === 'typeName') item.typeName = normalizeFinanceType(val);
+      else if (field === 'quantity') item.quantity = normalizeFinanceNumber(val);
+      else if (field === 'price') item.price = normalizeFinanceNumber(val);
+      else if (field === 'taxRate') item.taxRate = normalizeFinanceNumber(val);
+      else if (field === 'grossProfit') item.grossProfit = normalizeFinanceNumber(val);
+      else if (field === 'totalProfit') item.totalProfit = normalizeFinanceNumber(val);
+      else if (field === 'taxDeduction') item.taxDeduction = normalizeFinanceNumber(val);
+      else if (field === 'avgBuyPrice') item.avgBuyPrice = normalizeFinanceNumber(val);
+    });
+
+    if (!item.date) item.date = new Date().toISOString().split('T')[0];
+
+    const hasContent = item.stockName || item.quantity > 0 || item.price > 0;
+    return hasContent ? item : null;
+  }).filter(Boolean);
+
+  const detectedHeaders = effectiveMap.filter(Boolean);
+  return { items, format: formatName, detectedHeaders, hasHeaderRow };
+};
+
+const parseFinanceImportText = (rawText) => {
+  if (!rawText || !rawText.trim()) return { items: [], format: '', detectedHeaders: [], hasHeaderRow: false };
+
+  const text = rawText.trim();
+
+  // 1. HTML tablosu kontrolü
+  if (text.includes('<tr') || text.includes('<td')) {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(`<table>${text}</table>`, 'text/html');
+      const trs = Array.from(doc.querySelectorAll('tr'));
+      if (trs.length > 0) {
+        const matrix = trs.map(tr => {
+          const cells = Array.from(tr.querySelectorAll('th, td'));
+          return cells.map(td => td.innerText.trim());
+        }).filter(r => r.length > 0);
+
+        if (matrix.length > 0) {
+          return processFinanceImportMatrix(matrix, 'HTML Tablo');
+        }
+      }
+    } catch (e) {
+      console.warn('HTML parse error, text parsing devrede', e);
+    }
+  }
+
+  // 2. Metin ayrıştırma (TSV / CSV)
+  const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+  if (lines.length === 0) return { items: [], format: '', detectedHeaders: [], hasHeaderRow: false };
+
+  let tabCount = 0;
+  let semiCount = 0;
+  let commaCount = 0;
+  const sampleLines = lines.slice(0, 5);
+  sampleLines.forEach(l => {
+    tabCount += (l.match(/\t/g) || []).length;
+    semiCount += (l.match(/;/g) || []).length;
+    commaCount += (l.match(/,/g) || []).length;
+  });
+
+  let delimiter = '\t';
+  let formatName = 'Google E-Tablo / Excel (TSV)';
+  if (tabCount === 0) {
+    if (semiCount >= commaCount && semiCount > 0) {
+      delimiter = ';';
+      formatName = 'CSV (Noktalı Virgül)';
+    } else if (commaCount > 0) {
+      delimiter = ',';
+      formatName = 'CSV (Virgül)';
+    }
+  }
+
+  const parseLine = (line, delim) => {
+    if (delim === '\t') {
+      return line.split('\t').map(c => c.replace(/^"|"$/g, '').trim());
+    }
+    const result = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === delim && !inQuotes) {
+        result.push(cur.trim());
+        cur = '';
+      } else {
+        cur += char;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const matrix = lines.map(l => parseLine(l, delimiter)).filter(r => r.length > 0 && r.some(c => c.length > 0));
+  return processFinanceImportMatrix(matrix, formatName);
+};
+
+const FINANCE_FIELD_LABEL_MAP = {
+  date: 'Tarih',
+  institutionName: 'Aracı Kurum',
+  stockName: 'Hisse',
+  typeName: 'İşlem Türü',
+  quantity: 'Adet',
+  price: 'Fiyat',
+  taxRate: 'Stopaj (%)',
+  grossProfit: 'Brüt Kazanç',
+  totalProfit: 'Net Kazanç',
+  taxDeduction: 'Stopaj Kesintisi',
+  avgBuyPrice: 'Ortalama Alış Fiyatı'
+};
+
+const ImportModal = ({ show, onHide, onImport, institutions = [], stocks = [] }) => {
+  const [text, setText] = React.useState('');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState('');
+
+  const parsed = React.useMemo(() => parseFinanceImportText(text), [text]);
+  const { items, format, detectedHeaders } = parsed;
+
+  const handlePasteClipboard = async () => {
+    try {
+      const clipText = await navigator.clipboard.readText();
+      if (clipText) {
+        setText(clipText);
+        setErrorMessage('');
+      }
+    } catch (e) {
+      console.warn('Clipboard read error', e);
+    }
+  };
+
+  const handleClear = () => {
+    setText('');
+    setErrorMessage('');
+  };
 
   const handleProcess = async () => {
-    if (isProcessing || !text.trim()) return;
-    setIsProcessing(true);
+    if (!items || items.length === 0) {
+      setErrorMessage('İçe aktarılacak geçerli bir veri bulunamadı.');
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage('');
     try {
-      const lines = text.trim().split('\n');
-      const results = lines.map(line => {
-        const parts = line.split('\t');
-        if (parts.length < 11) return null;
-        const institutionName = parts[0].trim();
-        const stockName = parts[2].trim();
-        const typeName = parts[3].trim().toUpperCase() === 'ALIŞ' ? 'ALIŞ' : 'SATIŞ';
-        const quantity = parts[4].trim().replace(/\./g, '').replace(',', '.');
-        const price = parts[5].trim().replace('₺', '').replace(/\./g, '').replace(',', '.');
-        const taxRate = parts[6].trim().replace('₺', '').replace(/\./g, '').replace(',', '.');
-        const dateStr = parts[10].trim();
-        const [d, m, y] = dateStr.split('.');
-        const formattedDate = `${y}-${m}-${d}`;
-        return { institutionName, stockName, typeName, quantity, price, taxRate, date: formattedDate };
-      }).filter(Boolean);
-
-      if (results.length > 0) {
-        await onImport(results);
-      }
+      await onImport(items);
       setText('');
       onHide();
     } catch (err) {
-      console.error('Import processing error:', err);
+      console.error('Import error', err);
+      setErrorMessage('İçe aktarılırken bir hata oluştu: ' + (err.message || err));
     } finally {
-      setIsProcessing(false);
+      setIsSubmitting(false);
     }
   };
+
+  const formatDisplayDate = (dStr) => {
+    if (!dStr) return '';
+    const parts = dStr.split('-');
+    if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
+    return dStr;
+  };
+
+  const formatDisplayNumber = (val, decimals = 2) => {
+    const n = typeof val === 'number' ? val : parseFloat(val) || 0;
+    return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
+  };
+
   return (
-    <Modal show={show} onHide={onHide} size="lg" className="glass-card">
-      <Modal.Header closeButton className="border-0"><Modal.Title className="fw-bold">İşlemleri İçe Aktar</Modal.Title></Modal.Header>
-      <Modal.Body className="p-4">
-        <div className="alert alert-info border-0 rounded-3 small mb-3">Verileri sütunları ile birlikte (başlıksız) buraya yapıştırın. Format: Kurum, Sembol Borsa, Sembol, Durum, Adet, Fiyat, Komisyon... Tarih</div>
-        <Form.Control as="textarea" rows={10} className="glass-card p-3 border-0 bg-light" placeholder="Verileri buraya yapıştırın..." value={text} onChange={e => setText(e.target.value)} disabled={isProcessing} style={{ fontSize: '13px' }} />
-        <Button className="mt-3 w-100 rounded-pill py-2 fw-bold" onClick={handleProcess} disabled={isProcessing}>{isProcessing ? 'Aktarılıyor...' : 'Aktarımı Tamamla'}</Button>
-      </Modal.Body>
+    <Modal show={show} onHide={onHide} size="xl" centered>
+      <div style={{ background: '#fff', borderRadius: '16px', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
+        
+        {/* HEADER */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 22px 14px', borderBottom: '1.5px solid #f3f4f6', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '34px', height: '34px', borderRadius: '9px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Upload size={18} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: '#111827', lineHeight: 1.2 }}>Hisse İşlemlerini İçe Aktar</div>
+              <div style={{ fontSize: '11.5px', color: '#9ca3af', marginTop: '2px' }}>
+                Google E-Tablolar, Excel, TSV, CSV veya HTML formatındaki borsa işlemlerinizi yapıştırın
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onHide}
+            style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6b7280', flexShrink: 0 }}
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* BODY */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          
+          {/* TEXTAREA CONTAINER */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ fontSize: '12.5px', fontWeight: 600, color: '#374151' }}>Veri Giriş Alanı</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={handlePasteClipboard}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #c7d2fe', background: '#eef2ff', color: '#4338ca', fontSize: '11.5px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  <Clipboard size={12} /> Panodan Yapıştır
+                </button>
+                {text && (
+                  <button
+                    type="button"
+                    onClick={handleClear}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '6px', border: '1px solid #e5e7eb', background: '#fff', color: '#ef4444', fontSize: '11.5px', fontWeight: 500, cursor: 'pointer' }}
+                  >
+                    <Trash2 size={12} /> Temizle
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <textarea
+              rows={5}
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder={`Örnek (Başlık satırlı veya başlıksız yapıştırabilirsiniz):\nTarih\tAracı Kurum\tHisse\tİşlem Türü\tAdet\tFiyat\tStopaj (%)\n20.08.2026\tGaranti Yatırım\tTHYAO\tALIŞ\t100\t285,50\t0\n19.08.2026\tMidas\tEREGL\tSATIŞ\t50\t48,20\t10`}
+              style={{
+                width: '100%',
+                borderRadius: '10px',
+                border: '1.5px solid #e5e7eb',
+                padding: '10px 12px',
+                fontSize: '12px',
+                fontFamily: 'monospace',
+                lineHeight: 1.5,
+                background: '#fafafa',
+                outline: 'none',
+                resize: 'vertical',
+                minHeight: '90px'
+              }}
+            />
+          </div>
+
+          {/* DETECTED INFO BAR */}
+          {items.length > 0 && (
+            <div style={{ padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '3px 10px', borderRadius: '20px', background: '#16a34a', color: '#fff', fontSize: '11.5px', fontWeight: 700 }}>
+                  <CheckCircle2 size={12} /> {items.length} İşlem Algılandı
+                </span>
+                <span style={{ padding: '3px 9px', borderRadius: '20px', background: '#e0e7ff', color: '#3730a3', fontSize: '11px', fontWeight: 600 }}>
+                  Format: {format}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', color: '#15803d', fontWeight: 600 }}>Eşleşen Sütunlar:</span>
+                {detectedHeaders.map((h, i) => (
+                  <span key={i} style={{ fontSize: '10.5px', padding: '2px 7px', borderRadius: '6px', background: '#dcfce7', color: '#166534', fontWeight: 600 }}>
+                    {FINANCE_FIELD_LABEL_MAP[h] || h}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ERROR ALERT */}
+          {errorMessage && (
+            <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px', color: '#dc2626', fontSize: '12px' }}>
+              <AlertCircle size={15} />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* PREVIEW TABLE */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827' }}>İçe Aktarılacak Veri Önizlemesi</span>
+                <span style={{ fontSize: '11.5px', color: '#9ca3af' }}>
+                  {items.length > 0 ? `${items.length} kaydın tümü listeleniyor` : 'Henüz veri girilmedi'}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ border: '1px solid #f3f4f6', borderRadius: '12px', overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '230px' }}>
+                {items.length === 0 ? (
+                  <div style={{ padding: '36px 16px', textAlign: 'center', color: '#9ca3af', fontSize: '12.5px' }}>
+                    Yukarıdaki metin alanına verilerinizi yapıştırın. Önizleme burada anında görünecektir.
+                  </div>
+                ) : (
+                  <table style={{ borderCollapse: 'collapse', width: 'max-content', minWidth: '100%', fontVariantNumeric: 'tabular-nums', fontSize: '12px' }}>
+                    <thead>
+                      <tr style={{ background: '#f8fafc', borderBottom: '2px solid #f1f5f9' }}>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>#</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Tarih</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Aracı Kurum</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Hisse</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>İşlem Türü</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', textAlign: 'right', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Adet</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', textAlign: 'right', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Fiyat</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', textAlign: 'right', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Toplam Tutar</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', textAlign: 'right', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Brüt Kazanç</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', textAlign: 'right', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Net Kazanç</th>
+                        <th style={{ padding: '8px 12px', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', textAlign: 'right', position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>Stopaj (%)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((item, idx) => {
+                        const isBuy = item.typeName === 'ALIŞ';
+                        const totalAmt = item.quantity * item.price;
+                        const hasGrossProfit = item.grossProfit !== undefined && item.grossProfit !== 0;
+                        const hasTotalProfit = item.totalProfit !== undefined && item.totalProfit !== 0;
+
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid #f8fafc', background: idx % 2 === 0 ? '#fff' : '#fcfcfd' }}>
+                            <td style={{ padding: '7px 12px', color: '#cbd5e1', fontWeight: 500 }}>{idx + 1}</td>
+                            <td style={{ padding: '7px 12px', color: '#6b7280', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                              {formatDisplayDate(item.date)}
+                            </td>
+                            <td style={{ padding: '7px 12px', color: '#4f46e5', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              {item.institutionName || <span style={{ color: '#9ca3af', fontWeight: 400 }}>Varsayılan</span>}
+                            </td>
+                            <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                              <span style={{ padding: '2px 8px', borderRadius: '6px', background: '#f3e8ff', color: '#6b21a8', fontWeight: 800, fontSize: '11.5px', letterSpacing: '0.5px' }}>
+                                {item.stockName || '—'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '7px 12px', whiteSpace: 'nowrap' }}>
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '20px',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                background: isBuy ? '#dcfce7' : '#fee2e2',
+                                color: isBuy ? '#15803d' : '#b91c1c'
+                              }}>
+                                {item.typeName}
+                              </span>
+                            </td>
+                            <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600, color: '#111827', whiteSpace: 'nowrap' }}>
+                              {formatDisplayNumber(item.quantity, 0)}
+                            </td>
+                            <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600, color: '#111827', whiteSpace: 'nowrap' }}>
+                              {formatDisplayNumber(item.price, 2)} ₺
+                            </td>
+                            <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap', color: isBuy ? '#16a34a' : '#dc2626' }}>
+                              {formatDisplayNumber(totalAmt, 2)} ₺
+                            </td>
+                            <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap', color: (item.grossProfit || 0) >= 0 ? '#16a34a' : '#dc2626' }}>
+                              {!isBuy && hasGrossProfit ? `${formatDisplayNumber(item.grossProfit, 2)} ₺` : <span style={{ color: '#cbd5e1', fontWeight: 400 }}>Otomatik</span>}
+                            </td>
+                            <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap', color: (item.totalProfit || 0) >= 0 ? '#16a34a' : '#dc2626' }}>
+                              {!isBuy && hasTotalProfit ? `${formatDisplayNumber(item.totalProfit, 2)} ₺` : <span style={{ color: '#cbd5e1', fontWeight: 400 }}>Otomatik</span>}
+                            </td>
+                            <td style={{ padding: '7px 12px', textAlign: 'right', color: '#6b7280', whiteSpace: 'nowrap' }}>
+                              %{item.taxRate || 0}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* FOOTER */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 22px', borderTop: '1.5px solid #f3f4f6', flexShrink: 0, background: '#fafafa' }}>
+          <div style={{ fontSize: '11.5px', color: '#9ca3af' }}>
+            💡 Excel veya Google E-Tablolardan doğrudan kopyalayıp (Ctrl+V) yapıştırabilirsiniz.
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={onHide}
+              disabled={isSubmitting}
+              style={{ padding: '8px 18px', borderRadius: '9px', border: '1px solid #e5e7eb', background: '#fff', fontSize: '13px', color: '#374151', fontWeight: 500, cursor: 'pointer' }}
+            >
+              Vazgeç
+            </button>
+            <button
+              type="button"
+              onClick={handleProcess}
+              disabled={items.length === 0 || isSubmitting}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 20px',
+                borderRadius: '9px',
+                border: 'none',
+                background: items.length === 0 || isSubmitting ? '#e5e7eb' : '#4f46e5',
+                color: items.length === 0 || isSubmitting ? '#9ca3af' : '#fff',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: items.length === 0 || isSubmitting ? 'not-allowed' : 'pointer',
+                transition: 'all 0.12s'
+              }}
+            >
+              <Upload size={14} />
+              {isSubmitting ? 'İçe Aktarılıyor...' : `İçe Aktar (${items.length} Kayıt)`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+const MultiSelectDropdown = ({ options, selectedIds, onChange, allLabel = 'Tümü', placeholder = 'Ara...' }) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [search, setSearch] = React.useState('');
+  const dropdownRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsOpen(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredOptions = React.useMemo(() => {
+    if (!search.trim()) return options;
+    return options.filter(opt => (opt.name || '').toLowerCase().includes(search.toLowerCase()));
+  }, [options, search]);
+
+  const toggleOption = (id) => {
+    onChange(selectedIds.includes(id) ? selectedIds.filter(v => v !== id) : [...selectedIds, id]);
+  };
+
+  const displayText = React.useMemo(() => {
+    if (selectedIds.length === 0) return `${allLabel} (${options.length})`;
+    if (selectedIds.length === 1) {
+      const item = options.find(o => o.id === selectedIds[0]);
+      return item ? item.name : allLabel;
+    }
+    return `${selectedIds.length} seçildi`;
+  }, [selectedIds, options, allLabel]);
+
+  return (
+    <div className="position-relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(v => !v)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '7px 10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
+          background: selectedIds.length > 0 ? '#ede9fe' : '#f4f4f5',
+          color: selectedIds.length > 0 ? '#5b21b6' : '#71717a',
+          border: `1px solid ${selectedIds.length > 0 ? '#c4b5fd' : '#e4e4e7'}`,
+          fontSize: '12px', fontWeight: selectedIds.length > 0 ? 600 : 400,
+          transition: 'all 0.12s'
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginRight: '6px' }}>{displayText}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+          {selectedIds.length > 0 && (
+            <span
+              onClick={e => { e.stopPropagation(); onChange([]); }}
+              style={{ width: '15px', height: '15px', borderRadius: '50%', background: '#c4b5fd', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            >
+              <X size={9} color="#5b21b6" strokeWidth={3} />
+            </span>
+          )}
+          <ChevronDown size={12} color="#71717a" style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+        </div>
+      </button>
+
+      {isOpen && (
+        <div
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 10055,
+            background: '#ffffff', borderRadius: '10px', border: '1px solid #e4e4e7',
+            boxShadow: '0 12px 28px -4px rgba(0,0,0,0.10), 0 4px 8px -2px rgba(0,0,0,0.07)'
+          }}
+        >
+          <div style={{ padding: '8px 8px 6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', background: '#f4f4f5', borderRadius: '6px', padding: '5px 8px' }}>
+              <Search size={11} color="#a1a1aa" style={{ marginRight: '6px', flexShrink: 0 }} />
+              <input
+                autoFocus
+                type="text"
+                placeholder={placeholder}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', color: '#18181b' }}
+              />
+              {search && <X size={10} color="#a1a1aa" style={{ cursor: 'pointer' }} onClick={() => setSearch('')} />}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', padding: '0 2px', fontSize: '10.5px' }}>
+              <span style={{ color: '#6366f1', cursor: 'pointer' }} onClick={() => onChange([])}>Tümü ({options.length})</span>
+              {selectedIds.length > 0 && <span style={{ color: '#ef4444', cursor: 'pointer' }} onClick={() => onChange([])}>Temizle</span>}
+            </div>
+          </div>
+          <div style={{ maxHeight: '165px', overflowY: 'auto', borderTop: '1px solid #e4e4e7' }}>
+            {filteredOptions.length === 0 ? (
+              <div style={{ padding: '16px', textAlign: 'center', color: '#a1a1aa', fontSize: '12px' }}>Sonuç bulunamadı</div>
+            ) : filteredOptions.map(opt => {
+              const isSelected = selectedIds.includes(opt.id);
+              return (
+                <div
+                  key={opt.id}
+                  onClick={() => toggleOption(opt.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 12px', cursor: 'pointer', fontSize: '12px',
+                    background: isSelected ? '#ede9fe' : 'transparent',
+                    color: isSelected ? '#5b21b6' : '#374151',
+                    fontWeight: isSelected ? 600 : 400,
+                    borderBottom: '1px solid #f4f4f5', transition: 'background 0.1s'
+                  }}
+                >
+                  <span>{opt.name}</span>
+                  <div style={{ width: '13px', height: '13px', borderRadius: '3px', border: isSelected ? 'none' : '1.5px solid #d1d5db', background: isSelected ? '#7c3aed' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {isSelected && <Check size={9} color="white" strokeWidth={3.5} />}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ExportModal = ({ show, onHide, transactions, institutions, stocks, config }) => {
+  const [selectedFields, setSelectedFields] = React.useState(PROPERTIES.map(p => p.id));
+  const [startDate, setStartDate] = React.useState('');
+  const [endDate, setEndDate] = React.useState('');
+  const [selectedInstitutions, setSelectedInstitutions] = React.useState([]);
+  const [selectedStocks, setSelectedStocks] = React.useState([]);
+  const [typeFilter, setTypeFilter] = React.useState('ALL');
+  const [activePreset, setActivePreset] = React.useState('all');
+  const [delimiter, setDelimiter] = React.useState(';');
+  const [copied, setCopied] = React.useState(false);
+
+  React.useEffect(() => { if (show) setCopied(false); }, [show]);
+
+  const applyDatePreset = (preset) => {
+    setActivePreset(preset);
+    const today = new Date();
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const todayStr = fmt(today);
+    if (preset === 'all') { setStartDate(''); setEndDate(''); }
+    else if (preset === 'thisMonth') { setStartDate(fmt(new Date(today.getFullYear(), today.getMonth(), 1))); setEndDate(todayStr); }
+    else if (preset === 'thisYear') { setStartDate(fmt(new Date(today.getFullYear(), 0, 1))); setEndDate(todayStr); }
+    else if (preset === 'last30') { const d = new Date(); d.setDate(today.getDate() - 30); setStartDate(fmt(d)); setEndDate(todayStr); }
+    else if (preset === 'last90') { const d = new Date(); d.setDate(today.getDate() - 90); setStartDate(fmt(d)); setEndDate(todayStr); }
+  };
+
+  const filteredData = React.useMemo(() => {
+    if (!transactions || !Array.isArray(transactions)) return [];
+    const filtered = transactions.filter(t => {
+      if (startDate && t.date && t.date < startDate) return false;
+      if (endDate && t.date && t.date > endDate) return false;
+      if (selectedInstitutions.length > 0 && !selectedInstitutions.includes(t.institutionId)) return false;
+      if (selectedStocks.length > 0 && !selectedStocks.includes(t.stockId)) return false;
+      if (typeFilter !== 'ALL' && t.type !== typeFilter) return false;
+      return true;
+    });
+    // En yeni tarihten en eskiye sırala (azalan)
+    return filtered.sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return b.date.localeCompare(a.date);
+    });
+  }, [transactions, startDate, endDate, selectedInstitutions, selectedStocks, typeFilter]);
+
+  const getPropLabel = (propId) => config?.propertyLabels?.[propId] || PROPERTIES.find(p => p.id === propId)?.label || propId;
+
+  const formatTrDate = (dateStr) => {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    return `${d?.padStart(2,'0')}.${m?.padStart(2,'0')}.${y}`;
+  };
+
+  const formatTrNumber = (val, decimals = 2, forceDecimals = true) => {
+    if (val === undefined || val === null || val === '') return '0,00';
+    let num = typeof val === 'number' ? val : parseFloat((val.toString().trim().replace(/\s/g, '').replace('₺','').replace('TL','').includes(',') ? val.toString().replace(/\./g,'').replace(',','.') : val.toString()));
+    if (isNaN(num)) return '0,00';
+    return forceDecimals ? num.toFixed(decimals).replace('.', ',') : (Number.isInteger(num) ? num.toString() : num.toString().replace('.', ','));
+  };
+
+  const getExportFieldValue = (t, propId) => {
+    const inst = institutions.find(i => i.id === t.institutionId);
+    const stock = stocks.find(s => s.id === t.stockId);
+    switch (propId) {
+      case 'date': return formatTrDate(t.date);
+      case 'institutionId': return inst ? inst.name : (t.institutionId || '');
+      case 'stockId': return stock ? stock.name : (t.stockId || '');
+      case 'type': return t.type || '';
+      case 'quantity': return formatTrNumber(t.quantity ?? 0, 0, false);
+      case 'price': { const p = t.price ?? 0; const dc = (p.toString().split('.')[1] || '').length; return formatTrNumber(p, dc > 2 ? Math.min(4, dc) : 2, true); }
+      case 'taxRate': return formatTrNumber(t.taxRate ?? 0, 0, false);
+      case 'remainingQuantity': return formatTrNumber(t.runningBalance ?? t.calculatedRemaining ?? 0, 0, false);
+      case 'taxDeduction': return formatTrNumber(t.calculatedTaxDeduction ?? 0, 2, true);
+      case 'totalBuyAmount': return formatTrNumber(t.type === 'ALIŞ' ? (t.totalBuyAmount ?? 0) : 0, 2, true);
+      case 'totalSaleAmount': return formatTrNumber(t.type === 'SATIŞ' ? (t.totalSaleAmount ?? 0) : 0, 2, true);
+      case 'avgBuyPrice': return formatTrNumber(t.avgBuyPrice ?? 0, 2, true);
+      case 'grossProfit': return formatTrNumber(t.type === 'SATIŞ' ? (t.grossProfit ?? 0) : 0, 2, true);
+      case 'totalProfit': return formatTrNumber(t.type === 'SATIŞ' ? (t.totalProfit ?? 0) : 0, 2, true);
+      default: return t[propId] ?? '';
+    }
+  };
+
+  const isNumericField = (id) => ['quantity','price','taxRate','remainingQuantity','taxDeduction','totalBuyAmount','totalSaleAmount','avgBuyPrice','grossProfit','totalProfit'].includes(id);
+
+  const generateCSVContent = () => {
+    const sep = delimiter;
+    const header = selectedFields.map(id => `"${getPropLabel(id).replace(/"/g,'""')}"`).join(sep);
+    const rows = filteredData.map(t => selectedFields.map(id => `"${(getExportFieldValue(t,id)?? '').toString().replace(/"/g,'""')}"`).join(sep));
+    return '\uFEFF' + [header, ...rows].join('\r\n');
+  };
+
+  const generateTSVContent = () => {
+    const header = selectedFields.map(id => getPropLabel(id)).join('\t');
+    const rows = filteredData.map(t => selectedFields.map(id => (getExportFieldValue(t,id)?? '').toString()).join('\t'));
+    return [header, ...rows].join('\n');
+  };
+
+  const handleDownloadCSV = () => {
+    if (!filteredData.length || !selectedFields.length) return;
+    const blob = new Blob([generateCSVContent()], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `finans_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCopyToClipboard = async () => {
+    if (!filteredData.length || !selectedFields.length) return;
+    try { await navigator.clipboard.writeText(generateTSVContent()); setCopied(true); setTimeout(() => setCopied(false), 3500); }
+    catch (err) { console.error(err); }
+  };
+
+  const sortedStocks = React.useMemo(() => [...stocks].sort((a, b) => (a.name || '').localeCompare(b.name || '')), [stocks]);
+  const previewData = filteredData.slice(0, 5);
+
+  const PRESETS = [
+    { id: 'all', label: 'Tümü' },
+    { id: 'thisMonth', label: 'Bu Ay' },
+    { id: 'thisYear', label: 'Bu Yıl' },
+    { id: 'last30', label: 'Son 30G' },
+    { id: 'last90', label: 'Son 90G' },
+  ];
+
+  const SB = '#ffffff';    // sidebar bg
+  const SBB = '#f4f4f5';   // sidebar element bg
+  const SBT = '#18181b';   // sidebar text
+  const SBM = '#71717a';   // sidebar muted
+  const SBC = '#e4e4e7';   // sidebar border
+
+  const btnDisabled = !filteredData.length || !selectedFields.length;
+
+  return (
+    <Modal show={show} onHide={onHide} size="xl" centered>
+      <div style={{ display: 'flex', height: '86vh', maxHeight: '700px', borderRadius: '16px', overflow: 'hidden', background: '#fff', boxShadow: '0 25px 60px -10px rgba(0,0,0,0.25)' }}>
+
+        {/* ══ DARK SIDEBAR ══ */}
+        <div style={{ width: '252px', flexShrink: 0, background: SB, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${SBC}` }}>
+
+          {/* Sidebar Brand */}
+          <div style={{ padding: '18px 18px 14px', borderBottom: `1px solid ${SBC}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '9px', background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <FileSpreadsheet size={17} color="#fff" />
+              </div>
+              <div>
+                <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff', lineHeight: 1.2 }}>Dışa Aktar</div>
+                <div style={{ fontSize: '10.5px', color: SBM, marginTop: '1px' }}>Filtrele &amp; İndir</div>
+              </div>
+            </div>
+
+            {/* Live count */}
+            <div style={{ marginTop: '10px', padding: '10px 12px', background: filteredData.length > 0 ? 'rgba(79,70,229,0.2)' : SBB, borderRadius: '10px', border: `1px solid ${filteredData.length > 0 ? '#4338ca' : SBC}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: '11px', color: SBM }}>Eşleşen kayıt</div>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: filteredData.length > 0 ? '#a5b4fc' : '#52525b', lineHeight: 1 }}>{filteredData.length}</div>
+            </div>
+          </div>
+
+          {/* Sidebar Filters (scrollable) */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+            {/* Tarih */}
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 700, color: SBM, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: '7px' }}>Tarih Aralığı</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '7px' }}>
+                <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setActivePreset('custom'); }}
+                  style={{ width: '100%', background: SBB, color: startDate ? SBT : SBM, border: `1px solid ${SBC}`, borderRadius: '7px', padding: '6px 10px', fontSize: '12px', outline: 'none' }}
+                />
+                <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setActivePreset('custom'); }}
+                  style={{ width: '100%', background: SBB, color: endDate ? SBT : SBM, border: `1px solid ${SBC}`, borderRadius: '7px', padding: '6px 10px', fontSize: '12px', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                {PRESETS.map(p => {
+                  const isActive = activePreset === p.id && (p.id !== 'all' || (!startDate && !endDate));
+                  return (
+                    <button key={p.id} type="button" onClick={() => applyDatePreset(p.id)}
+                      style={{ fontSize: '10.5px', padding: '3px 9px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: isActive ? 700 : 400, background: isActive ? '#4f46e5' : SBB, color: isActive ? '#fff' : SBM, transition: 'all 0.12s' }}>
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Kurumlar */}
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 700, color: SBM, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: '7px' }}>Aracı Kurumlar</div>
+              <MultiSelectDropdown options={institutions} selectedIds={selectedInstitutions} onChange={setSelectedInstitutions} allLabel="Tüm Kurumlar" placeholder="Kurum ara..." />
+            </div>
+
+            {/* Hisseler */}
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 700, color: SBM, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: '7px' }}>Hisseler</div>
+              <MultiSelectDropdown options={sortedStocks} selectedIds={selectedStocks} onChange={setSelectedStocks} allLabel="Tüm Hisseler" placeholder="Hisse ara..." />
+            </div>
+
+            {/* İşlem Türü */}
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 700, color: SBM, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: '7px' }}>İşlem Türü</div>
+              <div style={{ display: 'flex', background: SBB, borderRadius: '8px', padding: '3px', gap: '2px' }}>
+                {[
+                  { label: 'Tümü', value: 'ALL', activeBg: '#3f3f46', activeColor: '#fff' },
+                  { label: 'Alış', value: 'ALIŞ', activeBg: '#166534', activeColor: '#bbf7d0' },
+                  { label: 'Satış', value: 'SATIŞ', activeBg: '#991b1b', activeColor: '#fecaca' },
+                ].map(item => (
+                  <button key={item.value} type="button" onClick={() => setTypeFilter(item.value)}
+                    style={{ flex: 1, fontSize: '11px', padding: '5px 2px', borderRadius: '5px', border: 'none', cursor: 'pointer', fontWeight: typeFilter === item.value ? 700 : 400, background: typeFilter === item.value ? item.activeBg : 'transparent', color: typeFilter === item.value ? item.activeColor : SBM, transition: 'all 0.12s' }}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* CSV Ayırıcı */}
+            <div>
+              <div style={{ fontSize: '10.5px', fontWeight: 700, color: SBM, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: '7px' }}>CSV Ayırıcı</div>
+              <select value={delimiter} onChange={e => setDelimiter(e.target.value)}
+                style={{ width: '100%', background: SBB, color: SBT, border: `1px solid ${SBC}`, borderRadius: '7px', padding: '6px 10px', fontSize: '12px', outline: 'none', cursor: 'pointer' }}>
+                <option value=";">Noktalı Virgül (;) — Excel / TR</option>
+                <option value=",">Virgül (,) — Standart CSV</option>
+                <option value={"\t"}>Sekme (Tab) — TSV</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* ══ MAIN PANEL ══ */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#fff' }}>
+
+          {/* Top Bar */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 22px 14px', borderBottom: '1.5px solid #f3f4f6', flexShrink: 0 }}>
+            <div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: '#111827', lineHeight: 1.3 }}>Finans İşlemlerini Dışa Aktar</div>
+              <div style={{ fontSize: '11.5px', color: '#9ca3af', marginTop: '1px' }}>Excel &amp; Google E-Tablo · Tarih: Gün.Ay.Yıl · Sayı: virgüllü ondalık</div>
+            </div>
+            <button type="button" onClick={onHide}
+              style={{ width: '30px', height: '30px', borderRadius: '50%', border: 'none', background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#6b7280', flexShrink: 0 }}>
+              <X size={15} />
+            </button>
+          </div>
+
+          {/* Scrollable body */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 22px' }}>
+
+            {/* Copy success */}
+            {copied && (
+              <div style={{ marginBottom: '14px', padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <CheckCircle2 size={16} color="#16a34a" />
+                  <span style={{ fontSize: '12.5px', color: '#15803d', fontWeight: 600 }}>
+                    Panoya kopyalandı — Google E-Tablo'da <kbd style={{ background: '#16a34a', color: '#fff', padding: '1px 5px', borderRadius: '4px', fontSize: '11px' }}>Ctrl+V</kbd>
+                  </span>
+                </div>
+                <a href="https://sheets.new" target="_blank" rel="noreferrer" style={{ fontSize: '11.5px', fontWeight: 600, color: '#16a34a', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
+                  <ExternalLink size={12} /> sheets.new
+                </a>
+              </div>
+            )}
+
+            {/* Column Picker */}
+            <div style={{ marginBottom: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827' }}>Dışa Aktarılacak Sütunlar</span>
+                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 9px', borderRadius: '20px', background: '#ede9fe', color: '#6d28d9' }}>
+                    {selectedFields.length}/{PROPERTIES.length}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  {[
+                    { label: 'Tümünü Seç', fn: () => setSelectedFields(PROPERTIES.map(p => p.id)) },
+                    { label: 'Temizle', fn: () => setSelectedFields([]) },
+                    { label: 'Varsayılan', fn: () => setSelectedFields(PROPERTIES.map(p => p.id)) },
+                  ].map(b => (
+                    <button key={b.label} type="button" onClick={b.fn}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11.5px', color: '#6366f1', fontWeight: 500, padding: 0 }}>
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {PROPERTIES.map(prop => {
+                  const isSelected = selectedFields.includes(prop.id);
+                  const label = getPropLabel(prop.id);
+                  return (
+                    <button
+                      key={prop.id}
+                      type="button"
+                      onClick={() => setSelectedFields(prev => prev.includes(prop.id) ? prev.filter(f => f !== prop.id) : [...prev, prop.id])}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '5px 11px', borderRadius: '20px', cursor: 'pointer',
+                        fontSize: '12px', fontWeight: isSelected ? 600 : 400,
+                        background: isSelected ? '#ede9fe' : '#f9fafb',
+                        color: isSelected ? '#5b21b6' : '#9ca3af',
+                        border: `1.5px solid ${isSelected ? '#c4b5fd' : '#f3f4f6'}`,
+                        transition: 'all 0.12s'
+                      }}
+                    >
+                      <div style={{ width: '12px', height: '12px', borderRadius: '3px', background: isSelected ? '#7c3aed' : '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {isSelected && <Check size={8} color="white" strokeWidth={4} />}
+                      </div>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: '#111827' }}>Önizleme</span>
+                <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                  {filteredData.length > 0 ? `${filteredData.length} kayıttan ilk 5 · Yatay kaydırma desteklenir` : 'Kayıt bulunamadı'}
+                </span>
+              </div>
+
+              <div style={{ border: '1px solid #f3f4f6', borderRadius: '12px', overflow: 'hidden' }}>
+                <div
+                  style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '195px', cursor: 'grab' }}
+                  onMouseDown={e => {
+                    const el = e.currentTarget;
+                    el.style.cursor = 'grabbing';
+                    const startX = e.clientX + el.scrollLeft;
+                    const handleMove = (me) => { el.scrollLeft = startX - me.clientX; };
+                    const handleUp = () => { el.style.cursor = 'grab'; document.removeEventListener('mousemove', handleMove); document.removeEventListener('mouseup', handleUp); };
+                    document.addEventListener('mousemove', handleMove);
+                    document.addEventListener('mouseup', handleUp);
+                  }}
+                >
+                  {filteredData.length === 0 ? (
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>
+                      Seçilen filtrelere uygun kayıt bulunamadı.
+                    </div>
+                  ) : selectedFields.length === 0 ? (
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' }}>
+                      En az bir sütun seçiniz.
+                    </div>
+                  ) : (
+                    <table style={{ borderCollapse: 'collapse', width: 'max-content', minWidth: '100%', fontVariantNumeric: 'tabular-nums' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid #f1f5f9' }}>
+                          <th style={{ padding: '9px 14px', textAlign: 'left', fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#f8fafc' }}>#</th>
+                          {selectedFields.map(id => (
+                            <th key={id} style={{ padding: '9px 14px', textAlign: isNumericField(id) ? 'right' : (id === 'type' ? 'center' : 'left'), fontSize: '10.5px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: '#f8fafc' }}>
+                              {getPropLabel(id)}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewData.map((t, idx) => (
+                          <tr key={t.id || idx} style={{ borderBottom: '1px solid #f8fafc', background: '#fff' }}>
+                            <td style={{ padding: '8px 14px', color: '#cbd5e1', fontSize: '12px', fontWeight: 500 }}>{idx + 1}</td>
+                            {selectedFields.map(id => {
+                              const rawVal = getExportFieldValue(t, id);
+                              let cell;
+
+                              if (id === 'type') {
+                                const isBuy = rawVal === 'ALIŞ';
+                                cell = (
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 10px', borderRadius: '20px', fontSize: '11.5px', fontWeight: 700, background: isBuy ? '#dcfce7' : '#fee2e2', color: isBuy ? '#15803d' : '#b91c1c', whiteSpace: 'nowrap' }}>
+                                    {isBuy ? <ArrowDownLeft size={11} strokeWidth={2.5} /> : <ArrowUpRight size={11} strokeWidth={2.5} />}
+                                    {rawVal}
+                                  </span>
+                                );
+                              } else if (['grossProfit', 'totalProfit'].includes(id)) {
+                                const n = parseFloat(rawVal.replace(',', '.'));
+                                cell = <span style={{ fontWeight: 700, fontSize: '12.5px', color: n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#9ca3af' }}>{rawVal} ₺</span>;
+                              } else if (['price','totalBuyAmount','totalSaleAmount','taxDeduction','avgBuyPrice'].includes(id)) {
+                                cell = <span style={{ fontSize: '12.5px', color: '#374151', fontWeight: 500 }}>{rawVal} ₺</span>;
+                              } else if (id === 'taxRate') {
+                                cell = <span style={{ fontSize: '12px', color: '#9ca3af' }}>%{rawVal}</span>;
+                              } else if (['quantity','remainingQuantity'].includes(id)) {
+                                cell = <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#111827' }}>{rawVal}</span>;
+                              } else if (id === 'stockId') {
+                                cell = <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#4f46e5' }}>{rawVal}</span>;
+                              } else if (id === 'date') {
+                                cell = <span style={{ fontSize: '12px', color: '#6b7280', fontFamily: 'monospace' }}>{rawVal}</span>;
+                              } else {
+                                cell = <span style={{ fontSize: '12.5px', color: '#374151' }}>{rawVal}</span>;
+                              }
+
+                              return (
+                                <td key={id} style={{ padding: '8px 14px', textAlign: isNumericField(id) ? 'right' : (id === 'type' ? 'center' : 'left'), whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                                  {cell}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 22px', borderTop: '1.5px solid #f3f4f6', flexShrink: 0 }}>
+            <a href="https://sheets.new" target="_blank" rel="noreferrer"
+              style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12px', color: '#9ca3af', textDecoration: 'none', fontWeight: 500, transition: 'color 0.1s' }}>
+              <ExternalLink size={13} color="#22c55e" /> sheets.new Aç
+            </a>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button type="button" onClick={onHide}
+                style={{ padding: '8px 18px', borderRadius: '9px', border: '1px solid #e5e7eb', background: '#fff', fontSize: '13px', color: '#374151', fontWeight: 500, cursor: 'pointer' }}>
+                Kapat
+              </button>
+              <button type="button" onClick={handleCopyToClipboard} disabled={btnDisabled}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', borderRadius: '9px', border: 'none', background: btnDisabled ? '#e5e7eb' : '#4f46e5', color: btnDisabled ? '#9ca3af' : '#fff', fontSize: '13px', fontWeight: 600, cursor: btnDisabled ? 'not-allowed' : 'pointer', transition: 'all 0.12s' }}>
+                <Copy size={13} /> Kopyala ({filteredData.length})
+              </button>
+              <button type="button" onClick={handleDownloadCSV} disabled={btnDisabled}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', borderRadius: '9px', border: 'none', background: btnDisabled ? '#e5e7eb' : '#059669', color: btnDisabled ? '#9ca3af' : '#fff', fontSize: '13px', fontWeight: 600, cursor: btnDisabled ? 'not-allowed' : 'pointer', transition: 'all 0.12s' }}>
+                <FileSpreadsheet size={14} /> CSV İndir ({filteredData.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </Modal>
   );
 };
@@ -682,6 +1752,7 @@ const FinanceTransactionsPage = () => {
   const [editInstitutionLogo, setEditInstitutionLogo] = useState('');
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Simulation State
   const [simStockId, setSimStockId] = useState('');
@@ -917,7 +1988,11 @@ const FinanceTransactionsPage = () => {
   }, [financeBulkHistory]);
 
 
-  const isAlis = (val) => (val?.type || val || '').toString().trim().toUpperCase().startsWith('AL');
+  const isAlis = (val) => {
+    const s = (val?.type || val || '').toString().trim().toLowerCase()
+      .replace(/i̇/g, 'i').replace(/ı/g, 'i');
+    return s.startsWith('al') || s.includes('buy') || s === 'b' || s === '+';
+  };
 
   const processedTransactions = useMemo(() => {
 
@@ -974,7 +2049,15 @@ const FinanceTransactionsPage = () => {
         let weightedDaysSum = 0;
         let totalSoldUnits = 0;
         
-        const lots = buyLots[storageKey] || [];
+        let lots = buyLots[storageKey] || [];
+        // If no lots in this specific storageKey, check other institutions for same stock
+        if (lots.every(l => l.remaining <= 0)) {
+          const otherKeys = Object.keys(buyLots).filter(k => k.startsWith(`${sId}_`) && buyLots[k].some(l => l.remaining > 0));
+          if (otherKeys.length > 0) {
+            lots = buyLots[otherKeys[0]];
+          }
+        }
+
         for (const lot of lots) {
           if (remainingToSell <= 0) break;
           if (lot.remaining <= 0) continue;
@@ -996,13 +2079,27 @@ const FinanceTransactionsPage = () => {
           remainingToSell -= sellAmount;
         }
 
+        // Fallback if no buy lots exist or explicit values were imported/entered
+        const explicitGross = (t.grossProfit !== undefined && t.grossProfit !== null && t.grossProfit !== '' && t.grossProfit !== 0) ? parseNum(t.grossProfit) : null;
+        const explicitTotal = (t.totalProfit !== undefined && t.totalProfit !== null && t.totalProfit !== '' && t.totalProfit !== 0) ? parseNum(t.totalProfit) : null;
+        const explicitAvgBuy = (t.avgBuyPrice !== undefined && t.avgBuyPrice !== null && t.avgBuyPrice !== '' && t.avgBuyPrice !== 0) ? parseNum(t.avgBuyPrice) : null;
+
+        if (grossProfit === 0 && totalSoldUnits === 0) {
+          if (explicitGross !== null) {
+            grossProfit = explicitGross;
+          } else if (explicitAvgBuy !== null && explicitAvgBuy > 0) {
+            grossProfit = q * (p - explicitAvgBuy);
+          }
+        }
+
         const durationDays = totalSoldUnits > 0 ? Math.round(weightedDaysSum / totalSoldUnits) : 0;
 
         const totalSaleAmount = q * p;
-        const finalTaxDeduction = (t.taxDeduction !== undefined && t.taxDeduction !== null && t.taxDeduction !== 0) ? t.taxDeduction : taxDeduction;
-        const totalProfit = grossProfit - finalTaxDeduction;
+        const finalTaxDeduction = (t.taxDeduction !== undefined && t.taxDeduction !== null && t.taxDeduction !== 0) ? parseNum(t.taxDeduction) : taxDeduction;
+        const totalProfit = (explicitTotal !== null && (grossProfit === explicitGross || totalSoldUnits === 0)) ? explicitTotal : (grossProfit - finalTaxDeduction);
         const costBasis = totalSaleAmount - grossProfit;
         const profitPercentage = costBasis > 0 ? (totalProfit / costBasis) * 100 : 0;
+        const avgBuyPrice = (explicitAvgBuy !== null && explicitAvgBuy > 0) ? explicitAvgBuy : (q > 0 ? Math.max(0, costBasis / q) : 0);
 
         runningBalances[storageKey] = Math.max(0, runningBalances[storageKey] - q);
 
@@ -1022,7 +2119,7 @@ const FinanceTransactionsPage = () => {
           totalProfit: totalProfit,
           profitPercentage: profitPercentage,
           holdingDurationDays: durationDays > 0 ? durationDays : 0,
-          avgBuyPrice: q > 0 ? costBasis / q : 0
+          avgBuyPrice: avgBuyPrice
         });
       }
     });
@@ -1093,7 +2190,7 @@ const FinanceTransactionsPage = () => {
   }, [user?.uid, processedTransactions, stocks, institutions]);
 
   const handleBulkImport = async (data) => {
-    if (!user) return;
+    if (!user || !data || data.length === 0) return;
     setIsBulkProcessing(true);
     setBulkProgress(0);
     let totalCount = 0;
@@ -1102,8 +2199,8 @@ const FinanceTransactionsPage = () => {
     const localInstitutions = [...institutions];
     const localStocks = [...stocks];
 
-    // Split into chunks of 500 for Firestore Batch limit
-    const chunkSize = 400; // Safer side
+    // Split into chunks of 400 for Firestore Batch limit
+    const chunkSize = 400;
     const chunks = [];
     for (let i = 0; i < data.length; i += chunkSize) {
       chunks.push(data.slice(i, i + chunkSize));
@@ -1115,59 +2212,71 @@ const FinanceTransactionsPage = () => {
         const batch = writeBatch(db);
 
         for (const item of chunk) {
-          if (!item.institutionName || !item.stockName) continue;
+          const rawStockName = (item.stockName || '').trim().toUpperCase();
+          if (!rawStockName) continue;
 
           // Find or create Institution
-          let inst = localInstitutions.find(i => i.name.toLowerCase() === item.institutionName.trim().toLowerCase());
+          const rawInstName = (item.institutionName || '').trim() || (localInstitutions[0]?.name || 'Genel');
+          let inst = localInstitutions.find(instItem => instItem.name.toLowerCase() === rawInstName.toLowerCase());
           if (!inst) {
             const newInstRef = doc(collection(db, `users/${user.uid}/institutions`));
-            const newInst = { id: newInstRef.id, name: item.institutionName.trim(), logo: '', createdAt: serverTimestamp(), deleted: false };
+            const newInst = { id: newInstRef.id, name: rawInstName, logo: '', createdAt: serverTimestamp(), deleted: false };
             batch.set(newInstRef, { name: newInst.name, logo: newInst.logo, createdAt: newInst.createdAt, deleted: newInst.deleted });
             localInstitutions.push(newInst);
             inst = newInst;
           }
 
           // Find or create Stock
-          let stock = localStocks.find(s => s.name.toLowerCase() === item.stockName.trim().toLowerCase());
+          let stock = localStocks.find(s => s.name.toLowerCase() === rawStockName.toLowerCase());
           if (!stock) {
             const newStockRef = doc(collection(db, `users/${user.uid}/stocks`));
-            const newStock = { id: newStockRef.id, name: item.stockName.trim().toUpperCase(), currentPrice: 0, createdAt: serverTimestamp(), deleted: false };
+            const newStock = { id: newStockRef.id, name: rawStockName, currentPrice: 0, createdAt: serverTimestamp(), deleted: false };
             batch.set(newStockRef, { name: newStock.name, currentPrice: newStock.currentPrice, createdAt: newStock.createdAt, deleted: newStock.deleted });
             localStocks.push(newStock);
             stock = newStock;
           }
 
-          const qty = parseFloat(item.quantity) || 0;
-          const prc = parseFloat(item.price) || 0;
-          const tax = parseFloat(item.taxRate) || 0;
+          const qty = typeof item.quantity === 'number' ? item.quantity : (parseFloat(item.quantity) || 0);
+          const prc = typeof item.price === 'number' ? item.price : (parseFloat(item.price) || 0);
+          const tax = typeof item.taxRate === 'number' ? item.taxRate : (parseFloat(item.taxRate) || 0);
+          const typeName = item.typeName === 'SATIŞ' ? 'SATIŞ' : 'ALIŞ';
           
-          const newRef = doc(collection(db, `users/${user.uid}/financeTransactions`));
-          batch.set(newRef, { 
+          const payload = { 
             institutionId: inst.id, 
             stockId: stock.id, 
-            type: item.typeName, 
+            type: typeName, 
             quantity: qty, 
             price: prc, 
             taxRate: tax, 
-            date: item.date, 
+            date: item.date || new Date().toISOString().split('T')[0], 
             createdAt: serverTimestamp(), 
             deleted: false 
-          });
+          };
+
+          if (item.grossProfit !== undefined && item.grossProfit !== null && item.grossProfit !== 0) {
+            payload.grossProfit = typeof item.grossProfit === 'number' ? item.grossProfit : (parseFloat(item.grossProfit) || 0);
+          }
+          if (item.totalProfit !== undefined && item.totalProfit !== null && item.totalProfit !== 0) {
+            payload.totalProfit = typeof item.totalProfit === 'number' ? item.totalProfit : (parseFloat(item.totalProfit) || 0);
+          }
+          if (item.taxDeduction !== undefined && item.taxDeduction !== null && item.taxDeduction !== 0) {
+            payload.taxDeduction = typeof item.taxDeduction === 'number' ? item.taxDeduction : (parseFloat(item.taxDeduction) || 0);
+          }
+          if (item.avgBuyPrice !== undefined && item.avgBuyPrice !== null && item.avgBuyPrice !== 0) {
+            payload.avgBuyPrice = typeof item.avgBuyPrice === 'number' ? item.avgBuyPrice : (parseFloat(item.avgBuyPrice) || 0);
+          }
+
+          const newRef = doc(collection(db, `users/${user.uid}/financeTransactions`));
+          batch.set(newRef, payload);
           totalCount++;
         }
         
         await batch.commit();
         setBulkProgress(Math.round(((i + 1) / chunks.length) * 100));
       }
-      
-      if (totalCount > 0) { 
-        alert(`${totalCount} işlem başarıyla aktarıldı. Yeni kurumlar/hisseler otomatik oluşturuldu.`); 
-      } else { 
-        alert('Aktarılacak uygun işlem bulunamadı.'); 
-      }
     } catch (err) {
       console.error('Bulk import error:', err);
-      alert('Aktarım sırasında bir hata oluştu.');
+      throw err;
     } finally {
       setIsBulkProcessing(false);
       setBulkProgress(0);
@@ -1202,20 +2311,8 @@ const FinanceTransactionsPage = () => {
       });
     }
 
-    if (config.sortConfig?.propId) {
-      const { propId, direction } = config.sortConfig;
-      result.sort((a, b) => {
-        let valA = a[propId], valB = b[propId];
-        if (propId === 'institutionId') { valA = getInstitutionInfo(valA).name; valB = getInstitutionInfo(valB).name; }
-        if (propId === 'stockId') { valA = getStockInfo(valA).name; valB = getStockInfo(valB).name; }
-        if (valA < valB) return direction === 'asc' ? -1 : 1;
-        if (valA > valB) return direction === 'asc' ? 1 : -1;
-        return 0;
-      });
-    }
-
     return result;
-  }, [processedTransactions, selectedInstitutionId, config.filters, config.sortConfig, institutions, stocks]);
+  }, [processedTransactions, selectedInstitutionId, config.filters, institutions, stocks]);
 
   const currentPortfolio = useMemo(() => {
     const portfolio = {};
@@ -1323,19 +2420,59 @@ const FinanceTransactionsPage = () => {
     return propertyOrder.filter(id => config.propertyVisibility?.[id] !== false);
   }, [propertyOrder, config.propertyVisibility]);
 
-  const sortedTransactions = useMemo(() => {
-    return [...filteredTransactions].sort((a, b) => {
-      if (!config.sortConfig) return 0;
-      const { propId, direction } = config.sortConfig;
+  const getCreatedTime = (item) => {
+    if (!item || !item.createdAt) return Date.now();
+    const c = item.createdAt;
+    if (typeof c.seconds === 'number') return c.seconds * 1000 + (c.nanoseconds || 0) / 1000000;
+    if (c instanceof Date) return c.getTime();
+    if (typeof c === 'number') return c;
+    if (typeof c === 'string') {
+      const t = new Date(c).getTime();
+      return isNaN(t) ? Date.now() : t;
+    }
+    return Date.now();
+  };
+
+  const applySort = (data, sortConfig) => {
+    return [...data].sort((a, b) => {
+      if (!sortConfig) {
+        const timeA = getCreatedTime(a);
+        const timeB = getCreatedTime(b);
+        if (timeB !== timeA) return timeB - timeA;
+        return (a.order || 0) - (b.order || 0);
+      }
+      const { propId, direction } = sortConfig;
       let valA = a[propId], valB = b[propId];
-      if (propId === 'date') { valA = valA || ''; valB = valB || ''; }
-      else if (['quantity', 'price', 'taxRate', 'remainingQuantity', 'taxDeduction'].includes(propId)) { valA = parseFloat(valA) || 0; valB = parseFloat(valB) || 0; }
-      else { valA = (valA || '').toString().toLowerCase(); valB = (valB || '').toString().toLowerCase(); }
+      if (propId === 'date') {
+        valA = valA || '0000-00-00';
+        valB = valB || '0000-00-00';
+      } else if (propId === 'institutionId') {
+        valA = getInstitutionInfo(valA).name || '';
+        valB = getInstitutionInfo(valB).name || '';
+      } else if (propId === 'stockId') {
+        valA = getStockInfo(valA).name || '';
+        valB = getStockInfo(valB).name || '';
+      } else if (['quantity', 'price', 'taxRate', 'remainingQuantity', 'taxDeduction'].includes(propId)) {
+        valA = typeof valA === 'string' ? parseFloat(valA) : (valA || 0);
+        valB = typeof valB === 'string' ? parseFloat(valB) : (valB || 0);
+      } else {
+        valA = (valA || '').toString().toLowerCase();
+        valB = (valB || '').toString().toLowerCase();
+      }
+
       if (valA < valB) return direction === 'asc' ? -1 : 1;
       if (valA > valB) return direction === 'asc' ? 1 : -1;
-      return 0;
+
+      const timeA = getCreatedTime(a);
+      const timeB = getCreatedTime(b);
+      if (timeB !== timeA) return timeB - timeA;
+      return (a.order || 0) - (b.order || 0);
     });
-  }, [filteredTransactions, config.sortConfig]);
+  };
+
+  const sortedTransactions = useMemo(() => {
+    return applySort(filteredTransactions, config.sortConfig);
+  }, [filteredTransactions, config.sortConfig, institutions, stocks]);
 
   const visibleTransactions = useMemo(() => sortedTransactions.slice(0, limitCount), [sortedTransactions, limitCount]);
 
@@ -2467,6 +3604,7 @@ const FinanceTransactionsPage = () => {
             </Dropdown>
           </div>
           <Button variant="light" size="sm" onClick={() => setShowImportModal(true)} className="d-flex align-items-center gap-2 rounded-pill px-3 shadow-sm border glass-card"><Upload size={14} /> Import</Button>
+          <Button variant="light" size="sm" onClick={() => setShowExportModal(true)} className="d-flex align-items-center gap-2 rounded-pill px-3 shadow-sm border glass-card"><Download size={14} /> Export</Button>
           <div className="d-flex align-items-center shadow-sm rounded-pill overflow-hidden" style={{ background: '#0d6efd' }}><Button variant="primary" size="sm" onClick={handleQuickNewTransaction} className="border-0 px-3 h-100 rounded-0 border-end">New</Button><Button variant="primary" size="sm" onClick={() => setShowTransactionModal(true)} className="border-0 px-2 h-100 rounded-0 d-flex align-items-center"><ChevronDown size={14} /></Button></div>
         </div>
       </div>
@@ -3095,10 +4233,39 @@ const FinanceTransactionsPage = () => {
         </Modal.Body>
       </Modal>
 
-      <ImportModal show={showImportModal} onHide={() => setShowImportModal(false)} onImport={handleBulkImport} />
+      <ImportModal
+        show={showImportModal}
+        onHide={() => setShowImportModal(false)}
+        onImport={handleBulkImport}
+        institutions={institutions}
+        stocks={stocks}
+      />
+      <ExportModal
+        show={showExportModal}
+        onHide={() => setShowExportModal(false)}
+        transactions={processedTransactions}
+        institutions={institutions}
+        stocks={stocks}
+        config={config}
+      />
     </div>
   );
 };
+
+const MONTH_NAMES = [
+  { key: '01', name: 'Ocak' },
+  { key: '02', name: 'Şubat' },
+  { key: '03', name: 'Mart' },
+  { key: '04', name: 'Nisan' },
+  { key: '05', name: 'Mayıs' },
+  { key: '06', name: 'Haziran' },
+  { key: '07', name: 'Temmuz' },
+  { key: '08', name: 'Ağustos' },
+  { key: '09', name: 'Eylül' },
+  { key: '10', name: 'Ekim' },
+  { key: '11', name: 'Kasım' },
+  { key: '12', name: 'Aralık' }
+];
 
 const FinanceCharts = ({
   currentPortfolio,
@@ -3109,9 +4276,12 @@ const FinanceCharts = ({
   parseNum,
   processedTransactions
 }) => {
-  const [chartLayout, setChartLayout] = useState('hisse_mevcut'); // 'hisse_mevcut', 'hisse_genel', 'kurum_mevcut', 'kurum_genel'
+  const [chartLayout, setChartLayout] = useState('yillara_gore'); // 'yillara_gore', 'hisse_mevcut', 'hisse_genel', 'kurum_mevcut', 'kurum_genel'
   const [hoveredSlice, setHoveredSlice] = useState(null);
   const [showAllHisseGenel, setShowAllHisseGenel] = useState(false);
+  const [selectedYear, setSelectedYear] = useState('');
+  const [expandedMonths, setExpandedMonths] = useState({});
+  const [performanceViewMode, setPerformanceViewMode] = useState('eski'); // 'eski' (Realized - Yıllık/Tümü), 'devam_eden' (Unrealized - Mevcut Portföy)
 
   const colors = [
     '#3e64ff',
@@ -3125,6 +4295,176 @@ const FinanceCharts = ({
     '#f97316',
     '#a855f7'
   ];
+
+  // -------------------------------------------------------------
+  // YILLARA GÖRE HESAPLAMA VE VERİ HAZIRLIĞI
+  // -------------------------------------------------------------
+  const availableYears = useMemo(() => {
+    if (!processedTransactions || processedTransactions.length === 0) {
+      return [new Date().getFullYear().toString()];
+    }
+    const yearsSet = new Set();
+    processedTransactions.forEach(t => {
+      if (t.date && typeof t.date === 'string' && t.date.length >= 4) {
+        const y = t.date.substring(0, 4);
+        if (/^\d{4}$/.test(y)) {
+          yearsSet.add(y);
+        }
+      }
+    });
+    if (yearsSet.size === 0) {
+      yearsSet.add(new Date().getFullYear().toString());
+    }
+    return Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
+  }, [processedTransactions]);
+
+  const activeYear = (selectedYear === 'tumu')
+    ? 'tumu'
+    : (selectedYear && availableYears.includes(selectedYear))
+      ? selectedYear
+      : (availableYears[0] || new Date().getFullYear().toString());
+
+  const toggleMonthExpand = (mKey) => {
+    setExpandedMonths(prev => ({
+      ...prev,
+      [mKey]: !prev[mKey]
+    }));
+  };
+
+  const yearlyPerformanceData = useMemo(() => {
+    if (!processedTransactions) return { months: [], yearlySummary: {} };
+
+    const yearTx = activeYear === 'tumu'
+      ? processedTransactions
+      : processedTransactions.filter(t => t.date && typeof t.date === 'string' && t.date.startsWith(activeYear));
+
+    let totalYearNetProfit = 0;
+    let totalYearTax = 0;
+    let totalYearBuyAmount = 0;
+    let totalYearSaleAmount = 0;
+    let totalYearCostBasis = 0;
+    let totalYearBuyCount = 0;
+    let totalYearSaleCount = 0;
+
+    const monthsMap = {};
+    MONTH_NAMES.forEach(m => {
+      monthsMap[m.key] = {
+        monthKey: m.key,
+        monthName: m.name,
+        netProfit: 0,
+        taxDeduction: 0,
+        buyAmount: 0,
+        saleAmount: 0,
+        costBasis: 0,
+        buyCount: 0,
+        saleCount: 0,
+        stockMap: {}
+      };
+    });
+
+    yearTx.forEach(t => {
+      if (!t.date || t.date.length < 7) return;
+      const mKey = t.date.substring(5, 7);
+      if (!monthsMap[mKey]) return;
+
+      const isBuy = t._isAlis ?? (t.type === 'ALIŞ');
+      const sInfo = getStockInfo(t.stockId);
+      const stockName = sInfo?.name || t.stockId || 'Hisse';
+
+      if (!monthsMap[mKey].stockMap[t.stockId]) {
+        monthsMap[mKey].stockMap[t.stockId] = {
+          stockId: t.stockId,
+          stockName: stockName,
+          buyQty: 0,
+          sellQty: 0,
+          buyAmount: 0,
+          saleAmount: 0,
+          netProfit: 0,
+          taxDeduction: 0,
+          costBasis: 0,
+          txCount: 0
+        };
+      }
+      const sItem = monthsMap[mKey].stockMap[t.stockId];
+      sItem.txCount += 1;
+
+      if (isBuy) {
+        const bAmt = t.totalBuyAmount || (t.quantity * t.price) || 0;
+        monthsMap[mKey].buyAmount += bAmt;
+        monthsMap[mKey].buyCount += 1;
+        sItem.buyQty += (t.quantity || 0);
+        sItem.buyAmount += bAmt;
+
+        totalYearBuyAmount += bAmt;
+        totalYearBuyCount += 1;
+      } else {
+        const sAmt = t.totalSaleAmount || (t.quantity * t.price) || 0;
+        const profit = t.totalProfit || 0;
+        const tax = t.calculatedTaxDeduction || 0;
+        const cost = t.costBasis || 0;
+
+        monthsMap[mKey].saleAmount += sAmt;
+        monthsMap[mKey].netProfit += profit;
+        monthsMap[mKey].taxDeduction += tax;
+        monthsMap[mKey].costBasis += cost;
+        monthsMap[mKey].saleCount += 1;
+
+        sItem.sellQty += (t.quantity || 0);
+        sItem.saleAmount += sAmt;
+        sItem.netProfit += profit;
+        sItem.taxDeduction += tax;
+        sItem.costBasis += cost;
+
+        totalYearSaleAmount += sAmt;
+        totalYearNetProfit += profit;
+        totalYearTax += tax;
+        totalYearCostBasis += cost;
+        totalYearSaleCount += 1;
+      }
+    });
+
+    const months = MONTH_NAMES.map(m => {
+      const mData = monthsMap[m.key];
+      const profitPercent = mData.costBasis > 0 ? (mData.netProfit / mData.costBasis) * 100 : 0;
+      const stocksList = Object.values(mData.stockMap)
+        .map(s => ({
+          ...s,
+          profitPercent: s.costBasis > 0 ? (s.netProfit / s.costBasis) * 100 : 0
+        }))
+        .sort((a, b) => b.netProfit - a.netProfit);
+
+      return {
+        ...mData,
+        profitPercent,
+        stocksList,
+        hasActivity: mData.buyCount > 0 || mData.saleCount > 0
+      };
+    });
+
+    const activeMonthsWithSales = months.filter(m => m.saleCount > 0);
+    let bestMonth = null;
+    if (activeMonthsWithSales.length > 0) {
+      bestMonth = [...activeMonthsWithSales].sort((a, b) => b.netProfit - a.netProfit)[0];
+    }
+
+    const yearlyProfitPercent = totalYearCostBasis > 0 ? (totalYearNetProfit / totalYearCostBasis) * 100 : 0;
+
+    return {
+      months,
+      yearlySummary: {
+        netProfit: totalYearNetProfit,
+        taxDeduction: totalYearTax,
+        buyAmount: totalYearBuyAmount,
+        saleAmount: totalYearSaleAmount,
+        costBasis: totalYearCostBasis,
+        profitPercent: yearlyProfitPercent,
+        totalTxCount: totalYearBuyCount + totalYearSaleCount,
+        buyCount: totalYearBuyCount,
+        saleCount: totalYearSaleCount,
+        bestMonth
+      }
+    };
+  }, [processedTransactions, activeYear, getStockInfo]);
 
   // -------------------------------------------------------------
   // HISSE LAYOUT DATA (MEVCUT)
@@ -3376,7 +4716,7 @@ const FinanceCharts = ({
       <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
         <div>
           <h2 className="fw-bold m-0 text-dark">Portföy Analizi</h2>
-          <p className="text-muted small m-0 mt-1">Mevcut hisse dağılımları ve kurum bazlı finansal özetler</p>
+          <p className="text-muted small m-0 mt-1">Mevcut hisse dağılımları, kurum bazlı finansal özetler ve dönemsel performans</p>
         </div>
         <div className="d-flex align-items-center gap-1 bg-light bg-opacity-50 p-1 rounded-pill flex-wrap" style={{ border: '1px solid rgba(0,0,0,0.05)' }}>
           <Button
@@ -3415,249 +4755,677 @@ const FinanceCharts = ({
           >
             <Briefcase size={14} className="me-1" /> Kurum Genel
           </Button>
+          <Button
+            variant="light"
+            size="sm"
+            onClick={() => { setChartLayout('yillara_gore'); setHoveredSlice(null); }}
+            className={`rounded-pill px-3 py-1 fw-bold border-0 transition-all ${chartLayout === 'yillara_gore' ? 'bg-white shadow-sm text-primary' : 'bg-transparent text-muted'}`}
+            style={{ fontSize: '12px' }}
+          >
+            <Calendar size={14} className="me-1" /> Yıllara Göre
+          </Button>
         </div>
       </div>
 
       <Row className="g-4">
         <Col lg={5} md={12}>
-          <Card className="glass-card border shadow-sm p-4 h-100 d-flex flex-column align-items-center justify-content-center" style={{ minHeight: '380px' }}>
-            <div className="w-100 d-flex justify-content-between align-items-center mb-3">
-              <span className="x-small fw-bold text-muted opacity-75 text-uppercase">
-                {chartLayout === 'hisse_mevcut' ? 'HİSSE DAĞILIMI (MEVCUT)' : chartLayout === 'hisse_genel' ? 'HİSSE DAĞILIMI (GENEL)' : chartLayout === 'kurum_mevcut' ? 'KURUMSAL DAĞILIM (MEVCUT)' : 'KURUMSAL DAĞILIM (GENEL)'}
-              </span>
-              <span className="x-small text-muted">Halka üzerine geliniz</span>
-            </div>
-            
-            {donutData.filter(d => d.value > 0).length === 0 ? (
-              <div className="text-center py-5 text-muted">
-                <div className="opacity-50 mb-2"><PieChart size={32} /></div>
-                <div className="small">Görüntülenecek aktif veri bulunamadı</div>
-              </div>
-            ) : (
-              <div className="position-relative d-flex align-items-center justify-content-center" style={{ width: '220px', height: '220px' }}>
-                <svg viewBox="0 0 160 160" width="100%" height="100%">
-                  <circle cx="80" cy="80" r="50" fill="transparent" stroke="rgba(0,0,0,0.03)" strokeWidth="15" />
-                  {donutData.map((d, i) => {
-                    if (d.value <= 0) return null;
-                    return (
-                      <circle
-                        key={d.id}
-                        cx="80"
-                        cy="80"
-                        r="50"
-                        fill="transparent"
-                        stroke={d.color}
-                        strokeWidth={hoveredSlice === i ? 18 : 15}
-                        strokeDasharray={`${d.strokeLength} 314.159`}
-                        strokeDashoffset="0"
-                        strokeLinecap="round"
-                        className="transition-all"
-                        style={{ 
-                          cursor: 'pointer',
-                          filter: hoveredSlice === i ? 'drop-shadow(0px 4px 8px rgba(0,0,0,0.15))' : 'none',
-                          transform: `rotate(${d.rotationAngle}deg)`,
-                          transformOrigin: '80px 80px'
-                        }}
-                        onMouseEnter={() => setHoveredSlice(i)}
-                        onMouseLeave={() => setHoveredSlice(null)}
-                      />
-                    );
-                  })}
-                </svg>
-                
-                <div className="position-absolute text-center d-flex flex-column align-items-center justify-content-center" style={{ width: '130px', height: '130px', borderRadius: '50%', pointerEvents: 'none' }}>
-                  {activeHoverInfo ? (
-                    <>
-                      <span className="fw-bold text-dark fs-14 text-truncate px-2 w-100">{activeHoverInfo.name}</span>
-                      <span className="text-muted fs-11 mt-0.5">{activeHoverInfo.percentageVal.toFixed(1)}%</span>
-                      {activeHoverInfo.value > 0 ? (
-                        <span className="fw-bold text-primary fs-14 mt-1">
-                          {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(activeHoverInfo.value)}₺
+          {chartLayout === 'yillara_gore' ? (() => {
+            const isDevamEden = performanceViewMode === 'devam_eden';
+
+            // Data for Eski (Realized):
+            const s = yearlyPerformanceData.yearlySummary;
+            const realizedNetProfit = s.netProfit || 0;
+            const realizedTax = s.taxDeduction || 0;
+            const realizedGross = realizedNetProfit + realizedTax;
+            const realizedProfitPercent = s.profitPercent || 0;
+            const realizedTxCount = s.totalTxCount || 0;
+
+            // Data for Devam Eden (Unrealized active portfolio):
+            const activeNetProfit = totalStockProfit;
+            const activeTax = totalStockTax;
+            const activeGross = activeNetProfit + activeTax;
+            const activeProfitPercent = overallStockProfitPercent;
+            const activeTxCount = activeStocks.length;
+
+            const netProfit = isDevamEden ? activeNetProfit : realizedNetProfit;
+            const tax = isDevamEden ? activeTax : realizedTax;
+            const gross = isDevamEden ? activeGross : realizedGross;
+            const profitPercent = isDevamEden ? activeProfitPercent : realizedProfitPercent;
+            const countLabel = isDevamEden ? `${activeTxCount} hisse/fon` : `${realizedTxCount} işlem`;
+
+            // Donut segments: profit (green/red), tax (red)
+            const absGross = Math.abs(gross);
+            const absProfit = Math.abs(netProfit);
+            const absTax = Math.abs(tax);
+
+            const CIRC = 2 * Math.PI * 50; // r=50
+            const profitPct = (absProfit + absTax) > 0 ? absProfit / (absProfit + absTax) : 0;
+            const taxPct = (absProfit + absTax) > 0 ? absTax / (absProfit + absTax) : 0;
+
+            const profitLen = profitPct * CIRC;
+            const taxLen = taxPct * CIRC;
+            const gap = (profitLen > 0 && taxLen > 0) ? 4 : 0;
+
+            const profitColor = netProfit >= 0 ? '#10b981' : '#f43f5e';
+            const taxColor = '#f43f5e';
+
+            return (
+              <Card className="glass-card border-0 shadow-sm h-100 overflow-hidden" style={{ minHeight: '380px', background: 'linear-gradient(135deg, #fafafa 0%, #f4f7ff 100%)' }}>
+                <div className="p-4 d-flex flex-column h-100">
+                  {/* Header */}
+                  <div className="d-flex align-items-center justify-content-between mb-3">
+                    <div>
+                      <span className="x-small fw-bold text-muted text-uppercase" style={{ fontSize: '9px', letterSpacing: '0.8px' }}>
+                        {isDevamEden
+                          ? 'DEVAM EDEN PORTFÖY PERFORMANSI'
+                          : (activeYear === 'tumu' ? 'TOPLAM PERFORMANS' : `${activeYear} PERFORMANS`)}
+                      </span>
+                      <div className={`fs-22 fw-bold mt-0.5 lh-1 ${netProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+                        {netProfit >= 0 ? '+' : ''}
+                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(netProfit)}₺
+                      </div>
+                      <div className="d-flex align-items-center gap-2 mt-1">
+                        <span className={`fw-bold fs-11 px-2 py-0.5 rounded-pill ${netProfit >= 0 ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`}>
+                          {netProfit >= 0 ? '▲ +' : '▼ '}{(profitPercent || 0).toFixed(2)}%
                         </span>
-                      ) : (
-                        <span className="text-muted fs-11 mt-1">
-                          Aktif Değil
-                        </span>
+                        <span className="text-muted" style={{ fontSize: '9px' }}>{countLabel}</span>
+                      </div>
+                    </div>
+
+                    {/* Eski / Devam Eden Buttons */}
+                    <div className="d-flex align-items-center gap-1 p-0.5 rounded-pill" style={{ background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.07)' }}>
+                      <Button
+                        variant="light"
+                        size="sm"
+                        onClick={() => setPerformanceViewMode('eski')}
+                        className={`rounded-pill border-0 fw-bold transition-all ${performanceViewMode === 'eski' ? 'bg-dark text-white shadow-sm' : 'bg-transparent text-muted'}`}
+                        style={{ fontSize: '10px', padding: '3px 10px' }}
+                      >
+                        Eski
+                      </Button>
+                      <Button
+                        variant="light"
+                        size="sm"
+                        onClick={() => setPerformanceViewMode('devam_eden')}
+                        className={`rounded-pill border-0 fw-bold transition-all ${performanceViewMode === 'devam_eden' ? 'bg-primary text-white shadow-sm' : 'bg-transparent text-muted'}`}
+                        style={{ fontSize: '10px', padding: '3px 10px' }}
+                      >
+                        Devam Eden
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Donut Chart */}
+                  <div className="d-flex align-items-center justify-content-center flex-grow-1 position-relative py-2">
+                    <div className="position-relative" style={{ width: '180px', height: '180px' }}>
+                      <svg viewBox="0 0 120 120" width="180" height="180" style={{ transform: 'rotate(-90deg)' }}>
+                        {/* Background track */}
+                        <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth="12" />
+                        {/* Net Profit segment */}
+                        {profitLen > 0 && (
+                          <circle
+                            cx="60" cy="60" r="50"
+                            fill="none"
+                            stroke={profitColor}
+                            strokeWidth="12"
+                            strokeDasharray={`${Math.max(0, profitLen - gap)} ${CIRC - Math.max(0, profitLen - gap)}`}
+                            strokeDashoffset="0"
+                            strokeLinecap="round"
+                            style={{ filter: 'drop-shadow(0 2px 4px rgba(16,185,129,0.3))' }}
+                          />
+                        )}
+                        {/* Tax segment */}
+                        {taxLen > 0 && (
+                          <circle
+                            cx="60" cy="60" r="50"
+                            fill="none"
+                            stroke={taxColor}
+                            strokeWidth="12"
+                            strokeDasharray={`${Math.max(0, taxLen - gap)} ${CIRC - Math.max(0, taxLen - gap)}`}
+                            strokeDashoffset={`${-(profitLen)}`}
+                            strokeLinecap="round"
+                            style={{ opacity: 0.85, filter: 'drop-shadow(0 2px 4px rgba(244,63,94,0.2))' }}
+                          />
+                        )}
+                      </svg>
+                      {/* Center label */}
+                      <div className="position-absolute top-50 start-50 translate-middle text-center" style={{ pointerEvents: 'none' }}>
+                        <div className="text-muted fw-bold" style={{ fontSize: '9px', letterSpacing: '0.5px' }}>NET / BRÜT</div>
+                        <div className="fw-bold text-dark" style={{ fontSize: '13px', lineHeight: 1.2 }}>
+                          {gross > 0
+                            ? `${((netProfit / gross) * 100).toFixed(0)}%`
+                            : '—'}
+                        </div>
+                        <div className="text-muted" style={{ fontSize: '9px' }}>verimlilik</div>
+                      </div>
+                    </div>
+
+                    {/* Legend */}
+                    <div className="ms-3 d-flex flex-column gap-2">
+                      <div>
+                        <div className="d-flex align-items-center gap-1.5 mb-0.5">
+                          <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: profitColor, flexShrink: 0 }} />
+                          <span className="text-muted fw-semibold" style={{ fontSize: '9px', letterSpacing: '0.4px' }}>NET KÂR/ZARAR</span>
+                        </div>
+                        <div className={`fw-bold fs-13 ${netProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+                          {netProfit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(netProfit)}₺
+                        </div>
+                        {profitPct > 0 && <div className="text-muted" style={{ fontSize: '9px' }}>{(profitPct * 100).toFixed(1)}% pay</div>}
+                      </div>
+                      <div>
+                        <div className="d-flex align-items-center gap-1.5 mb-0.5">
+                          <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: taxColor, opacity: 0.85, flexShrink: 0 }} />
+                          <span className="text-muted fw-semibold" style={{ fontSize: '9px', letterSpacing: '0.4px' }}>STOPAJ KESİNTİ</span>
+                        </div>
+                        <div className="fw-bold text-danger fs-13">
+                          -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(tax)}₺
+                        </div>
+                        {taxPct > 0 && <div className="text-muted" style={{ fontSize: '9px' }}>{(taxPct * 100).toFixed(1)}% pay</div>}
+                      </div>
+                      {gross !== 0 && (
+                        <div>
+                          <div className="d-flex align-items-center gap-1.5 mb-0.5">
+                            <div style={{ width: '10px', height: '10px', borderRadius: '3px', backgroundColor: '#e5e7eb', flexShrink: 0 }} />
+                            <span className="text-muted fw-semibold" style={{ fontSize: '9px', letterSpacing: '0.4px' }}>BRÜT KÂR</span>
+                          </div>
+                          <div className="fw-bold text-dark fs-13">
+                            {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(gross)}₺
+                          </div>
+                        </div>
                       )}
-                      <span className="text-danger fw-bold mt-0.5" style={{ fontSize: '9px' }}>
-                        Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(activeHoverInfo.tax)}₺
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-muted fs-10 text-uppercase fw-bold opacity-75">TOPLAM DEĞER</span>
-                      <span className="fw-bold text-dark fs-18 mt-1">
-                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalStockValue - currentTotalTax)}₺
-                      </span>
-                      <span className={`fw-bold fs-11 mt-1 ${currentTotalProfit >= 0 ? 'text-success' : 'text-danger'}`}>
-                        {currentTotalProfit >= 0 ? '+' : ''}
-                        {currentOverallProfitPercent.toFixed(2)}%
-                      </span>
-                      <span className="text-danger fw-bold mt-0.5" style={{ fontSize: '9px' }}>
-                        Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalTax)}₺
-                      </span>
-                    </>
-                  )}
+                    </div>
+                  </div>
+
+                  {/* Bottom stats */}
+                  <div className="mt-2 pt-3 border-top d-flex justify-content-between align-items-center flex-wrap gap-1">
+                    {isDevamEden ? (
+                      <>
+                        <div className="text-center">
+                          <div className="text-muted" style={{ fontSize: '8px', letterSpacing: '0.5px', fontWeight: 600 }}>TOPLAM DEĞER</div>
+                          <div className="fw-bold text-dark" style={{ fontSize: '11px' }}>
+                            {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(totalStockValue || 0)}₺
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-muted" style={{ fontSize: '8px', letterSpacing: '0.5px', fontWeight: 600 }}>TOPLAM MALİYET</div>
+                          <div className="fw-bold text-dark" style={{ fontSize: '11px' }}>
+                            {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(totalStockCost || 0)}₺
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-muted" style={{ fontSize: '8px', letterSpacing: '0.5px', fontWeight: 600 }}>AKTİF ENSTRÜMAN</div>
+                          <div className="fw-bold text-dark" style={{ fontSize: '11px' }}>
+                            {activeStocks.length} Adet
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-center">
+                          <div className="text-muted" style={{ fontSize: '8px', letterSpacing: '0.5px', fontWeight: 600 }}>EN İYİ AY</div>
+                          <div className="fw-bold text-dark" style={{ fontSize: '11px' }}>
+                            {s.bestMonth ? s.bestMonth.monthName : '-'}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-muted" style={{ fontSize: '8px', letterSpacing: '0.5px', fontWeight: 600 }}>SATIŞ</div>
+                          <div className="fw-bold text-dark" style={{ fontSize: '11px' }}>
+                            {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(s.saleAmount || 0)}₺
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-muted" style={{ fontSize: '8px', letterSpacing: '0.5px', fontWeight: 600 }}>AKTİF AY</div>
+                          <div className="fw-bold text-dark" style={{ fontSize: '11px' }}>
+                            {yearlyPerformanceData.months.filter(m => m.hasActivity).length}/12
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
+              </Card>
+            );
+          })() : (
+            <Card className="glass-card border shadow-sm p-4 h-100 d-flex flex-column align-items-center justify-content-center" style={{ minHeight: '380px' }}>
+              <div className="w-100 d-flex justify-content-between align-items-center mb-3">
+                <span className="x-small fw-bold text-muted opacity-75 text-uppercase">
+                  {chartLayout === 'hisse_mevcut' ? 'HİSSE DAĞILIMI (MEVCUT)' : chartLayout === 'hisse_genel' ? 'HİSSE DAĞILIMI (GENEL)' : chartLayout === 'kurum_mevcut' ? 'KURUMSAL DAĞILIM (MEVCUT)' : 'KURUMSAL DAĞILIM (GENEL)'}
+                </span>
+                <span className="x-small text-muted">Halka üzerine geliniz</span>
               </div>
-            )}
-          </Card>
+              
+              {donutData.filter(d => d.value > 0).length === 0 ? (
+                <div className="text-center py-5 text-muted">
+                  <div className="opacity-50 mb-2"><PieChart size={32} /></div>
+                  <div className="small">Görüntülenecek aktif veri bulunamadı</div>
+                </div>
+              ) : (
+                <div className="position-relative d-flex align-items-center justify-content-center" style={{ width: '220px', height: '220px' }}>
+                  <svg viewBox="0 0 160 160" width="100%" height="100%">
+                    <circle cx="80" cy="80" r="50" fill="transparent" stroke="rgba(0,0,0,0.03)" strokeWidth="15" />
+                    {donutData.map((d, i) => {
+                      if (d.value <= 0) return null;
+                      return (
+                        <circle
+                          key={d.id}
+                          cx="80"
+                          cy="80"
+                          r="50"
+                          fill="transparent"
+                          stroke={d.color}
+                          strokeWidth={hoveredSlice === i ? 18 : 15}
+                          strokeDasharray={`${d.strokeLength} 314.159`}
+                          strokeDashoffset="0"
+                          strokeLinecap="round"
+                          className="transition-all"
+                          style={{ 
+                            cursor: 'pointer',
+                            filter: hoveredSlice === i ? 'drop-shadow(0px 4px 8px rgba(0,0,0,0.15))' : 'none',
+                            transform: `rotate(${d.rotationAngle}deg)`,
+                            transformOrigin: '80px 80px'
+                          }}
+                          onMouseEnter={() => setHoveredSlice(i)}
+                          onMouseLeave={() => setHoveredSlice(null)}
+                        />
+                      );
+                    })}
+                  </svg>
+                  
+                  <div className="position-absolute text-center d-flex flex-column align-items-center justify-content-center" style={{ width: '130px', height: '130px', borderRadius: '50%', pointerEvents: 'none' }}>
+                    {activeHoverInfo ? (
+                      <>
+                        <span className="fw-bold text-dark fs-14 text-truncate px-2 w-100">{activeHoverInfo.name}</span>
+                        <span className="text-muted fs-11 mt-0.5">{activeHoverInfo.percentageVal.toFixed(1)}%</span>
+                        {activeHoverInfo.value > 0 ? (
+                          <span className="fw-bold text-primary fs-14 mt-1">
+                            {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(activeHoverInfo.value)}₺
+                          </span>
+                        ) : (
+                          <span className="text-muted fs-11 mt-1">
+                            Aktif Değil
+                          </span>
+                        )}
+                        <span className="text-danger fw-bold mt-0.5" style={{ fontSize: '9px' }}>
+                          Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(activeHoverInfo.tax)}₺
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-muted fs-10 text-uppercase fw-bold opacity-75">TOPLAM DEĞER</span>
+                        <span className="fw-bold text-dark fs-18 mt-1">
+                          {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalStockValue - currentTotalTax)}₺
+                        </span>
+                        <span className={`fw-bold fs-11 mt-1 ${currentTotalProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+                          {currentTotalProfit >= 0 ? '+' : ''}
+                          {currentOverallProfitPercent.toFixed(2)}%
+                        </span>
+                        <span className="text-danger fw-bold mt-0.5" style={{ fontSize: '9px' }}>
+                          Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalTax)}₺
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
         </Col>
 
         <Col lg={7} md={12}>
-          <Card className="glass-card border shadow-sm p-4 h-100 d-flex flex-column justify-content-between" style={{ minHeight: '380px' }}>
-            <div>
-              <div className="d-flex align-items-center justify-content-between mb-4">
-                <span className="x-small fw-bold text-muted opacity-75 text-uppercase">
-                  {chartLayout === 'hisse_mevcut' ? 'HİSSE DETAYLARI (MEVCUT)' : chartLayout === 'hisse_genel' ? 'HİSSE DETAYLARI (GENEL)' : chartLayout === 'kurum_mevcut' ? 'KURUMSAL ÖZETLER (MEVCUT)' : 'KURUMSAL ÖZETLER (GENEL)'}
-                </span>
-                <Badge bg="primary" className="rounded-pill opacity-75 px-3 py-1 fs-11">
-                  {chartLayout === 'hisse_mevcut' ? `${activeStocks.length} Aktif Hisse` : chartLayout === 'hisse_genel' ? `${allStocks.length} Hisse (Mevcut/Tarihsel)` : `${activeInstitutions.length} Aktif Kurum`}
-                </Badge>
+          {chartLayout === 'yillara_gore' ? (
+            <Card className="glass-card border-0 shadow-sm h-100 overflow-hidden" style={{ minHeight: '380px', background: 'linear-gradient(135deg, #fafafa 0%, #f4f7ff 100%)' }}>
+              <div className="p-4 d-flex flex-column h-100">
+                <div className="d-flex flex-wrap align-items-center justify-content-between mb-3 gap-2">
+                  <span className="fw-bold text-dark" style={{ fontSize: '13px' }}>
+                    {activeYear === 'tumu' ? 'Tüm Zamanlar' : `${activeYear} Performansı`}
+                    <span className="text-muted ms-2 fw-normal" style={{ fontSize: '11px' }}>· Aylık Kırılım</span>
+                  </span>
+                  {/* Year Selector Buttons */}
+                  <div className="d-flex align-items-center gap-1 p-0.5 rounded-pill" style={{ background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.07)' }}>
+                    <Button
+                      variant="light"
+                      size="sm"
+                      onClick={() => { setSelectedYear('tumu'); setExpandedMonths({}); }}
+                      className={`rounded-pill border-0 fw-bold transition-all ${activeYear === 'tumu' ? 'bg-dark text-white shadow-sm' : 'bg-transparent text-muted'}`}
+                      style={{ fontSize: '10px', padding: '3px 10px' }}
+                    >
+                      Tümü
+                    </Button>
+                    {availableYears.map(y => (
+                      <Button
+                        key={y}
+                        variant="light"
+                        size="sm"
+                        onClick={() => { setSelectedYear(y); setExpandedMonths({}); }}
+                        className={`rounded-pill border-0 fw-bold transition-all ${activeYear === y ? 'bg-primary text-white shadow-sm' : 'bg-transparent text-muted'}`}
+                        style={{ fontSize: '10px', padding: '3px 10px' }}
+                      >
+                        {y}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="overflow-auto flex-grow-1 pe-1" style={{ maxHeight: '270px' }}>
+                  <Table hover className="mb-0 fs-13 align-middle" borderless>
+                    <thead>
+                      <tr className="text-muted x-small fw-bold border-bottom" style={{ fontSize: '9px', opacity: 0.6 }}>
+                        <th style={{ width: '28%' }}>AY</th>
+                        <th className="text-end" style={{ width: '22%' }}>ALIŞ / SATIŞ</th>
+                        <th className="text-end" style={{ width: '22%' }}>STOPAJ</th>
+                        <th className="text-end pe-2" style={{ width: '28%' }}>NET KÂR / ZARAR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {yearlyPerformanceData.months.map((m) => {
+                        const isExpanded = !!expandedMonths[m.monthKey];
+                        const hasActivity = m.hasActivity;
+
+                        return (
+                          <React.Fragment key={m.monthKey}>
+                            <tr
+                              className={`rounded-3 transition-all ${isExpanded ? 'bg-light bg-opacity-75' : ''} ${!hasActivity ? 'opacity-50' : ''}`}
+                              onClick={() => hasActivity && toggleMonthExpand(m.monthKey)}
+                              style={{ cursor: hasActivity ? 'pointer' : 'default' }}
+                            >
+                              <td>
+                                <div className="d-flex align-items-center gap-1.5">
+                                  {hasActivity ? (
+                                    isExpanded ? <ChevronDown size={14} className="text-primary flex-shrink-0" /> : <ChevronRight size={14} className="text-muted flex-shrink-0" />
+                                  ) : (
+                                    <div style={{ width: '14px' }} className="flex-shrink-0" />
+                                  )}
+                                  <span className={`fw-bold ${hasActivity ? 'text-dark' : 'text-muted'}`}>{m.monthName}</span>
+                                  {hasActivity && (
+                                    <span className="badge bg-light text-muted border px-1.5 py-0.5 rounded-pill" style={{ fontSize: '9px' }}>
+                                      {m.buyCount + m.saleCount}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="text-end">
+                                <div className="d-flex flex-column align-items-end">
+                                  {m.saleAmount > 0 && (
+                                    <span className="text-success fw-medium fs-11">
+                                      S: {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(m.saleAmount)}₺
+                                    </span>
+                                  )}
+                                  {m.buyAmount > 0 && (
+                                    <span className="text-primary fw-medium fs-11">
+                                      A: {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(m.buyAmount)}₺
+                                    </span>
+                                  )}
+                                  {m.saleAmount === 0 && m.buyAmount === 0 && (
+                                    <span className="text-muted fs-11">-</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="text-end">
+                                {m.taxDeduction > 0 ? (
+                                  <span className="text-danger fw-bold fs-11">
+                                    -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(m.taxDeduction)}₺
+                                  </span>
+                                ) : (
+                                  <span className="text-muted fs-11">-</span>
+                                )}
+                              </td>
+                              <td className={`text-end pe-2 fw-bold ${m.saleCount > 0 ? (m.netProfit >= 0 ? 'text-success' : 'text-danger') : 'text-muted'}`}>
+                                {m.saleCount > 0 ? (
+                                  <div className="d-flex flex-column align-items-end">
+                                    <span>{m.netProfit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(m.netProfit)}₺</span>
+                                    {m.costBasis > 0 && (
+                                      <span style={{ fontSize: '9px' }} className="opacity-75">
+                                        ({m.netProfit >= 0 ? '+' : ''}{m.profitPercent.toFixed(2)}%)
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span>-</span>
+                                )}
+                              </td>
+                            </tr>
+
+                            {/* Collapsible Stock Breakdown */}
+                            {hasActivity && (
+                              <tr>
+                                <td colSpan={4} className="p-0 border-0">
+                                  <Collapse in={isExpanded}>
+                                    <div className="p-2.5 my-1 mx-2 bg-light bg-opacity-50 rounded-3 border">
+                                      <div className="d-flex align-items-center justify-content-between mb-2">
+                                        <span className="x-small fw-bold text-muted opacity-75 text-uppercase" style={{ fontSize: '9px' }}>
+                                          {m.monthName} {activeYear} - HİSSE KIRILIMI
+                                        </span>
+                                        <span className="x-small text-muted" style={{ fontSize: '9px' }}>
+                                          {m.stocksList.length} Hisse
+                                        </span>
+                                      </div>
+                                      <Table size="sm" className="mb-0 fs-12" borderless>
+                                        <thead>
+                                          <tr className="text-muted border-bottom" style={{ fontSize: '9px', opacity: 0.7 }}>
+                                            <th>HİSSE</th>
+                                            <th className="text-end">İŞLEM DETAYI</th>
+                                            <th className="text-end">STOPAJ</th>
+                                            <th className="text-end pe-1">NET KÂR/ZARAR</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {m.stocksList.map(stk => (
+                                            <tr key={stk.stockId} className="border-bottom border-light">
+                                              <td className="fw-bold text-dark py-1.5">{stk.stockName}</td>
+                                              <td className="text-end text-muted py-1.5" style={{ fontSize: '11px' }}>
+                                                {stk.sellQty > 0 && <span className="text-danger fw-semibold">{stk.sellQty} Lot Satış</span>}
+                                                {stk.sellQty > 0 && stk.buyQty > 0 && <span> / </span>}
+                                                {stk.buyQty > 0 && <span className="text-primary fw-semibold">{stk.buyQty} Lot Alış</span>}
+                                              </td>
+                                              <td className="text-end text-danger py-1.5" style={{ fontSize: '11px' }}>
+                                                {stk.taxDeduction > 0 ? `-${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(stk.taxDeduction)}₺` : '-'}
+                                              </td>
+                                              <td className={`text-end pe-1 fw-bold py-1.5 ${stk.sellQty > 0 ? (stk.netProfit >= 0 ? 'text-success' : 'text-danger') : 'text-muted'}`}>
+                                                {stk.sellQty > 0 ? (
+                                                  <span>
+                                                    {stk.netProfit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(stk.netProfit)}₺
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-muted fw-normal" style={{ fontSize: '10px' }}>Alış Yapıldı</span>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </Table>
+                                    </div>
+                                  </Collapse>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </Table>
+                </div>
               </div>
 
-              {(chartLayout === 'hisse_mevcut' || chartLayout === 'hisse_genel') ? (
-                (chartLayout === 'hisse_mevcut' ? activeStocks : allStocks).length === 0 ? (
-                  <div className="text-center py-5 text-muted small">Portföy bulunmamaktadır</div>
-                ) : (
-                  <div className="overflow-auto pe-1" style={{ maxHeight: '240px' }}>
-                    <Table hover className="mb-0 fs-13 align-middle" borderless>
-                      <thead>
-                        <tr className="text-muted x-small fw-bold border-bottom" style={{ fontSize: '9px', opacity: 0.6 }}>
-                          <th style={{ width: '40%' }}>HİSSE</th>
-                          <th className="text-end" style={{ width: '20%' }}>MİKTAR</th>
-                          <th className="text-end" style={{ width: '20%' }}>PORTFÖY PAYI</th>
-                          <th className="text-end pe-2" style={{ width: '20%' }}>NET KAR/ZARAR</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {displayedStocks.map((d, i) => (
-                          <tr 
-                            key={d.id} 
-                            className={`rounded-3 transition-all cursor-pointer ${hoveredSlice === i ? 'bg-light bg-opacity-75' : ''}`}
-                            onMouseEnter={() => setHoveredSlice(i)}
-                            onMouseLeave={() => setHoveredSlice(null)}
-                          >
-                            <td>
-                              <div className="d-flex align-items-center gap-2">
-                                <div className="rounded flex-shrink-0" style={{ width: '12px', height: '12px', backgroundColor: d.color, borderRadius: '3px' }} />
-                                <span className="fw-bold text-dark">{d.name}</span>
-                              </div>
-                            </td>
-                            <td className="text-end text-muted">{d.quantity > 0 ? `${new Intl.NumberFormat('tr-TR').format(d.quantity)} Lot` : '0 Lot'}</td>
-                            <td className="text-end fw-medium">{d.percentageVal.toFixed(1)}%</td>
-                            <td className={`text-end pe-2 fw-bold ${d.profit >= 0 ? 'text-success' : 'text-danger'}`}>
-                              <div className="d-flex flex-column align-items-end">
-                                <span>{d.profit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.profit)}₺</span>
-                                {d.percentage !== undefined && d.percentage !== 0 && (
-                                  <span style={{ fontSize: '9px' }} className="opacity-75">({d.percentage >= 0 ? '+' : ''}{d.percentage.toFixed(2)}%)</span>
-                                )}
-                                <span style={{ fontSize: '9px', fontWeight: 500 }} className="text-danger">Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.tax)}₺</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                    {chartLayout === 'hisse_genel' && allStocks.length > 10 && (
-                      <div className="d-flex justify-content-center mt-2">
-                        <Button 
-                          variant="link" 
-                          size="sm" 
-                          className="text-decoration-none text-primary fw-bold p-0 py-1"
-                          onClick={() => setShowAllHisseGenel(!showAllHisseGenel)}
-                        >
-                          {showAllHisseGenel ? 'Daha Az Göster' : 'Devamını Gör'}
-                        </Button>
-                      </div>
-                    )}
+              {/* Footer */}
+              <div className="border-top mx-4 pt-3 pb-4">
+                <div className="d-flex justify-content-between align-items-center gap-2">
+                  <div className="text-center flex-fill p-2 rounded-3" style={{ background: 'rgba(0,0,0,0.04)' }}>
+                    <div className="text-muted fw-bold" style={{ fontSize: '8px', letterSpacing: '0.4px' }}>SATIŞ</div>
+                    <div className="fw-bold text-dark fs-12 mt-0.5">
+                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(yearlyPerformanceData.yearlySummary.saleAmount || 0)}₺
+                    </div>
                   </div>
-                )
-              ) : (
-                activeInstitutions.length === 0 ? (
-                  <div className="text-center py-5 text-muted small">Aktif kurum bulunmamaktadır</div>
-                ) : (
-                  <div className="overflow-auto pe-1" style={{ maxHeight: '240px' }}>
-                    <Table hover className="mb-0 fs-13 align-middle" borderless>
-                      <thead>
-                        <tr className="text-muted x-small fw-bold border-bottom" style={{ fontSize: '9px', opacity: 0.6 }}>
-                          <th style={{ width: '40%' }}>KURUM</th>
-                          <th className="text-end" style={{ width: '20%' }}>GÜNLÜK KAZANÇ</th>
-                          <th className="text-end" style={{ width: '20%' }}>PORTFÖY DEĞERİ</th>
-                          <th className="text-end pe-2" style={{ width: '20%' }}>NET KAZANÇ</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {donutData.map((d, i) => (
-                          <tr 
-                            key={d.id} 
-                            className={`rounded-3 transition-all cursor-pointer ${hoveredSlice === i ? 'bg-light bg-opacity-75' : ''}`}
-                            onMouseEnter={() => setHoveredSlice(i)}
-                            onMouseLeave={() => setHoveredSlice(null)}
-                          >
-                            <td>
-                              <div className="d-flex align-items-center gap-2">
-                                <div className="rounded flex-shrink-0" style={{ width: '12px', height: '12px', backgroundColor: d.color, borderRadius: '3px' }} />
-                                {d.logo ? (
-                                  <img src={d.logo} alt="" width="16" height="16" className="rounded-circle" style={{ objectFit: 'contain' }} />
-                                ) : (
-                                  <Landmark size={14} className="text-muted" />
-                                )}
-                                <span className="fw-bold text-dark">{d.name}</span>
-                              </div>
-                            </td>
-                            <td className={`text-end fw-bold ${d.dailyGain >= 0 ? 'text-success' : 'text-danger'}`}>
-                              {d.dailyGain > 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.dailyGain)}₺
-                            </td>
-                            <td className="text-end fw-bold">{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.value)}₺</td>
-                            <td className={`text-end pe-2 fw-bold ${d.profit >= 0 ? 'text-success' : 'text-danger'}`}>
-                              <div className="d-flex flex-column align-items-end">
-                                <span>{d.profit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.profit)}₺</span>
-                                <span style={{ fontSize: '9px', fontWeight: 500 }} className="text-danger">Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.tax)}₺</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Table>
+                  <div className="text-center flex-fill p-2 rounded-3" style={{ background: 'rgba(244,63,94,0.08)' }}>
+                    <div className="text-danger fw-bold" style={{ fontSize: '8px', letterSpacing: '0.4px' }}>STOPAJ</div>
+                    <div className="fw-bold text-danger fs-12 mt-0.5">
+                      -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(yearlyPerformanceData.yearlySummary.taxDeduction || 0)}₺
+                    </div>
                   </div>
-                )
-              )}
-            </div>
+                  <div className={`text-center flex-fill p-2 rounded-3 ${(yearlyPerformanceData.yearlySummary.netProfit || 0) >= 0 ? '' : ''}`} style={{ background: (yearlyPerformanceData.yearlySummary.netProfit || 0) >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)' }}>
+                    <div className={`fw-bold ${(yearlyPerformanceData.yearlySummary.netProfit || 0) >= 0 ? 'text-success' : 'text-danger'}`} style={{ fontSize: '8px', letterSpacing: '0.4px' }}>NET KÂR</div>
+                    <div className={`fw-bold fs-12 mt-0.5 ${(yearlyPerformanceData.yearlySummary.netProfit || 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                      {(yearlyPerformanceData.yearlySummary.netProfit || 0) >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(yearlyPerformanceData.yearlySummary.netProfit || 0)}₺
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ) : (
 
-            <div className="border-top pt-3 mt-3">
-              <Row className="g-2">
-                <Col xs={4}>
-                  <div className="bg-light bg-opacity-25 rounded-3 p-2 text-center border">
-                    <div className="text-muted x-small opacity-75" style={{ fontSize: '9px' }}>TOPLAM YATIRIM</div>
-                    <div className="fw-bold text-dark mt-1 fs-12">
-                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalCost)}₺
+            <Card className="glass-card border shadow-sm p-4 h-100 d-flex flex-column justify-content-between" style={{ minHeight: '380px' }}>
+              <div>
+                <div className="d-flex align-items-center justify-content-between mb-4">
+                  <span className="x-small fw-bold text-muted opacity-75 text-uppercase">
+                    {chartLayout === 'hisse_mevcut' ? 'HİSSE DETAYLARI (MEVCUT)' : chartLayout === 'hisse_genel' ? 'HİSSE DETAYLARI (GENEL)' : chartLayout === 'kurum_mevcut' ? 'KURUMSAL ÖZETLER (MEVCUT)' : 'KURUMSAL ÖZETLER (GENEL)'}
+                  </span>
+                  <Badge bg="primary" className="rounded-pill opacity-75 px-3 py-1 fs-11">
+                    {chartLayout === 'hisse_mevcut' ? `${activeStocks.length} Aktif Hisse` : chartLayout === 'hisse_genel' ? `${allStocks.length} Hisse (Mevcut/Tarihsel)` : `${activeInstitutions.length} Aktif Kurum`}
+                  </Badge>
+                </div>
+
+                {(chartLayout === 'hisse_mevcut' || chartLayout === 'hisse_genel') ? (
+                  (chartLayout === 'hisse_mevcut' ? activeStocks : allStocks).length === 0 ? (
+                    <div className="text-center py-5 text-muted small">Portföy bulunmamaktadır</div>
+                  ) : (
+                    <div className="overflow-auto pe-1" style={{ maxHeight: '240px' }}>
+                      <Table hover className="mb-0 fs-13 align-middle" borderless>
+                        <thead>
+                          <tr className="text-muted x-small fw-bold border-bottom" style={{ fontSize: '9px', opacity: 0.6 }}>
+                            <th style={{ width: '40%' }}>HİSSE</th>
+                            <th className="text-end" style={{ width: '20%' }}>MİKTAR</th>
+                            <th className="text-end" style={{ width: '20%' }}>PORTFÖY PAYI</th>
+                            <th className="text-end pe-2" style={{ width: '20%' }}>NET KAR/ZARAR</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {displayedStocks.map((d, i) => (
+                            <tr 
+                              key={d.id} 
+                              className={`rounded-3 transition-all cursor-pointer ${hoveredSlice === i ? 'bg-light bg-opacity-75' : ''}`}
+                              onMouseEnter={() => setHoveredSlice(i)}
+                              onMouseLeave={() => setHoveredSlice(null)}
+                            >
+                              <td>
+                                <div className="d-flex align-items-center gap-2">
+                                  <div className="rounded flex-shrink-0" style={{ width: '12px', height: '12px', backgroundColor: d.color, borderRadius: '3px' }} />
+                                  <span className="fw-bold text-dark">{d.name}</span>
+                                </div>
+                              </td>
+                              <td className="text-end text-muted">{d.quantity > 0 ? `${new Intl.NumberFormat('tr-TR').format(d.quantity)} Lot` : '0 Lot'}</td>
+                              <td className="text-end fw-medium">{d.percentageVal.toFixed(1)}%</td>
+                              <td className={`text-end pe-2 fw-bold ${d.profit >= 0 ? 'text-success' : 'text-danger'}`}>
+                                <div className="d-flex flex-column align-items-end">
+                                  <span>{d.profit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.profit)}₺</span>
+                                  {d.percentage !== undefined && d.percentage !== 0 && (
+                                    <span style={{ fontSize: '9px' }} className="opacity-75">({d.percentage >= 0 ? '+' : ''}{d.percentage.toFixed(2)}%)</span>
+                                  )}
+                                  <span style={{ fontSize: '9px', fontWeight: 500 }} className="text-danger">Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.tax)}₺</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Table>
+                      {chartLayout === 'hisse_genel' && allStocks.length > 10 && (
+                        <div className="d-flex justify-content-center mt-2">
+                          <Button 
+                            variant="link" 
+                            size="sm" 
+                            className="text-decoration-none text-primary fw-bold p-0 py-1"
+                            onClick={() => setShowAllHisseGenel(!showAllHisseGenel)}
+                          >
+                            {showAllHisseGenel ? 'Daha Az Göster' : 'Devamını Gör'}
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </Col>
-                <Col xs={4}>
-                  <div className="bg-light bg-opacity-25 rounded-3 p-2 text-center border">
-                    <div className="text-muted x-small opacity-75" style={{ fontSize: '9px' }}>PORTFÖY DEĞERİ</div>
-                    <div className="fw-bold text-primary mt-1 fs-12">
-                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalStockValue - currentTotalTax)}₺
+                  )
+                ) : (
+                  activeInstitutions.length === 0 ? (
+                    <div className="text-center py-5 text-muted small">Aktif kurum bulunmamaktadır</div>
+                  ) : (
+                    <div className="overflow-auto pe-1" style={{ maxHeight: '240px' }}>
+                      <Table hover className="mb-0 fs-13 align-middle" borderless>
+                        <thead>
+                          <tr className="text-muted x-small fw-bold border-bottom" style={{ fontSize: '9px', opacity: 0.6 }}>
+                            <th style={{ width: '40%' }}>KURUM</th>
+                            <th className="text-end" style={{ width: '20%' }}>GÜNLÜK KAZANÇ</th>
+                            <th className="text-end" style={{ width: '20%' }}>PORTFÖY DEĞERİ</th>
+                            <th className="text-end pe-2" style={{ width: '20%' }}>NET KAZANÇ</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {donutData.map((d, i) => (
+                            <tr 
+                              key={d.id} 
+                              className={`rounded-3 transition-all cursor-pointer ${hoveredSlice === i ? 'bg-light bg-opacity-75' : ''}`}
+                              onMouseEnter={() => setHoveredSlice(i)}
+                              onMouseLeave={() => setHoveredSlice(null)}
+                            >
+                              <td>
+                                <div className="d-flex align-items-center gap-2">
+                                  <div className="rounded flex-shrink-0" style={{ width: '12px', height: '12px', backgroundColor: d.color, borderRadius: '3px' }} />
+                                  {d.logo ? (
+                                    <img src={d.logo} alt="" width="16" height="16" className="rounded-circle" style={{ objectFit: 'contain' }} />
+                                  ) : (
+                                    <Landmark size={14} className="text-muted" />
+                                  )}
+                                  <span className="fw-bold text-dark">{d.name}</span>
+                                </div>
+                              </td>
+                              <td className={`text-end fw-bold ${d.dailyGain >= 0 ? 'text-success' : 'text-danger'}`}>
+                                {d.dailyGain > 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.dailyGain)}₺
+                              </td>
+                              <td className="text-end fw-bold">{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.value)}₺</td>
+                              <td className={`text-end pe-2 fw-bold ${d.profit >= 0 ? 'text-success' : 'text-danger'}`}>
+                                <div className="d-flex flex-column align-items-end">
+                                  <span>{d.profit >= 0 ? '+' : ''}{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.profit)}₺</span>
+                                  <span style={{ fontSize: '9px', fontWeight: 500 }} className="text-danger">Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(d.tax)}₺</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Table>
                     </div>
-                  </div>
-                </Col>
-                <Col xs={4}>
-                  <div className={`rounded-3 p-2 text-center border ${currentTotalProfit >= 0 ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`}>
-                    <div className="x-small opacity-75" style={{ fontSize: '9px', fontWeight: 500 }}>NET KAR/ZARAR</div>
-                    <div className="fw-bold mt-1 fs-12">
-                      {currentTotalProfit >= 0 ? '+' : ''}
-                      {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalProfit)}₺
+                  )
+                )}
+              </div>
+
+              <div className="border-top pt-3 mt-3">
+                <Row className="g-2">
+                  <Col xs={4}>
+                    <div className="bg-light bg-opacity-25 rounded-3 p-2 text-center border">
+                      <div className="text-muted x-small opacity-75" style={{ fontSize: '9px' }}>TOPLAM YATIRIM</div>
+                      <div className="fw-bold text-dark mt-1 fs-12">
+                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalCost)}₺
+                      </div>
                     </div>
-                    <div className="text-danger fw-bold mt-1" style={{ fontSize: '9px' }}>
-                      Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalTax)}₺
+                  </Col>
+                  <Col xs={4}>
+                    <div className="bg-light bg-opacity-25 rounded-3 p-2 text-center border">
+                      <div className="text-muted x-small opacity-75" style={{ fontSize: '9px' }}>PORTFÖY DEĞERİ</div>
+                      <div className="fw-bold text-primary mt-1 fs-12">
+                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalStockValue - currentTotalTax)}₺
+                      </div>
                     </div>
-                  </div>
-                </Col>
-              </Row>
-            </div>
-          </Card>
+                  </Col>
+                  <Col xs={4}>
+                    <div className={`rounded-3 p-2 text-center border ${currentTotalProfit >= 0 ? 'bg-success bg-opacity-10 text-success' : 'bg-danger bg-opacity-10 text-danger'}`}>
+                      <div className="x-small opacity-75" style={{ fontSize: '9px', fontWeight: 500 }}>NET KAR/ZARAR</div>
+                      <div className="fw-bold mt-1 fs-12">
+                        {currentTotalProfit >= 0 ? '+' : ''}
+                        {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalProfit)}₺
+                      </div>
+                      <div className="text-danger fw-bold mt-1" style={{ fontSize: '9px' }}>
+                        Stopaj: -{new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentTotalTax)}₺
+                      </div>
+                    </div>
+                  </Col>
+                </Row>
+              </div>
+            </Card>
+          )}
         </Col>
       </Row>
     </div>
