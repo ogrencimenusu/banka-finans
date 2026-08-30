@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './components/auth/LoginPage';
 import BankTransactionsPage from './components/bank/BankTransactionsPage';
+import CreditCardAnalyticsPage from './components/bank/CreditCardAnalyticsPage';
 import FinanceTransactionsPage from './components/finance/FinanceTransactionsPage';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
@@ -11,7 +12,7 @@ import TrashPage from './components/pages/TrashPage';
 import NotesPage from './components/pages/NotesPage';
 import TagsPage from './components/pages/TagsPage';
 import DictionaryLayout from './components/sozluk/DictionaryLayout';
-import { LayoutDashboard, Wallet, PieChart, Settings, ArrowRight, Landmark, Calendar, Clock, StickyNote, ChevronRight, TrendingUp, TrendingDown } from 'lucide-react';
+import { LayoutDashboard, Wallet, PieChart, Settings, ArrowRight, Landmark, Calendar, Clock, StickyNote, ChevronRight, TrendingUp, TrendingDown, CreditCard } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { db } from './firebase';
 import { collection, onSnapshot, query, orderBy, doc } from 'firebase/firestore';
@@ -403,9 +404,14 @@ const Dashboard = () => {
               Toplam: {formatCurrency(totalBalance)} ₺
             </div>
           </div>
-          <Link to="/bank-transactions" className="btn btn-primary btn-sm rounded-pill px-3 fw-bold d-flex align-items-center gap-1 mt-1">
-            İncele <ArrowRight size={14} />
-          </Link>
+          <div className="d-flex align-items-center gap-2 mt-1">
+            <Link to="/credit-cards" className="btn btn-outline-primary btn-sm rounded-pill px-3 fw-bold d-flex align-items-center gap-1 shadow-sm">
+              <CreditCard size={14} /> Kart Analizi
+            </Link>
+            <Link to="/bank-transactions" className="btn btn-primary btn-sm rounded-pill px-3 fw-bold d-flex align-items-center gap-1">
+              İncele <ArrowRight size={14} />
+            </Link>
+          </div>
         </div>
 
         <div className="row g-3">
@@ -759,6 +765,8 @@ function App() {
                       <Routes>
                         <Route path="/" element={<Dashboard />} />
                         <Route path="/bank-transactions" element={<BankTransactionsPage />} />
+                        <Route path="/credit-cards" element={<CreditCardAnalyticsPage />} />
+                        <Route path="/bank-transactions/credit-cards" element={<Navigate to="/credit-cards" replace />} />
                         <Route path="/finance" element={<FinanceTransactionsPage />} />
                         <Route path="/notes" element={<NotesPage />} />
                         <Route path="/tags" element={<TagsPage />} />

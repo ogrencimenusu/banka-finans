@@ -1,0 +1,603 @@
+/* ==========================================================================
+   Credit Card Analytics (Kredi Kartları Analizi) - Ultra-Modern Fintech UI
+   ========================================================================== */
+
+.cca-root {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding-bottom: 60px;
+  color: var(--text-main, #1e293b);
+  animation: ccaFadeIn 0.35s ease-out;
+}
+
+@keyframes ccaFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Surfaces & Glassmorphism
+   -------------------------------------------------------------------------- */
+.cca-glass-panel {
+  background: var(--glass-bg, rgba(255, 255, 255, 0.8));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border, rgba(226, 232, 240, 0.8));
+  border-radius: 24px;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.02);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme="dark"] .cca-glass-panel {
+  background: var(--card-bg, rgba(18, 22, 34, 0.85));
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+/* --------------------------------------------------------------------------
+   Header
+   -------------------------------------------------------------------------- */
+.cca-back-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  background: var(--glass-bg, rgba(255, 255, 255, 0.9));
+  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-main, #1e293b);
+  transition: all 0.2s ease;
+  text-decoration: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.cca-back-btn:hover {
+  background: #2563eb;
+  color: #ffffff !important;
+  transform: translateX(-2px);
+  border-color: #2563eb;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+}
+
+[data-theme="dark"] .cca-back-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] .cca-back-btn:hover {
+  background: #3b82f6;
+  color: #ffffff !important;
+  border-color: #3b82f6;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+}
+
+.cca-settings-trigger {
+  background: var(--glass-bg, rgba(255, 255, 255, 0.85));
+  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.08));
+  color: var(--text-main, #1e293b);
+  border-radius: 30px;
+  padding: 8px 18px;
+  font-weight: 700;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.cca-settings-trigger:hover {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: rgba(37, 99, 235, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+}
+
+[data-theme="dark"] .cca-settings-trigger {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] .cca-settings-trigger:hover {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+/* --------------------------------------------------------------------------
+   Horizontal Scroller
+   -------------------------------------------------------------------------- */
+.cca-horizontal-scroll {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+.cca-horizontal-scroll::-webkit-scrollbar {
+  height: 5px;
+}
+
+.cca-horizontal-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+}
+
+[data-theme="dark"] .cca-horizontal-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* --------------------------------------------------------------------------
+   Time Filter Chips
+   -------------------------------------------------------------------------- */
+.cca-time-pill {
+  padding: 8px 18px;
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.06));
+  background: var(--glass-bg, #ffffff);
+  color: var(--text-muted, #64748b);
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.cca-time-pill:hover {
+  background: #f8fafc;
+  color: #2563eb;
+  border-color: rgba(37, 99, 235, 0.2);
+}
+
+.cca-time-pill.active {
+  background: #0052cc !important;
+  color: #ffffff !important;
+  border-color: #0052cc !important;
+  box-shadow: 0 4px 14px rgba(0, 82, 204, 0.35);
+  transform: translateY(-1px);
+}
+
+[data-theme="dark"] .cca-time-pill {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .cca-time-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .cca-time-pill.active {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 4px 18px rgba(37, 99, 235, 0.5);
+}
+
+/* --------------------------------------------------------------------------
+   Physical Credit Cards (Carousel)
+   -------------------------------------------------------------------------- */
+.cca-card-item {
+  min-width: 220px;
+  max-width: 240px;
+  height: 130px;
+  border-radius: 20px;
+  padding: 14px 16px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: left;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="dark"] .cca-card-item {
+  background: rgba(26, 30, 44, 0.9);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.cca-card-item:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+.cca-card-item.active {
+  color: #ffffff !important;
+  transform: translateY(-4px) scale(1.02);
+  border-color: transparent !important;
+}
+
+/* Shimmer overlay on active card */
+.cca-card-shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.1) 100%);
+  pointer-events: none;
+  border-radius: 20px;
+}
+
+/* EMV Chip & Contactless */
+.cca-emv-chip {
+  width: 22px;
+  height: 16px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #fef08a 0%, #ca8a04 100%);
+  border: 1px solid rgba(161, 98, 7, 0.6);
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.cca-emv-chip::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 3px;
+  right: 3px;
+  bottom: 4px;
+  border: 1px solid rgba(113, 63, 18, 0.4);
+  border-radius: 2px;
+}
+
+/* Progress bar inside card */
+.cca-card-progress-bg {
+  width: 100%;
+  height: 5px;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.cca-card-item.active .cca-card-progress-bg {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+[data-theme="dark"] .cca-card-progress-bg {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cca-card-progress-fill {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.5s ease;
+}
+
+/* --------------------------------------------------------------------------
+   Hero Executive Summary
+   -------------------------------------------------------------------------- */
+.cca-hero-container {
+  padding: 28px;
+  position: relative;
+}
+
+.cca-hero-glow-blue {
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.12) 0%, rgba(37, 99, 235, 0) 70%);
+  pointer-events: none;
+}
+
+.cca-hero-glow-purple {
+  position: absolute;
+  bottom: -50px;
+  left: 25%;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.1) 0%, rgba(168, 85, 247, 0) 70%);
+  pointer-events: none;
+}
+
+[data-theme="dark"] .cca-hero-glow-blue {
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0) 70%);
+}
+
+[data-theme="dark"] .cca-hero-glow-purple {
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.18) 0%, rgba(168, 85, 247, 0) 70%);
+}
+
+.cca-metric-pill-box {
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 18px;
+  padding: 14px 18px;
+  transition: all 0.2s ease;
+}
+
+[data-theme="dark"] .cca-metric-pill-box {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.cca-metric-pill-box:hover {
+  background: rgba(255, 255, 255, 0.8);
+  transform: translateY(-2px);
+}
+
+[data-theme="dark"] .cca-metric-pill-box:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* --------------------------------------------------------------------------
+   Chart Tabs
+   -------------------------------------------------------------------------- */
+.cca-chart-nav-btn {
+  padding: 8px 16px;
+  border-radius: 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  background: var(--glass-bg, #ffffff);
+  color: var(--text-muted, #64748b);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.cca-chart-nav-btn:hover {
+  background: #f1f5f9;
+  color: #2563eb;
+}
+
+.cca-chart-nav-btn.active {
+  background: #0052cc !important;
+  color: #ffffff !important;
+  border-color: #0052cc !important;
+  box-shadow: 0 4px 12px rgba(0, 82, 204, 0.3);
+}
+
+[data-theme="dark"] .cca-chart-nav-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .cca-chart-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+[data-theme="dark"] .cca-chart-nav-btn.active {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.4);
+}
+
+/* --------------------------------------------------------------------------
+   SVG Charts & Interactive Hover
+   -------------------------------------------------------------------------- */
+.cca-chart-svg {
+  width: 100%;
+  overflow: visible;
+}
+
+.cca-bar-element {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  cursor: pointer;
+}
+
+.cca-bar-element:hover {
+  opacity: 0.82;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.15));
+}
+
+.cca-donut-ring {
+  transition: all 0.25s ease;
+  cursor: pointer;
+}
+
+.cca-donut-ring:hover {
+  opacity: 0.85;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.2));
+  transform: scale(1.02);
+  transform-origin: center;
+}
+
+/* Floating Tooltip in Charts */
+.cca-floating-tooltip {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: ccaTooltipPop 0.15s ease-out;
+}
+
+@keyframes ccaTooltipPop {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Transaction Rows & Actions
+   -------------------------------------------------------------------------- */
+.cca-transaction-card {
+  background: var(--glass-bg, #ffffff);
+  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.05));
+  border-radius: 16px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.cca-transaction-card:hover {
+  background: #ffffff;
+  border-color: rgba(37, 99, 235, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .cca-transaction-card {
+  background: rgba(22, 27, 40, 0.85);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .cca-transaction-card:hover {
+  background: rgba(30, 37, 54, 0.95);
+  border-color: rgba(59, 130, 246, 0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.cca-avatar-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .cca-avatar-circle {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.cca-avatar-circle img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+
+/* --------------------------------------------------------------------------
+   Badges & Pills
+   -------------------------------------------------------------------------- */
+.cca-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cca-receipt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.cca-receipt-badge:hover {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .cca-receipt-badge {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+[data-theme="dark"] .cca-receipt-badge:hover {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+/* --------------------------------------------------------------------------
+   Rank Badges for Top Merchants
+   -------------------------------------------------------------------------- */
+.cca-rank-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.cca-rank-circle.rank-1 {
+  background: linear-gradient(135deg, #fef08a 0%, #eab308 100%);
+  color: #854d0e;
+  box-shadow: 0 2px 10px rgba(234, 179, 8, 0.35);
+}
+
+.cca-rank-circle.rank-2 {
+  background: linear-gradient(135deg, #f1f5f9 0%, #cbd5e1 100%);
+  color: #334155;
+  box-shadow: 0 2px 8px rgba(148, 163, 184, 0.3);
+}
+
+.cca-rank-circle.rank-3 {
+  background: linear-gradient(135deg, #ffedd5 0%, #f97316 100%);
+  color: #9a3412;
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
+}
+
+.cca-rank-circle.rank-other {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-muted, #64748b);
+}
+
+[data-theme="dark"] .cca-rank-circle.rank-other {
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}

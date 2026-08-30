@@ -35,6 +35,9 @@ export const DataProvider = ({ children }) => {
   const [notesConfig, setNotesConfig] = useState(null);
   const [holidays, setHolidays] = useState([]);
 
+  // Credit Card Settings State
+  const [creditCardSettings, setCreditCardSettings] = useState(null);
+
   useEffect(() => {
     if (!user) {
       setLoading(false);
@@ -115,6 +118,10 @@ export const DataProvider = ({ children }) => {
 
     const unsubNotesConfig = onSnapshot(doc(db, `users/${user.uid}/config`, 'notesSettings'), (snap) => {
       setNotesConfig(snap.exists() ? snap.data() : {});
+    });
+
+    const unsubCreditCardSettings = onSnapshot(doc(db, `users/${user.uid}/config`, 'creditCardSettings'), (snap) => {
+      setCreditCardSettings(snap.exists() ? snap.data() : {});
     });
     // End of listeners
     // Fetch holidays once per user session
@@ -201,6 +208,7 @@ export const DataProvider = ({ children }) => {
       unsubNotes();
       unsubNoteTags();
       unsubNotesConfig();
+      unsubCreditCardSettings();
       // End cleanup
     };
   }, [user]);
@@ -224,6 +232,7 @@ export const DataProvider = ({ children }) => {
     notes,
     noteTags,
     notesConfig,
+    creditCardSettings,
     holidays
   };
 

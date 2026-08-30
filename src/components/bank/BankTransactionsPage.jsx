@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
@@ -3833,6 +3834,13 @@ const BankTransactionsPage = () => {
               </Dropdown.Menu>
             </Dropdown>
           </div>
+          <Link
+            to="/credit-cards"
+            className="btn btn-light btn-sm d-flex align-items-center gap-2 rounded-pill px-3 shadow-sm border glass-card text-decoration-none"
+            title="Kredi Kartı Harcama Analizi"
+          >
+            <CreditCard size={14} className="text-primary" /> <span className="d-none d-md-inline">Kredi Kartları</span>
+          </Link>
           <Button
             variant="light"
             size="sm"

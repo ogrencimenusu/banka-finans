@@ -72,6 +72,7 @@ const MainLayout = ({ children }) => {
     const titles = {
       '/': 'Dashboard',
       '/bank-transactions': 'Banka İşlemleri',
+      '/credit-cards': 'Kredi Kartları',
       '/finance': 'Finans İşlemleri',
       '/notes': 'Notlar',
       '/tags': 'Etiketler',
